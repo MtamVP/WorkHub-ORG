@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>WorkHub AI Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="stylesheet" href="/style.css?v=3.0.3">
+    <script src="/api.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#120F0A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WorkHub">
+    <link rel="apple-touch-icon" href="/logo.png">
+</head>
+<body class="auth-page">
+
+<div class="auth-stars"></div>
+<div class="auth-twinkling"></div>
+
+<div class="auth-card">
+    <div id="login-view">
+        <h2>WorkHub AI</h2>
+        <p class="auth-subtitle">Hello mấy ní trai tài gái sắc</p>
+
+        <form id="firebase-login-form">
+            <div class="auth-input-group">
+                <span class="auth-input-icon"><i class="fa-solid fa-user-astronaut"></i></span>
+                <input type="text" id="username" class="form-control" placeholder="Tên đăng nhập" required>
+            </div>
+
+            <div class="auth-input-group">
+                <span class="auth-input-icon"><i class="fa-solid fa-lock"></i></span>
+                <input type="password" id="password" class="form-control" placeholder="Mật mã" required>
+            </div>
+
+            <button type="submit" class="auth-btn-submit">
+                Vào Hệ Thống <i class="fa-solid fa-arrow-right ms-2"></i>
+            </button>
+
+            <div class="text-center mt-3">
+              <a href="/forgot/" class="small text-decoration-none text-muted"> Quên mật khẩu?</a>
+            </div>
+        </form>
+
+        <div id="firebase-error" class="auth-error-message"></div>
+        <div id="loading-status" class="text-center text-muted mt-3" style="display:none;">
+            <i class="fa-solid fa-satellite fa-spin"></i> Đang kết nối...
+        </div>
+    </div>
+
+    <div id="success-view" class="auth-success-view">
+        <div class="auth-success-icon"><i class="fa-solid fa-check-circle"></i></div>
+        <h4>Đăng nhập thành công!</h4>
+        <p class="text-muted mb-4" id="welcome-text">Đang vào Dashboard...</p>
+
+        <button id="btn-go-dashboard" class="auth-btn-submit" style="background: var(--success-color);">
+            <i class="fa-solid fa-rocket me-2"></i> Vào Dashboard Ngay
+        </button>
+    </div>
+</div>
+
+<script>
+    // 1. CẤU HÌNH HỆ THỐNG
+    const DASHBOARD_URL = "https://script.google.com/macros/s/AKfycbyNqJLYAetEOUG2Jp7sGgfBy54CKB50Ng_w_PkQGvfQa4b8Fcr8-8NiL0Er21SusDL4/exec";
+
+    const firebaseConfig = {
+        apiKey : "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
+        authDomain : "workhub-ai-2d5aa.firebaseapp.com",
+        projectId : "workhub-ai-2d5aa",
+        storageBucket : "workhub-ai-2d5aa.firebasestorage.app",
+        messagingSenderId : "703705936779",
+        appId : "1:703705936779:web:b800246feea1f3e3cf358e"
+    };
+
+    const app = firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    // 2. KHAI BÁO BIẾN DOM
+    const loginView = document.getElementById('login-view');
+    const successView = document.getElementById('success-view');
+    const form = document.getElementById('firebase-login-form');
+    const errorDiv = document.getElementById('firebase-error');
+    const loadingStatus = document.getElementById('loading-status');
+    const welcomeText = document.getElementById('welcome-text');
+    const btnGoDashboard = document.getElementById('btn-go-dashboard');
+
+    // 3. HÀM ĐĂNG NHẬP FIREBASE
+    function performLogin(email, password) {
+        loadingStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xác thực với Firebase...';
+
+        auth.signInWithEmailAndPassword(email, password)
+            .then((userCredential) => {
+                showSuccessUI(userCredential.user);
+            })
+            .catch((error) => {
+                loadingStatus.style.display = 'none';
+                form.style.display = 'block';
+
+                let msg = error.message;
+                if(error.code === 'auth/wrong-password') msg = "Mật khẩu không chính xác.";
+                if(error.code === 'auth/user-not-found') msg = "Tài khoản chưa được tạo trên hệ thống.";
+                if(error.code === 'auth/invalid-email') msg = "Email không hợp lệ.";
+
+                errorDiv.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + msg;
+            });
+    }
+
+    function showSuccessUI(user) {
+        loginView.style.display = 'none';
+        successView.style.display = 'block';
+        welcomeText.textContent = `Xin chào, ${user.displayName || "Thành viên"}!`;
+
+        btnGoDashboard.onclick = function() {
+            this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang truy cập...';
+            if (!user.displayName) window.top.location.href = "/nickname/";
+            else window.top.location.href = "/dashboard/";
+        };
+    }
+
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            errorDiv.textContent = '';
+
+            // Lấy giá trị từ ô nhập liệu có id="username"
+            const inputVal = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!inputVal) {
+                errorDiv.textContent = "Vui lòng nhập tên đăng nhập hoặc email.";
+                return;
+            }
+
+            form.style.display = 'none';
+            loadingStatus.style.display = 'block';
+            loadingStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra danh sách...';
+
+            // KIỂM TRA QUYỀN TRUY CẬP
+            google.script.run.withSuccessHandler(function(realEmail) {
+
+                if (!realEmail) {
+                    // Nếu Sheet trả về null thì chặn k cho vô
+                    loadingStatus.style.display = 'none';
+                    form.style.display = 'block';
+                    errorDiv.innerHTML = '<i class="fa-solid fa-user-lock"></i> Bạn không có tên trong danh sách được cấp quyền.';
+                } else {
+                    // Nếu Sheet trả về Email đúng thì cho vào
+                    performLogin(realEmail, password);
+                }
+
+            }).getRealEmail(inputVal); // Truyền biến inputVal vào hàm Server
+        });
+    }
+
+    // KIỂM TRA TRẠNG THÁI ĐĂNG NHẬP CŨ
+    auth.onAuthStateChanged(function(user) {
+        if (loadingStatus) loadingStatus.style.display = 'none';
+        if (user) showSuccessUI(user);
+        else loginView.style.display = 'block';
+    });
+</script>
+</body>
+</html>

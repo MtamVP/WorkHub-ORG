@@ -1,0 +1,89 @@
+/* ==========================================================================
+   CSS CHO KHO ỨNG DỤNG (TOOLS CENTER) — Soft Minimalism, dùng chung token gốc
+   ========================================================================== */
+
+.max-w-1200 { max-width: 1200px; margin: 0 auto; }
+.max-w-600 { max-width: 600px; }
+
+body {
+    background-color: var(--bg-color);
+    min-height: 100vh;
+}
+
+/* NAVBAR */
+.tools-navbar {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+.back-btn:hover { background: var(--border-color); }
+
+/* ==========================================================================
+   TOOL CARDS
+   ========================================================================== */
+.tool-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+    transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+}
+
+.tool-card:not(.coming-soon):hover {
+    transform: translateY(-4px);
+    border-color: var(--text-secondary);
+    box-shadow: var(--shadow-hover);
+}
+
+/* ICONS BOX (Hình vuông bo góc chứa Icon) */
+.card-header-icon {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.icon-box {
+    width: 52px; height: 52px;
+    border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+}
+.discord-theme { background: rgba(88, 101, 242, 0.1); color: #5865F2; }
+.video-theme { background: rgba(231, 76, 60, 0.1); color: #e74c3c; }
+.empty-theme { background: var(--hover-bg); color: var(--text-muted); border: 1px dashed var(--border-color); }
+
+/* STATUS BADGE & TAGS */
+.status-badge { font-weight: 600; letter-spacing: 0.03em; padding: 6px 12px; }
+.tags-list { display: flex; gap: 8px; flex-wrap: wrap; }
+.tool-tag {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    background: var(--hover-bg);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+}
+
+/* NÚT KHỞI CHẠY (LAUNCH BUTTON) */
+.btn-tool {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 10px 0;
+    font-weight: 600;
+    transition: var(--transition-fast);
+}
+.tool-card:hover .btn-tool {
+    background: var(--primary-color);
+    color: var(--card-bg);
+    border-color: var(--primary-color);
+}
+
+/* CARD COMING SOON */
+.coming-soon {
+    border: 1px dashed var(--border-color);
+    background: var(--hover-bg);
+    box-shadow: none;
+}
+
+@media (max-width: 576px) {
+    .tools-navbar .navbar-brand span { display: none; }
+}

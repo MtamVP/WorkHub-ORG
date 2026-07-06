@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phòng Tài Chính - WorkHub AI</title>
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <link rel="stylesheet" href="/style.css?v=3.0.3">
+
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#120F0A">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WorkHub">
+  <link rel="apple-touch-icon" href="/logo.png">
+</head>
+
+<body class="theme-finance" data-module="finance">
+
+  <script>
+    const CURRENT_GROUP_KEY = 'finance';
+
+    document.addEventListener('DOMContentLoaded', async function () {
+
+      try {
+        console.log("Đang kiểm tra quyền truy cập nhóm: " + CURRENT_GROUP_KEY);
+
+        const storedEmail = localStorage.getItem('userEmail') || localStorage.getItem('currentUser') || '';
+
+        console.log("Email đang kiểm tra:", storedEmail);
+
+        if (!storedEmail) {
+          console.warn("Không tìm thấy email trong bộ nhớ trình duyệt.");
+          alert("Bạn chưa đăng nhập! Vui lòng quay lại trang chủ.");
+          window.top.location.href = "/";
+          return;
+        }
+
+        const response = await callGAS('getUserGroup', { email: storedEmail });
+
+        if (response.status === 'success') {
+          const myPermission = response.data;
+          console.log("Quyền hiện tại:", myPermission);
+
+          const ALLOWED_ROLES = [CURRENT_GROUP_KEY, 'admin', 'all'];
+
+          if (!ALLOWED_ROLES.includes(myPermission)) {
+            if (typeof Swal !== 'undefined') {
+              await Swal.fire({
+                icon: 'error',
+                title: 'Truy cập bị từ chối!',
+                text: `Email ${storedEmail} không có quyền vào đây.`,
+                allowOutsideClick: false,
+                confirmButtonText: 'Về trang chủ'
+              });
+            } else {
+              alert("Bạn không có quyền truy cập!");
+            }
+            window.top.location.href = "/";
+          } else {
+
+            console.log("Chào mừng tới nhóm Tài Chính!");
+          }
+        } else {
+          throw new Error("Lỗi API: " + response.message);
+        }
+
+      } catch (error) {
+        console.error("Lỗi kiểm tra quyền:", error);
+        alert("Lỗi kết nối! Không thể xác minh danh tính.");
+        window.top.location.href = "/";
+      }
+    });
+  </script>
+
+  <header id="app-header" style="border-bottom: 3px solid var(--finance-accent);">
+    <div class="logo"><img src="/financelogo.png" alt="Finance Icon"
+        style="width: 36px; height: 36px;margin-right: 6px;object-fit: contain;vertical-align: text-bottom;">OnyxLine&Co
+      (OXL)</div>
+    <div class="user-info">
+      <button id="theme-toggle-btn" onclick="toggleTheme()" title="Chuyển chế độ Sáng/Tối">
+        <i class="fa-solid fa-moon"></i>
+      </button>
+
+      <button id="auto-theme-btn" onclick="setAutoMode()" title="Bật tự động theo giờ (18h-6h)"
+        class="btn btn-sm btn-outline-primary     rounded-circle" style="font-weight: bold; font-size: 10px;">Auto
+      </button>
+      <div class="dropdown">
+        <button type="button" class="btn btn-link position-relative text-decoration-none" id="notiDropdownBtn"
+          data-bs-toggle="dropdown" aria-expanded="false" style="color: var(--text-color);">
+          <i class="fa-solid fa-bell fs-5"></i>
+          <span id="noti-badge"
+            class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle"
+            style="display: none;">
+            <span class="visually-hidden">New alerts</span>
+          </span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow p-0" aria-labelledby="notiDropdownBtn"
+          style="width: 320px; max-height: 400px; overflow-y: auto;" id="noti-list">
+          <li class="dropdown-header d-flex justify-content-between align-items-center">
+            <span>Thông báo mới</span>
+            <small><a href="#" onclick="markAllRead(event)">Đánh dấu đã đọc</a></small>
+          </li>
+          <li>
+            <hr class="dropdown-divider m-0">
+          </li>
+          <div id="noti-content">
+            <li class="text-center p-3 text-muted"><small>Đang tải...</small></li>
+          </div>
+        </ul>
+      </div>
+      <div class="dropdown">
+        <span id="user-display" class="dropdown-toggle" style="cursor: pointer;" data-bs-toggle="dropdown"
+          aria-expanded="false">
+          <i class="fa-solid fa-user-circle"></i>
+        </span>
+        <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userDropdown">
+          <li><span class="dropdown-item-text fw-bold" id="dropdown-username">User</span></li>
+          <li>
+            <hr class="dropdown-divider">
+          </li>
+          <li><a class="dropdown-item" href="/change_nickname/"><i class="fa-solid fa-address-card me-2"></i> Đổi Biệt
+              danh</a></li>
+          <li><a class="dropdown-item" href="/reset/"><i class="fa-solid fa-key me-2"></i> Đổi Mật khẩu</a></li>
+        </ul>
+      </div>
+      <button type="button" class="btn btn-link text-decoration-none" onclick="goToLounge('in-lounge')"
+        title="Vào phòng nghỉ" style="color: var(--text-color);">
+        <i class="fa-solid fa-mug-hot fs-5"></i>
+      </button>
+
+      <button id="logout-btn">Đăng xuất</button>
+    </div>
+  </header>
+
+  <div id="main-container">
+
+    <nav id="app-sidebar">
+      <div id="hamburger-menu"><i class="fa-solid fa-bars"></i> Menu</div>
+      <ul>
+        <li class="nav-item nav-back-btn" onclick="window.top.location.href='/'">
+          <i class="fa-solid fa-arrow-left"></i><span> Về Dashboard Chung</span>
+        </li>
+
+        <li class="nav-item active" data-section="dashboard">
+          <img src="/financelogo.png" alt="Finance Icon" class="custom-finance-icon"><span> Nhóm Tài Chính</span>
+        </li>
+
+        <hr style="border-color: var(--border-color); margin: 10px 0;">
+        <li class="nav-item" onclick="window.top.location.href='/finance/mastersheet/'"><i
+            class="fa-solid fa-sack-dollar"></i><span> Quản Lý Tài Sản </span></li>
+        <li class="nav-item" onclick="window.top.location.href='/finance/stocksheet/'"><i
+            class="fa-solid fa-money-bill-trend-up"></i><span> Quản Lý Cổ Phiếu</span></li>
+        <li class="nav-item" data-section="drive"><i class="fa-solid fa-file-import"></i><span> Tài Liệu </span></li>
+        <li class="nav-item" data-section="calendar"><i class="fa-solid fa-calendar-check"></i><span> Lịch </span></li>
+        <li class="nav-item" data-section="progress"><i class="fa-solid fa-chart-line"></i><span> Dự Án </span></li>
+        <li class="nav-item" data-section="task"><i class="fa-solid fa-list-check"></i><span> Công Việc </span></li>
+        <li class="nav-item" onclick="window.top.location.href='../tools'"><i
+            class="fa-solid fa-toolbox"></i><span>Tools</span></li>
+        <li class="nav-item" data-section="ai"><i class="fa-solid fa-robot"></i><span> Trợ Lý AI</span></li>
+        <li class="nav-item" onclick="window.top.location.href='/finance/report/'"><i class="fa-solid fa-newspaper"></i>
+          Format Reports </span></li>
+      </ul>
+    </nav>
+
+    <aside id="right-sidebar" class="right-sidebar">
+      <div class="right-sidebar-header">
+        <h5><i class="fa-solid fa-users"></i> Nhóm Tài Chính</h5>
+        <button id="close-right-sidebar" class="btn-icon"><i class="fa-solid fa-times"></i></button>
+      </div>
+      <div class="right-sidebar-content">
+        <div id="member-list-container">
+          <div class="text-center text-muted mt-3"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>
+        </div>
+      </div>
+    </aside>
+
+    <main id="main-content">
+
+      <section id="dashboard-section" class="content-section dashboard-layout" style="display:block;">
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+          <h2 class="m-0 text-primary"><i class="fa-solid fa-chart-pie"></i> Tổng Quan Nhóm Tài Chính</h2>
+
+          <div class="d-flex gap-2">
+            <a href="/finance/note/" class="primary-btn btn rounded-pill px-3 shadow-sm" style="font-weight: 600;">
+              <i class="fa-solid fa-note-sticky me-2"></i>Bảng Note
+            </a>
+
+            <button id="toggle-right-sidebar-btn" class="primary-btn btn rounded-pill px-3 shadow-sm">
+              <i class="fa-solid fa-users me-2"></i>Thành Viên
+            </button>
+          </div>
+        </div>
+
+        <div class="dashboard-widgets">
+          <div class="main-widgets">
+            <div class="card calendar-widget">
+              <h3><i class="fa-solid fa-calendar-check"></i>Deadline</h3>
+              <div id="today-calendar-view">
+                <p>Đang tải sự kiện hôm nay...</p>
+              </div>
+            </div>
+            <div class="card progress-widget">
+              <h3><i class="fa-solid fa-chart-line"></i>Tiến Độ Dự Án</h3>
+              <div id="project-progress-view">
+                <p>Đang tải tiến độ dự án...</p>
+              </div>
+            </div>
+            <div class="card progress-widget">
+              <h3><i class="fa-solid fa-thumbtack"></i>Tin nhắn được ghim</h3>
+              <div id="chat-pin-view">
+                <p>Đang tải tin nhắn...</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-widgets">
+            <div class="card myfiles-widget">
+              <h3><i class="fa-solid fa-file-import"></i>Kho File Chung </h3>
+              <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 2; min-width: 250px;">
+                  <h4>Tài liệu gần đây:</h4>
+                  <div id="myfiles-list-view">
+                    <p>Đang tải file...</p>
+                  </div>
+                </div>
+                <div style="flex: 1; min-width: 150px; padding-left: 10px; border-left: 1px solid var(--border-color);">
+                  <h4>Thống kê Theo Loại:</h4>
+                  <div id="file-insight-view" style="font-size: 0.95em;">
+                    <p style="margin-bottom: 8px;"><i class="fa-solid fa-file-word me-2" style="color: var(--info-color);"></i>
+                      Word: <span id="word-cnt" class="fw-bold">0</span></p>
+                    <p style="margin-bottom: 8px;"><i class="fa-solid fa-file-excel me-2" style="color: var(--success-color);"></i>
+                      Excel: <span id="excel-cnt" class="fw-bold">0</span></p>
+                    <p style="margin-bottom: 8px;"><i class="fa-solid fa-file-pdf me-2" style="color: var(--danger-color);"></i>
+                      PDF: <span id="pdf-cnt" class="fw-bold">0</span></p>
+                    <p style="margin-bottom: 8px;"><i class="fa-solid fa-file-image me-2" style="color: var(--warning-color);"></i>
+                      Ảnh: <span id="image-cnt" class="fw-bold">0</span></p>
+                    <p style="margin-bottom: 8px;"><i class="fa-solid fa-file-powerpoint me-2"
+                        style="color: var(--text-muted);"></i> PPTX: <span id="pptx-cnt" class="fw-bold">0</span></p>
+                    <p style="margin-bottom: 8px;"><i class="fa-solid fa-file-zipper me-2" style="color: var(--text-muted);"></i>
+                      Zip: <span id="zip-cnt" class="fw-bold">0</span></p>
+                    <hr style="margin: 15px 0;">
+                    <p><i class="fa-solid fa-folder me-2"></i> Tổng: <span id="total-cnt" class="fw-bold">0</span></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="drive-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary"><i class="fa-solid fa-file-invoice"></i> Quản Lý Hồ Sơ Tài Chính</h2>
+        <div class="card upload-card" style="border-top: 4px solid var(--finance-accent);">
+          <h3>Tải Tài Liệu</h3>
+          <form id="upload-file-form" enctype="multipart/form-data">
+            <div class="form-group">
+              <label for="file-input" class="file-upload-label"><i class="fa-solid fa-cloud-arrow-up"></i> Chọn file từ
+                máy tính<span id="file-name-display"> (Chưa có file nào)</span></label>
+              <input type="file" id="file-input" name="fileUpload" required style="display: none;">
+            </div>
+            <div id="file-icon-preview" style="text-align: center; margin-bottom: 15px; min-height: 40px;"></div>
+            <div class="form-group"><textarea name="description" placeholder="Ghi chú (tùy chọn)"></textarea></div>
+            <button type="submit" id="submit-upload-btn" class="primary-btn"><i class="fa-solid fa-upload"></i> Tải tài
+              liệu</button>
+            <div id="upload-status" class="status-message"></div>
+          </form>
+        </div>
+
+        <div class="card filter-card">
+          <h3>Tìm Kiếm</h3>
+          <div class="filter-controls" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+            <div style="flex: 1 1 200px;"><label>Tìm tên:</label><input type="text" id="search-name"
+                placeholder="Tên file..." class="text-input"></div>
+            <div style="flex: 1 1 150px;"><label>Loại:</label><select id="filter-type" class="text-input">
+                <option value="">Tất cả</option>
+                <option value="spreadsheet">Excel</option>
+                <option value="application/pdf">PDF</option>
+                <option value="word">Word</option>
+              </select></div>
+            <div style="flex: 1 1 150px;"><label>Người Tải:</label><select id="filter-uploader" class="text-input">
+                <option value="">Tất cả</option>
+              </select></div>
+            <div style="flex: 1 1 150px;"><label>Ngày:</label><input type="date" id="filter-date" class="text-input">
+            </div>
+            <div style="flex: 1 1 150px;"><label for="filter-sort">Sắp xếp:</label><select id="filter-sort"
+                class="text-input">
+                <option value="date_desc">Mới nhất</option>
+                <option value="date_asc">Cũ nhất</option>
+                <option value="name_asc">A-Z</option>
+                <option value="name_desc">Z-A</option>
+              </select></div>
+            <div style="padding-top: 25px;"><button id="apply-filter-btn" class="secondary-btn">Lọc</button></div>
+          </div>
+        </div>
+
+        <div class="card file-list-card">
+          <table id="file-table" class="data-table">
+            <thead>
+              <tr>
+                <th>Tên File</th>
+                <th>Mô tả</th>
+                <th>Người Tải</th>
+                <th>Ngày Tải</th>
+                <th>Xem</th>
+                <th>Xóa</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="calendar-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary"><i class="fa-solid fa-calendar-check"></i>Lịch Nhóm Tài Chính</h2>
+        <div class="calendar-layout">
+          <div class="calendar-main-view card">
+            <h3>Lịch Chung</h3>
+            <div id="full-calendar-display" class="calendar-container" style="min-height: 600px;"></div>
+          </div>
+          <div class="calendar-side-panel">
+            <div class="card today-events-widget">
+              <h3>Sự Kiện Hôm Nay</h3>
+              <div id="today-event-list">
+                <p>Đang kiểm tra lịch trình...</p>
+              </div>
+            </div>
+            <div class="card event-actions-widget">
+              <h3>Thao Tác</h3>
+              <div id="calendar-actions">
+                <button id="add-event-btn" class="primary-btn w-100 mb-2"><i class="fa-solid fa-plus-circle"></i> Thêm
+                  Sự Kiện</button>
+                <button id="manage-event-btn" class="secondary-btn w-100 mb-2" disabled><i
+                    class="fa-solid fa-pen-to-square"></i> Quản Lý</button>
+                <hr>
+                <div class="form-group"><label>Loại lịch:</label><select id="calendar-toggle" class="text-input">
+                    <option value="group">Lịch Nhóm Tài Chính</option>
+                    <option value="personal">Lịch Cá Nhân</option>
+                  </select></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="progress-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary"><i class="fa-solid fa-chart-line"></i>Dự Án Tài Chính</h2>
+        <div id="progress-form"
+          style="margin-bottom: 25px; padding: 15px; border: 1px solid var(--finance-accent); border-radius: 8px; background: color-mix(in srgb, var(--finance-accent) 8%, var(--card-bg));">
+          <select id="project-select" style="width: 100%; margin-bottom: 10px; padding: 8px;">
+            <option value="">-- Chọn Dự án --</option>
+          </select>
+          <input type="text" id="progress-project-name" placeholder="Hoặc nhập Tên dự án mới"
+            style="width: 100%; margin-bottom: 10px; padding: 8px;">
+          <textarea id="progress-note-input" placeholder="Ghi chú..."
+            style="width: 100%; margin-bottom: 10px; padding: 8px;"></textarea>
+          <button id="update-progress-btn" type="button" class="primary-btn"><i class="fa-solid fa-plus"></i> Tạo / Cập
+            Nhật</button>
+          <div id="progress-message" style="margin-top: 10px;"></div>
+        </div>
+        <hr>
+        <h3>Kết quả Tiến độ</h3>
+        <div class="card filter-card">
+          <h3>Tìm kiếm & Lọc Dự Án</h3>
+          <div class="filter-controls" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+            <div style="flex: 1 1 200px;">
+              <label for="progress-search-input">Người tạo:</label>
+              <select id="progress-search-input" class="text-input">
+                <option value="">-- Tất cả --</option>
+              </select>
+            </div>
+            <div style="flex: 1 1 200px;"><label for="progress-project-filter">Dự án:</label><select
+                id="progress-project-filter" class="text-input"></select></div>
+            <div style="flex: 1 1 200px;"><label for="progress-sort-select">Sắp xếp:</label><select
+                id="progress-sort-select" class="text-input">
+                <option value="date_desc">Mới nhất</option>
+                <option value="date_asc">Cũ nhất</option>
+                <option value="percent_desc">% Giảm dần</option>
+                <option value="percent_asc">% Tăng dần</option>
+              </select></div>
+          </div>
+        </div>
+        <div class="card file-list-card" style="margin-top: 20px;">
+          <h3>Tiến Độ Dự Án Mới Nhất</h3>
+          <div class="table-responsive">
+            <table id="progress-table" class="table align-middle mb-0 bg-white table-hover">
+              <thead class="glass-panel">
+                <tr>
+                  <th style="width: 25%;">Tên Dự án</th>
+                  <th style="width: 20%;">Tiến Độ</th>
+                  <th style="width: 15%;">Mô tả</th>
+                  <th style="width: 10%; text-align: center;">Nhóm</th>
+                  <th style="width: 15%;">Cập nhật</th>
+                  <th style="width: 10%;">Người tạo</th>
+                  <th style="width: 5%; text-align: center;">Xóa</th>
+                </tr>
+              </thead>
+              <tbody id="progress-table-body">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="task-section" class="content-section" style="display:none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="m-0 text-primary"><i class="fa-solid fa-list-check"></i> Công Việc Chi Tiết</h2>
+          <button class="primary-btn" onclick="showModal('add-task-modal')"><i class="fa-solid fa-plus"></i> New
+            Task</button>
+        </div>
+
+        <div class="card p-2 mb-3 glass-panel">
+          <div class="row g-2 align-items-end">
+
+            <div class="col-6 col-md-4 col-xl-3">
+              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Dự án</label>
+              <select id="task-project-select" class="form-select form-select-sm border-primary"
+                onchange="onProjectChange()">
+                <option value="">-- Đang tải... --</option>
+              </select>
+            </div>
+
+            <div class="col-6 col-md-3 col-xl-2">
+              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Tên Task</label>
+              <select id="filter-task-name" class="form-select form-select-sm" onchange="applyTaskFilters()">
+                <option value="">-- Tất cả --</option>
+              </select>
+            </div>
+
+            <div class="col-4 col-md-2 col-xl-1">
+              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Status</label>
+              <select id="filter-status" class="form-select form-select-sm" onchange="applyTaskFilters()">
+                <option value="all">All</option>
+                <option value="Not Started">Not Started</option>
+                <option value="Working on it">Working on it</option>
+                <option value="Stuck">Stuck</option>
+                <option value="Done">Done</option>
+
+              </select>
+            </div>
+
+            <div class="col-4 col-md-2 col-xl-1">
+              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Priority</label>
+              <select id="filter-priority" class="form-select form-select-sm" onchange="applyTaskFilters()">
+                <option value="all">All</option>
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+
+            <div class="col-4 col-md-3 col-xl-2">
+              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Người thực hiện</label>
+              <select id="filter-assignee" class="form-select form-select-sm" onchange="applyTaskFilters()">
+                <option value="all">Tất cả</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-md-auto ms-auto">
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="viewMode" id="view-table" autocomplete="off" checked
+                  onchange="switchTaskView('table')">
+                <label class="btn btn-outline-primary btn-sm px-3" for="view-table"><i
+                    class="fa-solid fa-table"></i></label>
+
+                <input type="radio" class="btn-check" name="viewMode" id="view-card" autocomplete="off"
+                  onchange="switchTaskView('card')">
+                <label class="btn btn-outline-primary btn-sm px-3" for="view-card"><i
+                    class="fa-solid fa-grip"></i></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <div id="task-view-table" style="display: block; overflow-x: auto;">
+          <table class="monday-table">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 25%;">Task Name</th>
+                <th style="width: 15%;">Team</th>
+                <th class="text-center" style="width: 5%;">File</th>
+                <th style="width: 20%;">Mô tả</th>
+                <th style="width: 10%;">Status</th>
+                <th style="width: 10%;">Due Date</th>
+                <th style="width: 10%;">Priority</th>
+                <th style="width: 5%;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="task-table-body"></tbody>
+          </table>
+        </div>
+
+        <div id="task-view-card" style="display: none;">
+          <div class="task-card-grid" id="task-card-container"></div>
+        </div>
+      </section>
+
+      <section id="ai-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary"><i class="fa-solid fa-robot"></i>Finance Assistant</h2>
+        <p>Đang phát triển tính năng AI hỗ trợ phân tích tài chính...</p>
+      </section>
+
+
+    </main>
+  </div>
+
+  <div id="add-event-modal" class="custom-modal">
+    <div class="modal-content card" style="border-top: 5px solid var(--finance-accent);">
+      <h3><i class="fa-solid fa-calendar-plus me-2 text-warning"></i> Thêm Sự Kiện</h3>
+      <form id="event-form">
+        <div class="form-group mb-3"><label>Tên Sự kiện</label><input type="text" id="event-title" name="title"
+            class="text-input w-100" required></div>
+        <div class="row">
+          <div class="col-6 form-group mb-3"><label>Ngày Bắt đầu</label><input type="date" id="start-date"
+              name="startDate" class="text-input w-100" required></div>
+          <div class="col-6 form-group mb-3"><label>Giờ</label><input type="time" id="start-time" name="startTime"
+              class="text-input w-100" value="09:00" required></div>
+        </div>
+        <div class="row">
+          <div class="col-6 form-group mb-3"><label>Ngày Kết thúc</label><input type="date" id="end-date" name="endDate"
+              class="text-input w-100" required></div>
+          <div class="col-6 form-group mb-3"><label>Giờ</label><input type="time" id="end-time" name="endTime"
+              class="text-input w-100" value="10:00" required></div>
+        </div>
+        <div class="form-group mb-3"><label>Địa điểm</label><input type="text" id="location" name="location"
+            class="text-input w-100"></div>
+        <div class="form-group mb-4"><label>Mô tả</label><textarea id="description" name="description"
+            class="text-input w-100" rows="3"></textarea></div>
+        <div class="d-flex justify-content-end"><button type="button" class="secondary-btn me-2"
+            onclick="hideModal('add-event-modal')">Hủy</button><button type="submit" class="primary-btn">Tạo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="add-task-modal" class="custom-modal">
+    <div class="modal-content card" style="max-width: 600px; border-top: 5px solid var(--finance-accent);">
+      <h3><i class="fa-solid fa-list-check me-2 text-warning"></i> Thêm/Sửa Công Việc</h3>
+      <form id="task-form">
+        <input type="hidden" id="new-task-project-id">
+        <input type="hidden" id="task-id">
+        <div class="form-group mb-3"><label class="fw-bold">Tên công việc:</label><input type="text" id="new-task-name"
+            class="text-input w-100" required></div>
+        <div class="form-group mb-3"><label class="fw-bold">Mô tả:</label><textarea id="new-task-desc"
+            class="text-input w-100" rows="2"></textarea></div>
+        <div class="row">
+          <div class="col-6 form-group mb-3"><label>Trạng thái:</label><select id="new-task-status"
+              class="text-input w-100">
+              <option value="Not Started">Not Started</option>
+              <option value="Working on it">Working on it</option>
+              <option value="Stuck">Stuck</option>
+              <option value="Done">Done</option>
+            </select></div>
+          <div class="col-6 form-group mb-3"><label>Ưu tiên:</label><select id="new-task-priority"
+              class="text-input w-100">
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select></div>
+        </div>
+        <div class="row">
+          <div class="col-6 form-group mb-3"><label>Hạn chót:</label><input type="date" id="new-task-duedate"
+              class="text-input w-100"></div>
+          <div class="col-6 form-group mb-3"><label>Người làm:</label>
+            <div class="multiselect-container">
+              <div class="selectBox" onclick="showCheckboxes()"><select class="text-input w-100">
+                  <option>-- Chọn --</option>
+                </select>
+                <div class="overSelect"></div>
+              </div>
+              <div id="checkboxes">
+                <div class="p-2 text-muted small">Đang tải...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end pt-3"><button type="button" class="secondary-btn me-2"
+            onclick="hideModal('add-task-modal')">Hủy</button><button type="submit" class="primary-btn">Lưu</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+
+  <div id="workhub-chat-widget" class="chat-widget-container" style="display: none;">
+    <button id="chat-toggle-btn" class="chat-btn" style="background-color: var(--finance-accent);"><i class="fa-solid fa-comments"
+        style="color:black;"></i><span id="unread-badge" class="chat-badge" style="display: none;">0</span></button>
+    <div id="chat-box" class="chat-box hidden">
+      <div class="chat-header" style="background: var(--finance-accent); color: #120F0A;"><span><i class="fa-solid fa-comments"></i>
+          Finance Chat</span><button id="close-chat" class="close-chat-btn"><i class="fa-solid fa-minus"></i></button>
+      </div>
+      <div id="messages-list" class="messages-list">
+        <div style="text-align:center; color: var(--text-muted); margin-top: 20px;">Đang tải...</div>
+      </div>
+      <div id="reply-preview-bar">
+        <div><span class="fw-bold" id="reply-to-name">...</span>
+          <div class="text-truncate small" id="reply-to-text">...</div>
+        </div><button onclick="cancelReply()" class="btn btn-sm text-danger"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="chat-input-area"><input type="text" id="msg-input" placeholder="Nhập tin nhắn..." disabled><button
+          id="send-btn" disabled style="background: var(--finance-accent); color: #120F0A;"><i
+            class="fa-solid fa-paper-plane"></i></button></div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <div class="modal fade" id="fileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+
+        <div class="modal-header glass-panel pb-2">
+          <h5 class="modal-title fw-bold text-primary">
+            <i class="fa-solid fa-folder-open me-2"></i>Tài liệu đính kèm
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body bg-white">
+
+          <div class="row g-2 mb-3 align-items-center">
+            <div class="col-12 col-md-9 d-flex align-items-center" style="overflow-x: auto; white-space: nowrap;">
+              <span class="me-2 text-muted small fw-bold"><i class="fa-solid fa-filter"></i> Lọc:</span>
+
+              <div id="file-filter-group">
+                <button class="btn btn-sm btn-primary rounded-pill px-3 me-1 shadow-sm"
+                  onclick="filterFileByType('all', this)">
+                  Tất cả
+                </button>
+                <button class="btn btn-sm btn-light border rounded-pill px-3 me-1"
+                  onclick="filterFileByType('image', this)">
+                  <i class="fa-regular fa-image me-1 text-primary"></i> Ảnh
+                </button>
+                <button class="btn btn-sm btn-light border rounded-pill px-3 me-1"
+                  onclick="filterFileByType('pdf', this)">
+                  <i class="fa-regular fa-file-pdf me-1 text-danger"></i> PDF
+                </button>
+                <button class="btn btn-sm btn-light border rounded-pill px-3 me-1"
+                  onclick="filterFileByType('sheet', this)">
+                  <i class="fa-regular fa-file-excel me-1 text-success"></i> Excel
+                </button>
+                <button class="btn btn-sm btn-light border rounded-pill px-3" onclick="filterFileByType('doc', this)">
+                  <i class="fa-regular fa-file-word me-1 text-primary"></i> Docs
+                </button>
+              </div>
+            </div>
+
+            <div class="col-4 col-md-3 text-end">
+              <input type="file" id="task-file-input" class="d-none" onchange="startUploadFile()">
+              <button class="btn btn-primary w-100 shadow-sm"
+                onclick="document.getElementById('task-file-input').click()">
+                <i class="fa-solid fa-cloud-arrow-up me-1"></i> <span class="d-none d-md-inline">Tải lên</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive border rounded" style="max-height: 350px; overflow-y: auto; min-height: 150px;">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light sticky-top" style="z-index: 1;">
+                <tr>
+                  <th style="width: 45%">Tên File</th>
+                  <th style="width: 15%">Loại</th>
+                  <th style="width: 25%">Thời gian</th>
+                  <th style="width: 15%" class="text-center">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="file-list-body">
+
+                <tr id="no-file-message">
+                  <td colspan="4" class="text-center py-5 text-muted">
+                    <i class="fa-solid fa-folder-open fa-3x mb-3 text-secondary opacity-25"></i>
+                    <p class="mb-0">Chưa có tài liệu nào.</p>
+                    <small>Nhấn nút "Tải lên" để thêm file vào công việc này.</small>
+                  </td>
+                </tr>
+
+              </tbody>
+            </table>
+          </div>
+
+          <input type="hidden" id="current-upload-task-id">
+
+        </div>
+
+        <div class="modal-footer glass-panel py-1 px-3 d-flex justify-content-between">
+          <small class="text-muted fst-italic"><i class="fa-solid fa-circle-info me-1"></i>Hỗ trợ các định dạng: Ảnh,
+            PDF, Word, Excel...</small>
+          <small class="text-muted" id="file-count-display">Tổng: 0 file</small>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <script src="/api.js"></script>
+  <script src="/script.js?v=1.5.0"></script>
+
+  <script>
+    function switchTaskView(view) {
+      const tableView = document.getElementById('task-view-table');
+      const cardView = document.getElementById('task-view-card');
+      if (tableView) {
+        tableView.style.display = (view === 'table') ? 'block' : 'none';
+      }
+      if (cardView) {
+        cardView.style.display = (view === 'card') ? 'block' : 'none';
+      }
+      if (typeof applyTaskFilters === 'function') {
+        applyTaskFilters();
+      }
+    }
+  </script>
+
+</body>
+
+</html>

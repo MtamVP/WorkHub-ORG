@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Auto-Uploader Docs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/tools/ai_uploader_setup/style.css">
+    <link rel="icon" type="image/png" href="../../logo.png">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <nav class="top-nav">
+        <div class="logo">
+            <i data-lucide="bot"></i>
+            <span>AI Uploader Docs</span>
+        </div>
+        <div class="nav-links">
+            <a href="#" class="active">Documentation</a>
+            <a href="#">Components</a>
+            <a href="https://github.com" target="_blank"><i data-lucide="github"></i></a>
+        </div>
+    </nav>
+
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h4>GETTING STARTED</h4>
+                <ul>
+                    <li><a href="#introduction" class="active">Introduction</a></li>
+                    <li><a href="#download">Download</a></li>
+                </ul>
+            </div>
+            <div class="sidebar-section">
+                <h4>INSTALLATION</h4>
+                <ul>
+                    <li><a href="#step-server">1. Run Server</a></li>
+                    <li><a href="#step-extension">2. Install Extension</a></li>
+                    <li><a href="#step-config">3. Configuration</a></li>
+                </ul>
+            </div>
+            <div class="sidebar-section">
+                <h4>DEVELOPERS</h4>
+                <ul>
+                    <li><a href="#source-code">Build from Source</a></li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="content">
+            <section id="introduction" class="animate-on-scroll">
+                <h1>AI Auto-Uploader</h1>
+                <p class="subtitle">Phần mềm tự động hóa kết hợp AI (Gemini / ChatGPT) giúp bạn xử lý hàng loạt tài liệu
+                    chỉ bằng một click.</p>
+
+                <div class="hero-box">
+                    <div class="badge">v1.0.0 Release</div>
+                    <p>Chào mừng bạn đến với tài liệu hướng dẫn chính thức.</p>
+                </div>
+            </section>
+
+            <hr>
+
+            <section id="download" class="animate-on-scroll">
+                <h2>Download Software</h2>
+                <p>Nhận bản phát hành mới nhất. Bao gồm cả Server Core (.exe) và Chrome Extension (.zip).</p>
+                <button class="download-btn" onclick="triggerDownload()">
+                    <i data-lucide="download"></i>
+                    <span>Download v1.0.0 (Windows)</span>
+                </button>
+            </section>
+
+            <hr>
+
+            <section id="step-server" class="animate-on-scroll">
+                <h2>1. Khởi động Server</h2>
+                <p>Máy chủ là nơi điều khiển các hành động của bạn.</p>
+                <div class="step-card">
+                    <div class="step-icon"><i data-lucide="terminal"></i></div>
+                    <div class="step-content">
+                        <h3>Chạy file thực thi</h3>
+                        <p>Sau khi giải nén gói phần mềm đã tải về, hãy truy cập vào thư mục
+                            <code>local_server/dist/</code>.
+                        </p>
+                        <p>Click đúp vào file <strong><code>AI_Auto_Uploader_Server.exe</code></strong>. Một cửa sổ
+                            Terminal màu đen sẽ hiện ra.</p>
+                        <div class="callout warning">
+                            <i data-lucide="alert-triangle"></i>
+                            <span><strong>Lưu ý:</strong> Không tắt cửa sổ này trong suốt quá trình sử dụng phần
+                                mềm.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="step-extension" class="animate-on-scroll">
+                <h2>2. Cài đặt Chrome Extension</h2>
+                <p>Extension đóng vai trò là Giao diện điều khiển (UI) và trích xuất dữ liệu.</p>
+                <div class="step-card">
+                    <div class="step-icon"><i data-lucide="chrome"></i></div>
+                    <div class="step-content">
+                        <h3>Cài đặt tiện ích nội bộ</h3>
+                        <ol>
+                            <li>Mở Google Chrome và truy cập địa chỉ: <code>chrome://extensions/</code></li>
+                            <li>Bật công tắc <strong>Developer mode</strong> (Chế độ dành cho nhà phát triển) ở góc phải
+                                trên cùng.</li>
+                            <li>Bấm nút <strong>Load unpacked</strong> (Tải tiện ích đã bung).</li>
+                            <li>Trỏ đến thư mục <code>extension</code> của phần mềm vừa giải nén.</li>
+                        </ol>
+                    </div>
+                </div>
+            </section>
+
+            <section id="step-config" class="animate-on-scroll">
+                <h2>3. Cấu hình & Tận hưởng</h2>
+                <p>Thiết lập đường dẫn và các câu lệnh AI (Prompts) để bắt đầu sử dụng.</p>
+                <div class="step-card">
+                    <div class="step-icon"><i data-lucide="settings"></i></div>
+                    <div class="step-content">
+                        <h3>Quy trình 3 bước</h3>
+                        <ul>
+                            <li>Tạo 3 thư mục trên máy (VD: <code>input</code>, <code>output</code>,
+                                <code>results</code>).
+                            </li>
+                            <li>Mở 1 tab <a href="https://gemini.google.com" target="_blank">Gemini</a> hoặc <a
+                                    href="https://chatgpt.com" target="_blank">ChatGPT</a> trên Chrome.</li>
+                            <li>Bấm vào biểu tượng Extension ở góc phải Chrome, điền đường dẫn thư mục và chọn Prompt.
+                            </li>
+                        </ul>
+                        <div class="callout success">
+                            <i data-lucide="check-circle"></i>
+                            <span>Góp ý: Chỉ cần thả 1 file vào thư mục <code>input</code>, quá trình bốc file và gõ
+                                phím sẽ tự động diễn ra trong 5 giây!</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <hr>
+
+            <section id="source-code" class="animate-on-scroll">
+                <h2>Dành cho Lập Trình Viên</h2>
+                <p>Nếu bạn muốn chạy trực tiếp từ mã nguồn Python để vọc vạch sửa code, hãy làm theo các bước sau:</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Terminal</span>
+                        <button class="copy-btn" onclick="copyCode(this, code1)">
+                            <i data-lucide="copy"></i>
+                        </button>
+                    </div>
+                    <pre><code id="code1">cd c:\Users\Admin\Music\WorkFlow_demo\local_server
+pip install -r requirements.txt
+python server.py</code></pre>
+                </div>
+                <p class="small-text">Nếu cài đặt đúng, Terminal sẽ báo "Uvicorn running on http://localhost:8000".</p>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js?v=1.0.1"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+
+</html>

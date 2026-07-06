@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkHub AI - Đăng Nhập</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <link rel="stylesheet" href="style.css?v=3.0.3">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#120F0A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WorkHub">
+    <link rel="apple-touch-icon" href="/logo.png">
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script src="api.js"></script>
+</head>
+<body class="auth-page">
+
+    <div class="auth-stars"></div>
+    <div class="auth-twinkling"></div>
+
+    <div class="auth-theme-controls">
+        <button class="auth-btn-control" onclick="checkAuthAndUpload()" title="Đổi hình nền Login">
+            <i class="fa-solid fa-camera"></i>
+        </button>
+        <button class="auth-btn-control" onclick="checkAuthAndReset()" title="Reset về mặc định">
+            <i class="fa-solid fa-rotate-left"></i>
+        </button>
+    </div>
+    <input type="file" id="login-bg-input" accept="image/*" style="display: none;" onchange="handleLoginBgUpload(this)">
+
+    <div class="auth-card">
+
+        <div id="login-view">
+            <h2>WorkHub AI</h2>
+            <p class="auth-subtitle">Login Portal</p>
+
+            <form id="firebase-login-form">
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><i class="fa-solid fa-user-astronaut"></i></span>
+                    <input type="text" id="username" class="form-control" placeholder="Tên đăng nhập / Email" required>
+                </div>
+
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><i class="fa-solid fa-lock"></i></span>
+                    <input type="password" id="password" class="form-control" placeholder="Mật mã" required>
+                </div>
+
+                <button type="submit" class="auth-btn-submit">
+                    Vào Hệ Thống <i class="fa-solid fa-arrow-right ms-2"></i>
+                </button>
+
+                <div class="text-center mt-3">
+                    <a href="/forgot/" class="small text-decoration-none text-muted"> Quên mật khẩu?</a>
+                </div>
+            </form>
+
+            <div id="firebase-error" class="auth-error-message"></div>
+            <div id="loading-status" class="text-center text-muted mt-3" style="display:none;">
+                <i class="fa-solid fa-satellite fa-spin"></i> Đang kết nối...
+            </div>
+        </div>
+
+        <div id="success-view" class="auth-success-view">
+            <div class="auth-success-icon"><i class="fa-solid fa-check-circle"></i></div>
+            <h4>Đăng nhập thành công!</h4>
+            <p class="text-muted mb-4" id="welcome-text">Đang tải trang...</p>
+
+            <button id="btn-go-dashboard" class="auth-btn-submit" style="background: var(--success-color);">
+                 Vào Dashboard Ngay
+            </button>
+
+            <div class="mt-3 text-muted" style="font-size: 0.8rem;">
+                <i class="fa-solid fa-info-circle"></i> Mẹo: Bấm nút Camera góc phải để đổi nền Login!
+            </div>
+        </div>
+    </div>
+
+<script>
+    // 1. CONFIG FIREBASE
+    const firebaseConfig = {
+        apiKey : "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
+        authDomain : "workhub-ai-2d5aa.firebaseapp.com",
+        projectId : "workhub-ai-2d5aa",
+        storageBucket : "workhub-ai-2d5aa.firebasestorage.app",
+        messagingSenderId : "703705936779",
+        appId : "1:703705936779:web:b800246feea1f3e3cf358e"
+    };
+
+    // Khởi tạo Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // 2. DOM ELEMENTS
+    const loginView = document.getElementById('login-view');
+    const successView = document.getElementById('success-view');
+    const form = document.getElementById('firebase-login-form');
+    const errorDiv = document.getElementById('firebase-error');
+    const loadingStatus = document.getElementById('loading-status');
+    const welcomeText = document.getElementById('welcome-text');
+    const btnGoDashboard = document.getElementById('btn-go-dashboard');
+
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+        }
+        let iconClass = 'fa-circle-check';
+        if (type === 'error') iconClass = 'fa-circle-exclamation';
+        if (type === 'warning') iconClass = 'fa-triangle-exclamation';
+
+        const toast = document.createElement('div');
+        toast.className = `custom-toast ${type}`;
+        toast.innerHTML = `<i class="fa-solid ${iconClass}"></i><span>${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.animation = 'fadeOutRight 0.4s forwards';
+            setTimeout(() => { if (toast.parentNode) toast.remove(); }, 400);
+        }, 3000);
+    }
+
+    // THEME BACKGROUND LOGIC
+    function initLoginThemeListener() {
+        db.collection("settings").doc("login_theme")
+        .onSnapshot((doc) => {
+            if (doc.exists && doc.data().backgroundImage) {
+                applyCustomBackground(doc.data().backgroundImage);
+            } else {
+                removeCustomBackground();
+            }
+        });
+    }
+
+    function applyCustomBackground(imageUrl) {
+        var finalValue = imageUrl.startsWith('url') ? imageUrl : "url('" + imageUrl + "')";
+        document.documentElement.style.setProperty('--login-bg-image', finalValue);
+        document.body.classList.add('has-custom-bg');
+    }
+
+    function removeCustomBackground() {
+        document.documentElement.style.removeProperty('--login-bg-image');
+        document.body.classList.remove('has-custom-bg');
+    }
+
+    function checkAuthAndUpload() {
+        if (!auth.currentUser) {
+            showToast("Vui lòng đăng nhập thành công trước khi đổi nền!", "warning");
+            return;
+        }
+        document.getElementById('login-bg-input').click();
+    }
+
+    function checkAuthAndReset() {
+        if (!auth.currentUser) {
+            Swal.fire({ icon: 'warning', title: 'Chưa đăng nhập!', text: 'Bạn cần đăng nhập mới có quyền Reset giao diện.', confirmButtonColor: '#1A1A1A' });
+            return;
+        }
+        Swal.fire({
+            title: 'Trở về mặc định?', text: "Bạn có chắc muốn xóa ảnh nền hiện tại?", icon: 'question',
+            showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Xóa đi ạ'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                Swal.showLoading();
+                db.collection("settings").doc("login_theme").update({
+                    backgroundImage: firebase.firestore.FieldValue.delete()
+                }).then(() => Swal.fire('Đã xóa!', 'Giao diện về mặc định.', 'success'));
+            }
+        });
+    }
+
+    function handleLoginBgUpload(input) {
+        if (input.files && input.files[0]) {
+            var file = input.files[0];
+            if (file.size > 700 * 1024) { alert("Ảnh nặng quá (>700KB). Ảnh lưu vào Firestore (giới hạn 1MB/document) nên cần dưới mức này sau khi mã hóa base64."); return; }
+
+            const btnIcon = document.querySelector('.auth-btn-control i');
+            const oldClass = btnIcon.className;
+            btnIcon.className = "fa-solid fa-spinner fa-spin";
+
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                db.collection("settings").doc("login_theme").set({
+                    backgroundImage: e.target.result,
+                    updatedBy: auth.currentUser.email,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }).then(() => { btnIcon.className = oldClass; })
+                  .catch(err => { alert(err.message); btnIcon.className = oldClass; });
+            }
+            reader.readAsDataURL(file);
+        }
+    }
+    initLoginThemeListener();
+
+
+    if (form) {
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            errorDiv.textContent = '';
+
+            const inputVal = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!inputVal) { errorDiv.textContent = "Chưa nhập tên đăng nhập!"; return; }
+
+            form.style.display = 'none';
+            loadingStatus.style.display = 'block';
+            loadingStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kết nối máy chủ...';
+
+            try {
+                const realEmail = await API.auth.getRealEmail(inputVal);
+
+                if (!realEmail) {
+                    throw new Error("Tài khoản không tồn tại hoặc không có quyền truy cập.");
+                }
+
+                loadingStatus.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Đang xác thực mật khẩu...';
+                await auth.signInWithEmailAndPassword(realEmail, password);
+
+
+            } catch (err) {
+                console.error(err);
+                loadingStatus.style.display = 'none';
+                form.style.display = 'block';
+
+                let msg = err.message;
+                if(msg.includes('auth/wrong-password')) msg = "Sai mật khẩu!";
+                if(msg.includes('auth/user-not-found')) msg = "Tài khoản không tồn tại.";
+                if(msg.includes('auth/invalid-email')) msg = "Email không hợp lệ.";
+
+                errorDiv.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + msg;
+            }
+        });
+    }
+
+    auth.onAuthStateChanged(async function(user) {
+        if (user) {
+            loginView.style.display = 'none';
+            successView.style.display = 'block';
+
+            welcomeText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra firebase...';
+            btnGoDashboard.disabled = true;
+
+            try {
+                // 1. Gọi API lấy thông tin (Chỉ cần gọi 1 hàm mới này là đủ lấy cả 2)
+                const userInfoRes = await API.auth.getUserInfo(user.email);
+                const group = await API.auth.getUserGroup(user.email);
+                console.log("Dữ liệu từ Server:", userInfoRes); // In ra để debug xem nó hình thù ra sao
+
+
+                let displayName = user.displayName || user.email.split('@')[0];
+
+                // 3. Bóc tách dữ liệu an toàn (Dù có bị bọc trong .data hay không)
+                if (userInfoRes) {
+                    if (userInfoRes.data) {
+                        // Trường hợp Server bọc trong { status: 'success', data: {...} }
+                        displayName = userInfoRes.data.name || displayName;
+                    } else if (userInfoRes.name) {
+                        // Trường hợp Server trả về thẳng cục { name: '...', group: '...' }
+                        displayName = userInfoRes.name || displayName;
+                    }
+                }
+
+                // 4. Lưu vào bộ nhớ trình duyệt
+                localStorage.setItem('userGroup', group);
+                localStorage.setItem('userEmail', user.email);
+                localStorage.setItem('userName', displayName);
+
+                welcomeText.textContent = `Xin chào, ${displayName}!`;
+                btnGoDashboard.disabled = false;
+
+                // 5. Tự động chuyển trang sau 1.5s
+                setTimeout(() => {
+                    if(!user.displayName && displayName === user.email.split('@')[0]) {
+                        window.location.href = "/nickname/";
+                    } else {
+                        window.location.href = "/dashboard/";
+                    }
+                }, 1500);
+            } catch (error) {
+                console.error("Lỗi lấy quyền:", error);
+                localStorage.setItem('userGroup', 'guest');
+                welcomeText.textContent = "Chế độ khách";
+                btnGoDashboard.disabled = false;
+            }
+
+        } else {
+            // Chưa đăng nhập
+            if (loadingStatus) loadingStatus.style.display = 'none';
+            loginView.style.display = 'block';
+            successView.style.display = 'none';
+        }
+    });
+
+    btnGoDashboard.onclick = function() {
+        window.location.href = "/dashboard/";
+    };
+
+</script>
+</body>
+</html>

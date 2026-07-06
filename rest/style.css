@@ -1,0 +1,517 @@
+/* Reset & Base */
+* { box-sizing: border-box; }
+body, html {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    font-family: 'Jost', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #050510;
+}
+
+/* ==========================================================================
+   1. BACKGROUND PHÒNG CHỜ (KHÔNG GIAN VŨ TRỤ SÂU)
+   ========================================================================== */
+#lounge-room {
+    width: 100vw;
+    height: 100vh;
+    background: url('../bg.png') no-repeat center center;
+    background-size: cover;
+    position: relative;
+    cursor: crosshair;
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   2. HOLOGRAM TRÁI ĐẤT 3D XANH DƯƠNG SCI-FI
+   ========================================================================== */
+
+/* Lưới sàn nhà 3D (Cyber-grid Xanh Dương Nhạt) */
+.sci-fi-floor {
+    position: absolute;
+    bottom: -15vh; left: -10vw; right: -10vw; height: 55vh;
+    background:
+        /* Kẻ ngang màu Xanh Dương Nhạt */
+        linear-gradient(transparent 0%, rgba(114, 193, 255, 0.5) 2%, transparent 3%),
+        /* Kẻ dọc màu Cyan sáng */
+        repeating-linear-gradient(90deg, transparent 0, transparent 40px, rgba(0, 243, 255, 0.15) 41px, rgba(0, 243, 255, 0.15) 42px);
+    background-size: 100% 40px, 100% 100%;
+    transform: perspective(600px) rotateX(75deg); 
+    transform-origin: bottom center;
+    z-index: 1;
+    pointer-events: none;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 50%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 50%);
+}
+
+/* Bệ phóng chùm sáng Hologram (Xanh Dương) */
+.holo-base {
+    position: absolute;
+    top: calc(45% + 150px);
+    left: 50%;
+    transform: translate(-50%, -50%) rotateX(75deg);
+    width: 280px; height: 280px;
+    border-radius: 50%;
+    border: 3px solid rgba(0, 243, 255, 0.6); /* Viền Cyan */
+    box-shadow:
+        0 0 50px rgba(0, 243, 255, 0.5), /* Hào quang ngoài Cyan */
+        inset 0 0 80px rgba(0, 140, 255, 0.7), /* Lõi Xanh dương đậm */
+        0 0 100px rgba(0, 183, 255, 0.6); /* Ánh sáng lan tỏa Xanh dương nhạt */
+    background: radial-gradient(circle, rgba(0, 243, 255, 0.3) 0%, transparent 70%);
+    animation: pulseBase 4s ease-in-out infinite alternate;
+    z-index: 2;
+    pointer-events: none;
+}
+
+/* KHỐI CẦU CHÍNH (Lõi Xanh Dương Nhạt + Lưới Cyan) */
+.holo-earth {
+    position: absolute;
+    top: 40%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 300px; height: 300px;
+    border-radius: 50%;
+    
+    /* 1. Lưới Wireframe + Nền Plasma Xanh */
+    background:
+        /* Lưới ngang (Vĩ độ) - Cyan nhạt */
+        repeating-linear-gradient(0deg, transparent 0, transparent 18px, rgba(135, 221, 255, 0.35) 19px, rgba(135, 221, 255, 0.35) 20px),
+        /* Lưới dọc (Kinh độ - Xoay) - Xanh dương sáng */
+        repeating-linear-gradient(90deg, transparent 0, transparent 28px, rgba(77, 169, 255, 0.45) 29px, rgba(77, 169, 255, 0.45) 30px),
+        /* Ánh sáng Plasma nền lõi - Xanh ngọc pha Xanh dương */
+        radial-gradient(circle at 30% 30%, rgba(0, 255, 242, 0.2), rgba(0, 132, 255, 0.3), transparent 70%);
+    background-size: 100% 100%, 60px 100%, 100% 100%;
+    
+    /* Đổ bóng 3D Xanh Dương */
+    box-shadow:
+        inset -35px 0 45px rgba(0, 13, 36, 0.95),   /* Mặt tối hơi ám xanh đen */
+        inset 20px 0 50px rgba(0, 243, 255, 0.8), /* Ánh sáng hắt viền trái (Cyan) */
+        inset 0 0 25px rgba(0, 119, 255, 0.9),   /* Viền trong Xanh dương đậm */
+        0 0 60px rgba(0, 217, 255, 0.5),          /* Quầng hào quang ngoài (Xanh trời) */
+        0 0 120px rgba(0, 162, 255, 0.6);        /* Ánh sáng tản xa (Xanh biển) */
+    
+    /* Tắt animation đổi màu để giữ nguyên màu xanh */
+    animation: 
+        spinEarthWireframe 15s linear infinite;
+        /* holoColorShift đã bị loại bỏ để không bị đổi sang màu tím */
+        
+    z-index: 3;
+    pointer-events: none;
+}
+
+/* LỚP LỤC ĐỊA (Bản đồ phát sáng Xanh Cyan) */
+.holo-earth::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/World_map_-_low_resolution.svg/1200px-World_map_-_low_resolution.svg.png');
+    background-size: 200% 100%;
+    
+    /* Biến lục địa thành màu Cyan sáng, bóng đổ Xanh dương */
+    filter: invert(1) brightness(2) drop-shadow(0 0 3px rgba(0, 217, 255, 0.8));
+    opacity: 0.8;
+    mix-blend-mode: screen;
+    
+    animation: spinContinents 20s linear infinite;
+}
+
+/* LỚP KHÍ QUYỂN (Aura Xanh Dương Nhạt vòng ngoài) */
+.holo-earth::before {
+    content: "";
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+    border: 2px solid rgba(133, 216, 255, 0.3); /* Viền Xanh nhạt */
+    box-shadow: 
+        0 0 20px rgba(0, 183, 255, 0.4), /* Hào quang Xanh trời */
+        inset 0 0 15px rgba(0, 81, 255, 0.5); /* Lõi khí quyển Xanh đậm */
+    animation: pulseAtmosphere 3s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+/* ==========================================================================
+   3. CÁC ĐỘNG CƠ CHUYỂN ĐỘNG (ANIMATIONS)
+   ========================================================================== */
+
+/* Trượt dải kinh độ (Lưới) */
+@keyframes spinEarthWireframe {
+    from { background-position: 0 0, 0 0, 0 0; }
+    to { background-position: 0 0, 300px 0, 0 0; }
+}
+
+/* Trượt bản đồ lục địa quay quanh trục */
+@keyframes spinContinents {
+    from { background-position: 0 0; }
+    to { background-position: 200% 0; }
+}
+
+/* Hiệu ứng đổi màu (Từ Xanh Neon sang Tím Magenta) */
+@keyframes holoColorShift {
+    0%   { filter: hue-rotate(0deg) brightness(1); }
+    100% { filter: hue-rotate(60deg) brightness(1.2); }
+}
+
+/* Khí quyển phập phồng */
+@keyframes pulseAtmosphere {
+    0%   { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(1.05); opacity: 1; border-color: rgba(0, 162, 255, 0.5); /* Đổi màu viền khi phình to sang xanh */ }
+}
+
+@keyframes pulseBase {
+    0%   { transform: translate(-50%, -50%) rotateX(75deg) scale(1); box-shadow: 0 0 40px rgba(0, 243, 255, 0.5), inset 0 0 60px rgba(0, 110, 255, 0.6); }
+    100% { transform: translate(-50%, -50%) rotateX(75deg) scale(1.05); box-shadow: 0 0 60px rgba(0, 153, 255, 0.7), inset 0 0 100px rgba(0, 243, 255, 0.8); }
+}
+
+/* Hiệu ứng kính mờ (Glassmorphism) cho nút bấm */
+.backdrop-blur {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background: rgba(13, 202, 240, 0.15) !important;
+    border: 1px solid rgba(13, 202, 240, 0.3) !important;
+    color: #0dcaf0 !important;
+    transition: all 0.3s ease;
+}
+.backdrop-blur:hover {
+    background: rgba(13, 202, 240, 0.25) !important;
+    box-shadow: 0 0 15px rgba(13, 202, 240, 0.4) !important;
+}
+
+/* Tùy chỉnh thanh cuộn cho bảng Radar */
+#radar-list::-webkit-scrollbar {
+    width: 6px;
+}
+#radar-list::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+#radar-list::-webkit-scrollbar-thumb {
+    background: rgba(0, 210, 255, 0.4);
+    border-radius: 10px;
+}
+#radar-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 210, 255, 0.8);
+}
+
+/* ================================= */
+/* VẼ NHÂN VẬT & HIỆU ỨNG DI CHUYỂN */
+/* ================================= */
+.player {
+    position: absolute;
+    width: 40px; height: 50px;
+    /* Chuyển động trượt cực mượt với gia tốc */
+    transition: top 1.8s cubic-bezier(0.25, 0.8, 0.25, 1), left 1.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transform: translate(-50%, -100%);
+    pointer-events: none;
+    z-index: 10;
+    /* Hiệu ứng nhấp nhô (thở) khi đứng yên */
+    animation: float-player 3s infinite ease-in-out;
+}
+
+/* Bóng đổ dưới chân nhân vật */
+.player::before {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 26px;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+    filter: blur(2px);
+}
+
+@keyframes float-player {
+    0%, 100% { margin-top: 0; }
+    50% { margin-top: -4px; }
+}
+
+/* Bảng tên và trạng thái trên đầu */
+.nameplate {
+    position: absolute;
+    top: -34px;
+    width: max-content;
+    min-width: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    color: white;
+    font-size: 11px;
+    font-weight: bold;
+    text-shadow: 0px 1px 2px rgba(0,0,0,0.9);
+    background: rgba(0, 0, 0, 0.5); /* Nền mờ cho tên dễ đọc */
+    padding: 3px 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(2px);
+}
+
+/* Đèn LED nhịp tim */
+.status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    box-shadow: 0 0 8px currentColor;
+    animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; box-shadow: 0 0 12px currentColor; }
+    100% { opacity: 0.6; }
+}
+
+/* 4 Trạng thái màu neon */
+.status-dot.active { background-color: #00e676; color: #00e676; }
+.status-dot.idle { background-color: #ffea00; color: #ffea00; }
+.status-dot.in-lounge { background-color: #d500f9; color: #d500f9; }
+.status-dot.offline { background-color: #9e9e9e; color: #9e9e9e; animation: none; box-shadow: none; }
+
+/* ================================= */
+/* VẼ CREWMATE (AMONG US) - NÂNG CẤP 3D */
+/* ================================= */
+.crewmate { position: relative; width: 100%; height: 100%; }
+
+.body {
+    position: absolute; right: 0; bottom: 0;
+    width: 32px; height: 44px;
+    background-color: #e74c3c;
+    border: 3px solid #111;
+    border-radius: 15px 15px 8px 8px;
+    transition: background-color 0.3s;
+    /* Bóng đổ chìm tạo khối 3D */
+    box-shadow: inset -5px -5px 10px rgba(0,0,0,0.3), inset 2px 2px 5px rgba(255,255,255,0.25);
+}
+.body::after { /* Chân phải */
+    content: ''; position: absolute;
+    bottom: -6px; right: 4px;
+    width: 10px; height: 12px;
+    background: inherit; border: 3px solid #111;
+    border-top: none; border-radius: 0 0 5px 5px;
+    box-shadow: inset -2px -2px 3px rgba(0,0,0,0.3);
+}
+.body::before { /* Chân trái */
+    content: ''; position: absolute;
+    bottom: -6px; left: 4px;
+    width: 10px; height: 12px;
+    background: inherit; border: 3px solid #111;
+    border-top: none; border-radius: 0 0 5px 5px;
+    box-shadow: inset 2px -2px 3px rgba(0,0,0,0.2);
+}
+.backpack {
+    position: absolute; left: -2px; top: 10px;
+    width: 14px; height: 26px;
+    background-color: inherit;
+    border: 3px solid #111;
+    border-radius: 6px 0 0 6px;
+    border-right: none;
+    box-shadow: inset 2px -2px 5px rgba(0,0,0,0.3);
+}
+
+/* Kính phản quang cực xịn */
+.visor {
+    position: absolute; right: -4px; top: 8px;
+    width: 22px; height: 14px;
+    background: radial-gradient(circle at 30% 30%, #e0f7fa, #4dd0e1 40%, #006064 90%);
+    border: 3px solid #111;
+    border-radius: 8px;
+    box-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+}
+/* Hiệu ứng chói lóa trên kính */
+.visor::after {
+    content: '';
+    position: absolute;
+    top: 2px; right: 3px;
+    width: 8px; height: 4px;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 5px;
+    transform: rotate(-15deg);
+}
+
+/* ================================= */
+/* HIỆU ỨNG TRẠNG THÁI NGƯỜI CHƠI KHÁC */
+/* ================================= */
+.player.idle-mode { 
+    opacity: 0.65; 
+    filter: drop-shadow(0 0 8px rgba(255, 234, 0, 0.3));
+}
+.player.offline-mode { 
+    opacity: 0.3; 
+    filter: grayscale(100%); 
+    animation: none; /* Offline thì hết thở */
+}
+
+
+/* ==========================================================================
+   4. SIÊU CẤP VŨ TRỤ: MƯA SAO BĂNG & TINH VÂN (NEBULA)
+   ========================================================================== */
+
+/* --- TINH VÂN (NEBULA HAZE) CUỘN CHẢY PHÍA SAU --- */
+#lounge-room::before {
+    content: "";
+    position: absolute;
+    inset: -50%; /* Trải rộng ra ngoài màn hình để xoay không bị lộ viền */
+    background:
+        /* Đám mây màu Tím Magenta */
+        radial-gradient(circle at 30% 70%, rgba(188, 19, 254, 0.15) 0%, transparent 50%),
+        /* Đám mây màu Xanh Cyan */
+        radial-gradient(circle at 70% 30%, rgba(0, 243, 255, 0.12) 0%, transparent 50%);
+    filter: blur(80px); /* Làm nhòe cực mạnh tạo cảm giác mây vũ trụ */
+    animation: nebulaDrift 25s ease-in-out infinite alternate;
+    z-index: 0; /* Đẩy xuống dưới cùng */
+    pointer-events: none;
+}
+
+/* Động cơ xoay và phập phồng Tinh vân */
+@keyframes nebulaDrift {
+    0%   { transform: rotate(0deg) scale(0.8); opacity: 0.6; }
+    100% { transform: rotate(15deg) scale(1.2); opacity: 1; }
+}
+
+/* --- HỆ THỐNG MƯA SAO BĂNG (METEOR SHOWER) --- */
+.meteor-shower {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 0; /* Bay dưới quả cầu nhưng trên nền vũ trụ */
+    overflow: hidden;
+    pointer-events: none;
+    transform: rotate(-35deg); /* Góc chéo để sao băng rơi từ góc phải trên xuống */
+}
+
+/* Cấu trúc 1 viên sao băng (Gồm Lõi sáng chói và Đuôi dài) */
+.meteor {
+    position: absolute;
+    width: 200px; /* Độ dài đuôi sao băng */
+    height: 2px;
+    /* Hiệu ứng đuôi mờ dần */
+    background: linear-gradient(90deg, rgba(255, 255, 255, 1) 0%, rgba(0, 243, 255, 0.8) 20%, transparent 100%);
+    border-radius: 50%;
+    animation: meteorStrike 4s linear infinite;
+    opacity: 0;
+}
+
+/* Cái đầu chói lóa của sao băng */
+.meteor::before { 
+    content: '';
+    position: absolute;
+    top: 50%; left: 0;
+    transform: translateY(-50%);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 
+        0 0 10px 2px rgba(255, 255, 255, 0.8),
+        0 0 20px 4px rgba(0, 243, 255, 0.8), /* Hào quang xanh */
+        0 0 40px 6px rgba(188, 19, 254, 0.6); /* Đuôi ánh tím */
+}
+
+/* Phân bổ vị trí, độ delay và tốc độ rơi ngẫu nhiên cho 6 viên sao băng */
+.meteor:nth-child(1) { top: -20%; left: 30%; animation-delay: 0s;   animation-duration: 3.2s; }
+.meteor:nth-child(2) { top: 10%;  left: 80%; animation-delay: 1.5s; animation-duration: 4.5s; }
+.meteor:nth-child(3) { top: 40%;  left: 120%; animation-delay: 0.8s; animation-duration: 3.8s; }
+.meteor:nth-child(4) { top: -10%; left: 60%; animation-delay: 2.2s; animation-duration: 4.1s; }
+.meteor:nth-child(5) { top: 50%;  left: 150%; animation-delay: 3.5s; animation-duration: 5.0s; }
+.meteor:nth-child(6) { top: 25%;  left: 10%; animation-delay: 1.1s; animation-duration: 3.5s; }
+
+/* Động cơ nã sao băng */
+@keyframes meteorStrike {
+    0% {
+        transform: translateX(0);
+        opacity: 0; /* Bắt đầu tàng hình */
+    }
+    10% {
+        opacity: 1; /* Sáng rực lên khi vào khung hình */
+    }
+    70% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(-150vw); /* Xẹt ngang qua toàn bộ màn hình */
+        opacity: 0; /* Tắt ngúm ở góc xa */
+    }
+}
+
+
+/* ==========================================================================
+   PHÁO HOA REALISTIC (CANVAS)
+   ========================================================================== */
+#fireworks-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 2; /* Nằm trên nền vũ trụ nhưng dưới nhân vật (z-index 10) */
+    pointer-events: none; /* Xuyên chuột tuyệt đối */
+    mix-blend-mode: screen; /* Giúp pháo hoa phát sáng rực rỡ khi đè lên nền tối */
+}
+
+
+/* ==========================================================================
+   HIỆU ỨNG CHUYỂN CẢNH (WARP SPEED TRANSITION)
+   ========================================================================== */
+
+/* 1. Màng chớp sáng che toàn màn hình */
+#warp-flash {
+    position: fixed;
+    inset: 0;
+    background: #00f3ff; /* Màu Cyan Sci-fi */
+    z-index: 999999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease-out, background 0.4s ease;
+}
+
+#warp-flash.flash-active {
+    opacity: 1;
+    background: #ffffff; /* Biến thành trắng xóa lóa mắt */
+}
+
+/* 2. Hiệu ứng hút toàn bộ phòng chờ vào Trái đất */
+.sucked-into-earth {
+    /* Tâm thu phóng nằm đúng vị trí Quả cầu (Giữa theo chiều ngang, 40% theo chiều dọc) */
+    transform-origin: 50% 40%; 
+    animation: warpZoom 1.2s cubic-bezier(0.5, 0, 0.1, 1) forwards;
+}
+
+@keyframes warpZoom {
+    0% {
+        transform: scale(1);
+        filter: brightness(1) blur(0px);
+    }
+    40% {
+        /* Nhịp lùi lấy đà (Thu nhỏ lại một xíu trước khi lao đi) */
+        transform: scale(0.95);
+        filter: brightness(0.7);
+    }
+    100% {
+        /* Cú Warp: Phóng to cực đại, nhân vật và sàn nhà bay xuyên qua camera */
+        transform: scale(40);
+        filter: brightness(5) blur(10px);
+    }
+}
+
+/* ==========================================================================
+   RESPONSIVE: MÀN HÌNH NHỎ - #ui-panel và #multiplayer-panel vốn neo 2 góc
+   dưới trái/phải với chiều rộng cố định (280px + 260px), trên màn < 700px
+   chúng đè lên nhau. Xếp lại thành 2 tầng chồng dọc, full chiều rộng.
+   ========================================================================== */
+@media (max-width: 700px) {
+    #ui-panel,
+    #multiplayer-panel {
+        width: calc(100% - 24px) !important;
+        max-width: 360px;
+        left: 12px !important;
+        margin: 0 !important;
+    }
+    #ui-panel {
+        bottom: 158px !important;
+    }
+    #multiplayer-panel {
+        bottom: 12px !important;
+        max-height: 130px !important;
+    }
+}
+
+@media (max-width: 420px) {
+    .holo-earth { width: 220px; height: 220px; }
+    .holo-base { width: 210px; height: 210px; top: calc(45% + 110px); }
+}
