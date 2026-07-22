@@ -170,7 +170,6 @@ const API = {
             // Map tasks to projects
             for (let p of projects) {
                 p.taskStats = { done: 0, working: 0, stuck: 0 };
-                p.originGroup = p.group_key; // For frontend compatibility
                 if (tasks) {
                     const pTasks = tasks.filter(t => t.project_id === p.id);
                     pTasks.forEach(t => {
