@@ -110,6 +110,7 @@ const API = {
             if (searchName) {
                 query = query.ilike('name', `%${searchName}%`);
             }
+            query = query.order('updated_at', { ascending: false });
 
             const { data, error } = await query;
             if (error) throw error;
@@ -165,11 +166,14 @@ const API = {
             
             // Get all tasks for these projects
             const projectIds = projects.map(p => p.id);
-            const { data: tasks } = await sbClient.from('tasks').select('project_id, status').in('project_id', projectIds);
+            const { data: tasks } = await sbClient.from('tasks').select('project_id, status, updated_at').in('project_id', projectIds);
             
             // Map tasks to projects
             for (let p of projects) {
-                p.taskStats = { done: 0, working: 0, stuck: 0 };
+                p.taskStats = { done: 0, working: 0, stuck: 0, notStarted: 0 };
+                p.latestActivity = p.lastUpdated || new Date(0).toISOString();
+                const dbPercent = p.percent || 0;
+                
                 if (tasks) {
                     const pTasks = tasks.filter(t => t.project_id === p.id);
                     pTasks.forEach(t => {
@@ -177,17 +181,43 @@ const API = {
                         if (st === 'done') p.taskStats.done++;
                         else if (st === 'working on it') p.taskStats.working++;
                         else if (st === 'stuck') p.taskStats.stuck++;
+                        else p.taskStats.notStarted++;
+                        
+                        if (t.updated_at && new Date(t.updated_at) > new Date(p.latestActivity)) {
+                            p.latestActivity = t.updated_at;
+                        }
+                    });
+                    
+                    if (pTasks.length > 0) {
+                        p.percent = Math.round((p.taskStats.done / pTasks.length) * 100);
+                    } else {
+                        p.percent = 0;
+                    }
+                } else {
+                    p.percent = 0;
+                }
+                
+                // Tự động cập nhật Database nếu phát hiện bị lệch pha
+                if (p.percent !== dbPercent) {
+                    sbClient.from('projects').update({ percent: p.percent }).eq('id', p.id).then(({error}) => {
+                        if (error) console.error("Lỗi tự động cập nhật percent:", error);
                     });
                 }
             }
+            
+            // Sắp xếp lại dựa trên hoạt động mới nhất của task
+            projects.sort((a, b) => new Date(b.latestActivity) - new Date(a.latestActivity));
+            
             return projects;
         },
         recalculate: async (projectId, groupKey) => {
             const { data: tasks } = await sbClient.from('tasks').select('status').eq('project_id', projectId);
-            if (!tasks || tasks.length === 0) return 0;
-            const doneTasks = tasks.filter(t => String(t.status).toLowerCase() === 'done').length;
-            const percent = Math.round((doneTasks / tasks.length) * 100);
-            await sbClient.from('projects').update({ percent }).eq('id', projectId);
+            let percent = 0;
+            if (tasks && tasks.length > 0) {
+                const doneTasks = tasks.filter(t => String(t.status).toLowerCase() === 'done').length;
+                percent = Math.round((doneTasks / tasks.length) * 100);
+            }
+            await sbClient.from('projects').update({ percent, updated_at: new Date().toISOString() }).eq('id', projectId);
             return percent;
         }
     },
