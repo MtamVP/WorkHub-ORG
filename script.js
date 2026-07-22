@@ -11,9 +11,6 @@ function goToLogin() {
     window.location.href = BASE_URL + "/";
 }
 
-function goToResetPassword() {
-    window.location.href = BASE_URL + "/reset/";
-}
 // Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
@@ -253,28 +250,24 @@ function handleBackgroundUpload(input) {
     if (input.files && input.files[0]) {
         var file = input.files[0];
 
-        // Firestore giới hạn 1MB, chặn ở 800KB cho an toàn
+        // An toàn ở mức 800KB cho base64
         if (file.size > 800 * 1024) {
             showToast("Ảnh quá nặng (>800KB)! Vui lòng nén ảnh hoặc chọn ảnh nhẹ hơn.", "error");
             return;
         }
 
         var reader = new FileReader();
-        reader.onload = function (e) {
+        reader.onload = async function (e) {
             var imageData = e.target.result;
-
-            db.collection("settings").doc("global_theme").set({
-                backgroundImage: imageData,
-                updatedBy: (auth.currentUser ? auth.currentUser.email : "Admin"),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            })
-                .then(() => {
-                    showToast("Đã đổi hình nền cho tất cả thành viên!");
-                })
-                .catch((error) => {
-                    console.error("Lỗi khi lưu ảnh:", error);
-                    showToast("Lỗi: " + error.message, "error");
-                });
+            try {
+                const userEmail = localStorage.getItem('userEmail') || "Admin";
+                await API.settings.updateSetting('global_theme', imageData, userEmail);
+                showToast("Đã đổi hình nền cho tất cả thành viên!");
+                applyCustomBackground(imageData);
+            } catch (error) {
+                console.error("Lỗi khi lưu ảnh:", error);
+                showToast("Lỗi: " + error.message, "error");
+            }
         }
         reader.readAsDataURL(file);
     }
@@ -303,7 +296,7 @@ function resetBackground() {
         cancelButtonText: 'Hủy bỏ',
         background: popupBg,
         color: popupColor
-    }).then((result) => {
+    }).then(async (result) => {
         if (result.isConfirmed) {
             Swal.fire({
                 title: 'Đang xử lý...',
@@ -313,47 +306,39 @@ function resetBackground() {
                 didOpen: () => Swal.showLoading()
             });
 
-            db.collection("settings").doc("global_theme").update({
-                backgroundImage: firebase.firestore.FieldValue.delete()
-            })
-                .then(() => {
-                    Swal.fire({
-                        title: 'Đã xóa!',
-                        text: 'Giao diện đã trở về mặc định.',
-                        icon: 'success',
-                        background: popupBg,
-                        color: popupColor
-                    });
-                })
-                .catch((error) => {
-                    Swal.fire({
-                        title: 'Lỗi!',
-                        text: error.message,
-                        icon: 'error',
-                        background: popupBg,
-                        color: popupColor
-                    });
+            try {
+                const userEmail = localStorage.getItem('userEmail') || "Admin";
+                await API.settings.updateSetting('global_theme', '', userEmail);
+                document.documentElement.style.removeProperty('--main-bg-image');
+                
+                Swal.fire({
+                    title: 'Đã xóa!',
+                    text: 'Giao diện đã trở về mặc định.',
+                    icon: 'success',
+                    background: popupBg,
+                    color: popupColor
                 });
+            } catch (error) {
+                Swal.fire({
+                    title: 'Lỗi!',
+                    text: error.message,
+                    icon: 'error',
+                    background: popupBg,
+                    color: popupColor
+                });
+            }
         }
     });
 }
 
-function initGlobalBackgroundListener() {
-    if (!db) return; // Phòng hờ chưa init Firebase
-
-    db.collection("settings").doc("global_theme")
-        .onSnapshot((doc) => {
-            if (doc.exists) {
-                var data = doc.data();
-                if (data && data.backgroundImage) {
-                    applyCustomBackground(data.backgroundImage);
-                } else {
-                    document.documentElement.style.removeProperty('--main-bg-image');
-                }
-            } else {
-                document.documentElement.style.removeProperty('--main-bg-image');
-            }
-        });
+async function initGlobalBackgroundListener() {
+    try {
+        const imageUrl = await API.settings.getSetting('global_theme');
+        if (imageUrl) applyCustomBackground(imageUrl);
+        else document.documentElement.style.removeProperty('--main-bg-image');
+    } catch(e) {
+        console.warn("Chưa tải được hình nền", e);
+    }
 }
 /**
  * 3. DRIVE FILE MANAGEMENT FUNCTIONS
@@ -487,7 +472,7 @@ function renderFileTable(fileData) {
 
     fileTableBody.innerHTML = '';
 
-    let headerHTML = '<th>Tên File</th><th>Mô tả</th>';
+    let headerHTML = '<th>Tên File</th><th>Đường dẫn</th><th>Mô tả</th>';
 
     if (typeof activeGroup !== 'undefined' && activeGroup === 'all') {
         headerHTML += '<th class="text-center">Nhóm</th>';
@@ -514,6 +499,9 @@ function renderFileTable(fileData) {
 
         // Cột 1: Tên
         row.insertCell().textContent = file.name;
+        
+        // Cột mới: Đường dẫn
+        row.insertCell().textContent = file.folderPath || '/';
 
         // Cột 2: Mô tả
         row.insertCell().textContent = file.description;
@@ -860,7 +848,8 @@ async function loadCalendarData() {
             startDate: startDate.toISOString(),
             endDate: endDate.toISOString(),
             calendarType: currentCalendarType,
-            groupKey: activeGroup
+            groupKey: activeGroup,
+            email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
         });
 
         if (response.status === 'success') {
@@ -1065,7 +1054,8 @@ window.quickDeleteEvent = function (id, title, e) {
                 const response = await callGAS('deleteEvent', {
                     eventId: id,
                     calendarType: currentCalendarType,
-                    groupKey: activeGroup
+                    groupKey: activeGroup,
+                    email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
                 });
 
                 if (response.status !== 'success') {
@@ -1136,8 +1126,8 @@ function renderDashboardCalendar(events) {
 
     itemsToShow.forEach(e => {
         const time = new Date(e.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-        const iconColor = e.isImportant ? '#dc3545' : '#0d6efd';
-        const bgColor = e.isImportant ? '#fff5f5' : '#f8f9fa';
+        const iconColor = e.isImportant ? 'var(--danger-color)' : 'var(--info-color)';
+        const bgColor = e.isImportant ? 'color-mix(in srgb, var(--danger-color) 15%, var(--card-bg))' : 'color-mix(in srgb, var(--info-color) 15%, var(--card-bg))';
         const iconClass = e.isImportant ? 'fa-star' : 'fa-circle';
 
         html += `
@@ -1242,6 +1232,20 @@ async function loadProjectOverview() {
             if (!projects || projects.length === 0) {
                 if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center text-muted">Chưa có dự án nào.</td></tr>`;
                 return;
+            }
+
+            // --- XỬ LÝ SẮP XẾP (SORTING) ---
+            const sortSelect = document.getElementById('sort-project');
+            const sortVal = sortSelect ? sortSelect.value : 'date_desc';
+            
+            if (sortVal === 'date_desc') {
+                projects.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+            } else if (sortVal === 'date_asc') {
+                projects.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+            } else if (sortVal === 'percent_desc') {
+                projects.sort((a, b) => (b.percent || 0) - (a.percent || 0));
+            } else if (sortVal === 'percent_asc') {
+                projects.sort((a, b) => (a.percent || 0) - (b.percent || 0));
             }
 
             // Lọc theo người tạo
@@ -2619,7 +2623,8 @@ async function handleTaskFileUpload() {
                 mimeType: file.type,
                 taskId: taskId,
                 groupKey: activeGroup,
-                description: description
+                description: description,
+                email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : "unknown"
             });
 
             if (response.status === 'success') {
@@ -3727,55 +3732,129 @@ document.addEventListener('DOMContentLoaded', function () {
 
     //  8.6 LOGIC UPLOAD FILE 
     if (uploadForm) {
-        uploadForm.addEventListener('submit', function (e) {
+        // Xử lý chuyển đổi loại hình tải lên
+        const uploadTypeRadios = uploadForm.querySelectorAll('input[name="uploadType"]');
+        const folderInput = document.getElementById('folder-input');
+        const uploadLabel = document.getElementById('upload-label');
+        
+        uploadTypeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'folder') {
+                    uploadLabel.setAttribute('for', 'folder-input');
+                    uploadLabel.innerHTML = '<i class=\"fa-solid fa-folder-tree\"></i> Chọn thư mục từ máy tính<span id=\"file-name-display\"> (Chưa chọn thư mục)</span>';
+                } else {
+                    uploadLabel.setAttribute('for', 'file-input');
+                    uploadLabel.innerHTML = '<i class=\"fa-solid fa-cloud-arrow-up\"></i> Chọn file từ máy tính<span id=\"file-name-display\"> (Chưa có file nào)</span>';
+                }
+                document.getElementById('file-icon-preview').innerHTML = '';
+            });
+        });
+
+        const handleFileInputChange = function () {
+            if (this.files.length > 0) {
+                const fileNameDisplay = document.getElementById('file-name-display');
+                const fileIconPreview = document.getElementById('file-icon-preview');
+                
+                if (this.files.length === 1) {
+                    const file = this.files[0];
+                    const fileName = file.name.toLowerCase();
+                    fileNameDisplay.textContent = ' (' + file.name + ')';
+                    
+                    let iconClass = 'fa-file';
+                    if (fileName.endsWith('.pdf')) iconClass = 'fa-file-pdf text-danger';
+                    else if (fileName.endsWith('.docx')) iconClass = 'fa-file-word text-primary';
+                    else if (file.type && file.type.startsWith('image/')) iconClass = 'fa-file-image text-warning';
+                    else if (fileName.endsWith('.xlsx')) iconClass = 'fa-file-excel text-success';
+                    
+                    fileIconPreview.innerHTML = `<i class=\"fa-solid ${iconClass}\" style=\"font-size: 36px; color: var(--text-secondary);\"></i>`;
+                } else {
+                    fileNameDisplay.textContent = ' (Đã chọn ' + this.files.length + ' files)';
+                    fileIconPreview.innerHTML = `<i class=\"fa-solid fa-copy text-primary\" style=\"font-size: 36px;\"></i>`;
+                }
+                submitUploadBtn.disabled = false;
+            }
+        };
+
+        if (fileInput) fileInput.addEventListener('change', handleFileInputChange);
+        const folderInputObj = document.getElementById('folder-input');
+        if (folderInputObj) folderInputObj.addEventListener('change', handleFileInputChange);
+
+        uploadForm.addEventListener('submit', async function (e) {
             e.preventDefault();
 
-            if (!fileInput.files.length) {
-                showToast('Vui lòng chọn file để tải lên!', 'error');
+            const uploadType = document.querySelector('input[name=\"uploadType\"]:checked').value;
+            const inputElement = uploadType === 'folder' ? folderInput : fileInput;
+
+            if (!inputElement || !inputElement.files.length) {
+                showToast('Vui lòng chọn file/thư mục để tải lên!', 'error');
                 return;
             }
 
             submitUploadBtn.disabled = true;
-            const originalBtnText = submitUploadBtn.innerHTML; // Lưu lại text cũ để restore
-            submitUploadBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang tải...';
+            const originalBtnText = submitUploadBtn.innerHTML;
 
-            const file = fileInput.files[0];
-            const reader = new FileReader();
+            const descInput = uploadForm.querySelector('[name=\"description\"]');
+            const descriptionValue = descInput ? descInput.value : "";
+            const totalFiles = inputElement.files.length;
+            let successCount = 0;
 
-            reader.onload = async function (event) {
-                // Lấy chuỗi Base64 (bỏ phần header data:image/...)
-                const base64Data = event.target.result.split(',')[1];
+            const readFileAsBase64 = (f) => new Promise((resolve) => {
+                const r = new FileReader();
+                r.onload = (e) => resolve(e.target.result.split(',')[1]);
+                r.readAsDataURL(f);
+            });
 
-                // Lấy mô tả nếu trong form có input name="description"
-                const descInput = uploadForm.querySelector('[name="description"]');
-                const descriptionValue = descInput ? descInput.value : "";
+            try {
+                for (let i = 0; i < totalFiles; i++) {
+                    const file = inputElement.files[i];
+                    submitUploadBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Đang tải ${i+1}/${totalFiles}...`;
+                    
+                    const base64Data = await readFileAsBase64(file);
+                    
+                    let folderPath = "";
+                    if (uploadType === 'folder' && file.webkitRelativePath) {
+                        const parts = file.webkitRelativePath.split('/');
+                        parts.pop(); // Bỏ tên file
+                        folderPath = parts.join('/');
+                    }
 
-                try {
                     const res = await callGAS('uploadFile', {
                         fileData: base64Data,
                         fileName: file.name,
-                        mimeType: file.type,
+                        mimeType: file.type || 'application/octet-stream',
                         groupKey: activeGroup,
                         description: descriptionValue,
-                        email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : "unknown"
+                        email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : "unknown",
+                        folderPath: folderPath
                     });
 
-                    if (typeof handleUploadSuccess === 'function') handleUploadSuccess(res);
-                    showToast("Tải file lên thành công!", "success");
-                    loadNotifications();
-                    uploadForm.reset();
-
-                } catch (err) {
-                    if (typeof handleUploadFailure === 'function') handleUploadFailure(err);
-                    showToast("Lỗi tải file: " + err.message, "error");
-
-                } finally {
-                    submitUploadBtn.disabled = false;
-                    submitUploadBtn.innerHTML = originalBtnText;
+                    if (res.status === 'error') throw new Error(res.message);
+                    successCount++;
                 }
-            };
 
-            reader.readAsDataURL(file);
+                showToast(`Tải lên thành công ${successCount} file!`, "success");
+                loadNotifications();
+                uploadForm.reset();
+                if (typeof loadFileList === 'function') loadFileList(false);
+                
+                // Kích hoạt sự kiện change để UI label đồng bộ lại với trạng thái mặc định của radio button
+                const checkedRadio = document.querySelector('input[name="uploadType"]:checked');
+                if (checkedRadio) {
+                    checkedRadio.dispatchEvent(new Event('change'));
+                } else {
+                    const displaySpan = document.getElementById('file-name-display');
+                    if (displaySpan) displaySpan.textContent = ' (Chưa có file nào)';
+                }
+                
+                document.getElementById('file-icon-preview').innerHTML = '';
+
+            } catch (err) {
+                if (typeof handleUploadFailure === 'function') handleUploadFailure(err);
+                showToast("Lỗi tải file: " + err.message, "error");
+            } finally {
+                submitUploadBtn.disabled = false;
+                submitUploadBtn.innerHTML = originalBtnText;
+            }
         });
     }
 
@@ -3891,7 +3970,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 const msg = await callGAS('createEvent', {
                     ...eventData,
                     calendarType: currentCalendarType,
-                    groupKey: activeGroup
+                    groupKey: activeGroup,
+                    email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
                 });
 
                 showToast(msg, "success");
@@ -3931,7 +4011,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     eventId: selectedEventId,
                     isImportant: newImportant,
                     calendarType: currentCalendarType,
-                    groupKey: activeGroup
+                    groupKey: activeGroup,
+                    email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
                 });
 
                 showToast(msg, "success");
@@ -3980,7 +4061,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         const response = await callGAS('deleteEvent', {
                             eventId: selectedEventId,
                             calendarType: currentCalendarType,
-                            groupKey: activeGroup
+                            groupKey: activeGroup,
+                            email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
                         });
 
                         if (response.status === 'success') {

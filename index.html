@@ -16,7 +16,6 @@
     <meta name="theme-color" content="#120F0A">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="WorkHub">
     <link rel="apple-touch-icon" href="/logo.png">
 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
@@ -24,8 +23,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-    <script src="api.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="api.js?v=1784710723194"></script>
 </head>
 <body class="auth-page">
 
@@ -135,16 +134,12 @@
         }, 3000);
     }
 
-    // THEME BACKGROUND LOGIC
-    function initLoginThemeListener() {
-        db.collection("settings").doc("login_theme")
-        .onSnapshot((doc) => {
-            if (doc.exists && doc.data().backgroundImage) {
-                applyCustomBackground(doc.data().backgroundImage);
-            } else {
-                removeCustomBackground();
-            }
-        });
+    // THEME BACKGROUND LOGIC (Dùng Supabase app_settings)
+    async function initLoginThemeListener() {
+        if (!window.supabaseClient) return;
+        const imageUrl = await API.settings.getSetting('login_theme');
+        if (imageUrl) applyCustomBackground(imageUrl);
+        else removeCustomBackground();
     }
 
     function applyCustomBackground(imageUrl) {
@@ -158,28 +153,30 @@
         document.body.classList.remove('has-custom-bg');
     }
 
-    function checkAuthAndUpload() {
-        if (!auth.currentUser) {
+    async function checkAuthAndUpload() {
+        const user = auth.currentUser;
+        if (!user) {
             showToast("Vui lòng đăng nhập thành công trước khi đổi nền!", "warning");
             return;
         }
         document.getElementById('login-bg-input').click();
     }
 
-    function checkAuthAndReset() {
-        if (!auth.currentUser) {
+    async function checkAuthAndReset() {
+        const user = auth.currentUser;
+        if (!user) {
             Swal.fire({ icon: 'warning', title: 'Chưa đăng nhập!', text: 'Bạn cần đăng nhập mới có quyền Reset giao diện.', confirmButtonColor: '#1A1A1A' });
             return;
         }
         Swal.fire({
             title: 'Trở về mặc định?', text: "Bạn có chắc muốn xóa ảnh nền hiện tại?", icon: 'question',
             showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Xóa đi ạ'
-        }).then((result) => {
+        }).then(async (result) => {
             if (result.isConfirmed) {
                 Swal.showLoading();
-                db.collection("settings").doc("login_theme").update({
-                    backgroundImage: firebase.firestore.FieldValue.delete()
-                }).then(() => Swal.fire('Đã xóa!', 'Giao diện về mặc định.', 'success'));
+                await API.settings.updateSetting('login_theme', '', user.email);
+                removeCustomBackground();
+                Swal.fire('Đã xóa!', 'Giao diện về mặc định.', 'success');
             }
         });
     }
@@ -187,20 +184,23 @@
     function handleLoginBgUpload(input) {
         if (input.files && input.files[0]) {
             var file = input.files[0];
-            if (file.size > 700 * 1024) { alert("Ảnh nặng quá (>700KB). Ảnh lưu vào Firestore (giới hạn 1MB/document) nên cần dưới mức này sau khi mã hóa base64."); return; }
+            if (file.size > 700 * 1024) { alert("Ảnh nặng quá (>700KB). Cần dưới mức này sau khi mã hóa base64."); return; }
 
             const btnIcon = document.querySelector('.auth-btn-control i');
             const oldClass = btnIcon.className;
             btnIcon.className = "fa-solid fa-spinner fa-spin";
 
             var reader = new FileReader();
-            reader.onload = function(e) {
-                db.collection("settings").doc("login_theme").set({
-                    backgroundImage: e.target.result,
-                    updatedBy: auth.currentUser.email,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }).then(() => { btnIcon.className = oldClass; })
-                  .catch(err => { alert(err.message); btnIcon.className = oldClass; });
+            reader.onload = async function(e) {
+                try {
+                    const userEmail = (auth.currentUser) ? auth.currentUser.email : "admin@workhub.com";
+                    await API.settings.updateSetting('login_theme', e.target.result, userEmail);
+                    applyCustomBackground(e.target.result);
+                    btnIcon.className = oldClass;
+                } catch(err) {
+                    alert(err.message); 
+                    btnIcon.className = oldClass;
+                }
             }
             reader.readAsDataURL(file);
         }
@@ -223,15 +223,13 @@
             loadingStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kết nối máy chủ...';
 
             try {
-                const realEmail = await API.auth.getRealEmail(inputVal);
+                // Sử dụng API lấy Real Email từ Supabase
+                const realEmail = await API.auth.getRealEmail(inputVal) || inputVal;
 
-                if (!realEmail) {
-                    throw new Error("Tài khoản không tồn tại hoặc không có quyền truy cập.");
-                }
-
-                loadingStatus.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Đang xác thực mật khẩu...';
+                loadingStatus.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Đang xác thực Firebase...';
+                
+                // Đăng nhập Firebase
                 await auth.signInWithEmailAndPassword(realEmail, password);
-
 
             } catch (err) {
                 console.error(err);
@@ -253,30 +251,24 @@
             loginView.style.display = 'none';
             successView.style.display = 'block';
 
-            welcomeText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra firebase...';
+            welcomeText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu người dùng...';
             btnGoDashboard.disabled = true;
 
             try {
-                // 1. Gọi API lấy thông tin (Chỉ cần gọi 1 hàm mới này là đủ lấy cả 2)
+                // Gọi API Supabase để lấy thông tin user
                 const userInfoRes = await API.auth.getUserInfo(user.email);
                 const group = await API.auth.getUserGroup(user.email);
-                console.log("Dữ liệu từ Server:", userInfoRes); // In ra để debug xem nó hình thù ra sao
-
-
+                
                 let displayName = user.displayName || user.email.split('@')[0];
 
-                // 3. Bóc tách dữ liệu an toàn (Dù có bị bọc trong .data hay không)
                 if (userInfoRes) {
                     if (userInfoRes.data) {
-                        // Trường hợp Server bọc trong { status: 'success', data: {...} }
                         displayName = userInfoRes.data.name || displayName;
                     } else if (userInfoRes.name) {
-                        // Trường hợp Server trả về thẳng cục { name: '...', group: '...' }
                         displayName = userInfoRes.name || displayName;
                     }
                 }
 
-                // 4. Lưu vào bộ nhớ trình duyệt
                 localStorage.setItem('userGroup', group);
                 localStorage.setItem('userEmail', user.email);
                 localStorage.setItem('userName', displayName);
@@ -284,7 +276,6 @@
                 welcomeText.textContent = `Xin chào, ${displayName}!`;
                 btnGoDashboard.disabled = false;
 
-                // 5. Tự động chuyển trang sau 1.5s
                 setTimeout(() => {
                     if(!user.displayName && displayName === user.email.split('@')[0]) {
                         window.location.href = "/nickname/";
@@ -300,7 +291,6 @@
             }
 
         } else {
-            // Chưa đăng nhập
             if (loadingStatus) loadingStatus.style.display = 'none';
             loginView.style.display = 'block';
             successView.style.display = 'none';

@@ -267,10 +267,15 @@
         <div class="card upload-card" style="border-top: 4px solid var(--finance-accent);">
           <h3>Tải Tài Liệu</h3>
           <form id="upload-file-form" enctype="multipart/form-data">
+            <div class="form-group upload-type-toggle" style="margin-bottom: 15px;">
+              <label style="margin-right: 15px;"><input type="radio" name="uploadType" value="file" checked> Tải file lẻ</label>
+              <label><input type="radio" name="uploadType" value="folder"> Tải nguyên thư mục</label>
+            </div>
             <div class="form-group">
-              <label for="file-input" class="file-upload-label"><i class="fa-solid fa-cloud-arrow-up"></i> Chọn file từ
+              <label for="file-input" class="file-upload-label" id="upload-label"><i class="fa-solid fa-cloud-arrow-up"></i> Chọn file từ
                 máy tính<span id="file-name-display"> (Chưa có file nào)</span></label>
-              <input type="file" id="file-input" name="fileUpload" required style="display: none;">
+              <input type="file" id="file-input" name="fileUpload" multiple style="display: none;">
+              <input type="file" id="folder-input" name="folderUpload" webkitdirectory directory multiple style="display: none;">
             </div>
             <div id="file-icon-preview" style="text-align: center; margin-bottom: 15px; min-height: 40px;"></div>
             <div class="form-group"><textarea name="description" placeholder="Ghi chú (tùy chọn)"></textarea></div>
@@ -312,6 +317,7 @@
             <thead>
               <tr>
                 <th>Tên File</th>
+                <th>Đường dẫn</th>
                 <th>Mô tả</th>
                 <th>Người Tải</th>
                 <th>Ngày Tải</th>
@@ -710,8 +716,9 @@
   </div>
 
 
-  <script src="/api.js"></script>
-  <script src="/script.js?v=1.5.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/api.js?v=1784710723194"></script>
+  <script src="/script.js?v=1784710723194"></script>
 
   <script>
     function switchTaskView(view) {
