@@ -466,11 +466,41 @@ const API = {
                 attachments: typeof taskData.attachments === 'string' ? JSON.parse(taskData.attachments || '[]') : taskData.attachments,
                 assignees: Array.isArray(taskData.assignees) ? taskData.assignees.join(', ') : taskData.assignees,
                 parent_task_id: taskData.parentTaskId || null,
-                blocked_by: taskData.blockedBy || null
+                blocked_by: taskData.blockedBy || null,
+                labels: taskData.labels || null
             });
             if (error) throw error;
             if (taskData.projectId) await API.project.recalculate(taskData.projectId, groupKey);
             return `Đã lưu task "${taskData.name}"!`;
+        },
+        // Checklist nằm trong cột jsonb của chính task: [{id, text, done}].
+        // Đọc–sửa–ghi cả mảng vì danh sách luôn ngắn; không tách bảng riêng cho nhẹ.
+        getChecklist: async (taskId) => {
+            const { data, error } = await sbClient.from('tasks').select('checklist').eq('id', taskId).single();
+            if (error) throw error;
+            return Array.isArray(data.checklist) ? data.checklist : [];
+        },
+        addChecklistItem: async (taskId, text) => {
+            if (!text || !text.trim()) throw new Error("Nội dung mục không được để trống.");
+            const current = await API.task.getChecklist(taskId);
+            current.push({ id: "CL_" + Date.now(), text: text.trim(), done: false });
+            const { error } = await sbClient.from('tasks').update({ checklist: current }).eq('id', taskId);
+            if (error) throw error;
+            return current;
+        },
+        toggleChecklistItem: async (taskId, itemId, done) => {
+            const current = await API.task.getChecklist(taskId);
+            const next = current.map(it => it.id === itemId ? { ...it, done: !!done } : it);
+            const { error } = await sbClient.from('tasks').update({ checklist: next }).eq('id', taskId);
+            if (error) throw error;
+            return next;
+        },
+        deleteChecklistItem: async (taskId, itemId) => {
+            const current = await API.task.getChecklist(taskId);
+            const next = current.filter(it => it.id !== itemId);
+            const { error } = await sbClient.from('tasks').update({ checklist: next }).eq('id', taskId);
+            if (error) throw error;
+            return next;
         },
         reorder: async (orderedIds) => {
             if (!sbClient || !Array.isArray(orderedIds)) return "OK";
@@ -1144,6 +1174,70 @@ const API = {
         }
     },
     lounge: { sync: async () => "Synced" },
+    // Tìm kiếm toàn cục: gom dự án + công việc + tệp trong cùng một lượt, để người dùng
+    // không phải nhớ thứ mình cần đang nằm ở mục nào.
+    search: {
+        global: async (query, groupKey) => {
+            if (!sbClient) return { projects: [], tasks: [], files: [] };
+            const q = String(query || '').trim();
+            if (q.length < 2) return { projects: [], tasks: [], files: [] };
+
+            // Thoát ký tự có nghĩa đặc biệt trong toán tử ilike của PostgREST
+            const safe = q.replace(/[%_,()]/g, ' ').trim();
+            if (!safe) return { projects: [], tasks: [], files: [] };
+            const pattern = `%${safe}%`;
+
+            let projQuery = sbClient.from('projects').select('id, name, description, group_key').is('deleted_at', null);
+            projQuery = groupKey === 'all'
+                ? projQuery.or('group_key.eq.all,is_shared.eq.true')
+                : projQuery.eq('group_key', groupKey);
+            const { data: allProjects } = await projQuery;
+
+            const projectMap = {};
+            (allProjects || []).forEach(p => { projectMap[p.id] = p.name; });
+            const projectIds = Object.keys(projectMap);
+
+            const lowered = safe.toLowerCase();
+            const projects = (allProjects || [])
+                .filter(p => (p.name || '').toLowerCase().includes(lowered) || (p.description || '').toLowerCase().includes(lowered))
+                .slice(0, 8)
+                .map(p => ({ id: p.id, title: p.name, subtitle: p.description || '', type: 'project' }));
+
+            let tasks = [];
+            if (projectIds.length > 0) {
+                const { data: taskRows } = await sbClient.from('tasks')
+                    .select('id, name, description, status, project_id, due_date')
+                    .is('deleted_at', null)
+                    .in('project_id', projectIds)
+                    .or(`name.ilike.${pattern},description.ilike.${pattern}`)
+                    .limit(12);
+                tasks = (taskRows || []).map(t => ({
+                    id: t.id,
+                    title: t.name,
+                    subtitle: projectMap[t.project_id] || '',
+                    status: t.status,
+                    dueDate: t.due_date ? t.due_date.slice(0, 10) : '',
+                    projectId: t.project_id,
+                    type: 'task'
+                }));
+            }
+
+            let fileQuery = sbClient.from('files').select('id, name, description, storage_path, group_key').is('deleted_at', null);
+            fileQuery = groupKey === 'all'
+                ? fileQuery.or('group_key.eq.all,is_shared.eq.true')
+                : fileQuery.eq('group_key', groupKey);
+            const { data: fileRows } = await fileQuery.or(`name.ilike.${pattern},description.ilike.${pattern}`).limit(8);
+            const files = (fileRows || []).map(f => ({
+                id: f.id,
+                title: f.name,
+                subtitle: f.description || '',
+                url: f.storage_path ? `${SUPABASE_URL}/storage/v1/object/public/${f.storage_path}` : '',
+                type: 'file'
+            }));
+
+            return { projects, tasks, files };
+        }
+    },
     // Realtime: một kênh duy nhất nghe thay đổi trên các bảng lõi. Không tự vẽ lại gì —
     // chỉ báo cho script.js biết bảng nào vừa đổi, việc quyết định tải lại phần nào là ở đó.
     // Các bảng này đã được thêm vào publication `supabase_realtime` (migration 2026-07-29).
@@ -1189,6 +1283,7 @@ const API = {
 const MUTATING_ACTIONS = new Set([
     'saveTask', 'deleteTask', 'reorderTasks', 'bulkUpdateTaskStatus', 'bulkDeleteTasks',
     'uploadFileToTask', 'deleteFileFromTask', 'addTaskComment',
+    'addChecklistItem', 'toggleChecklistItem', 'deleteChecklistItem',
     'createProject', 'updateProject', 'shareProject', 'deleteProject',
     'addMilestone', 'toggleMilestone', 'deleteMilestone',
     'createEvent', 'updateEvent', 'deleteEvent', 'toggleImportant',
@@ -1245,6 +1340,11 @@ window.callGAS = async function(action, params = {}) {
 
             case 'getTaskList': result = await API.task.list(params.projectId, params.groupKey); break;
             case 'listMyTasks': result = await API.task.listMine(params.email, params.groupKey); break;
+            case 'globalSearch': result = await API.search.global(params.query, params.groupKey); break;
+            case 'getChecklist': result = await API.task.getChecklist(params.taskId); break;
+            case 'addChecklistItem': result = await API.task.addChecklistItem(params.taskId, params.text); break;
+            case 'toggleChecklistItem': result = await API.task.toggleChecklistItem(params.taskId, params.itemId, params.done); break;
+            case 'deleteChecklistItem': result = await API.task.deleteChecklistItem(params.taskId, params.itemId); break;
             case 'saveTask': result = await API.task.save(params, params.groupKey); break;
             case 'deleteTask': result = await API.task.delete(params.taskId, params.projectId, params.groupKey); break;
             case 'deleteFileFromTask': result = await API.task.deleteFile(params.taskId, params.fileId, params.groupKey); break;

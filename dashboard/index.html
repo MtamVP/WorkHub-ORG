@@ -108,6 +108,10 @@
   <header id="app-header">
     <div class="logo">WorkHub AI</div>
     <div class="user-info">
+      <button type="button" id="open-search-btn" class="btn btn-link text-decoration-none" onclick="openSearchPalette()"
+        title="Tìm kiếm (Ctrl+K)" style="color: var(--text-color);">
+        <i class="fa-solid fa-magnifying-glass fs-5"></i>
+      </button>
       <button id="theme-toggle-btn" onclick="toggleTheme()" title="Chuyển chế độ Sáng/Tối">
         <i class="fa-solid fa-moon"></i>
       </button>
@@ -742,6 +746,11 @@
         </div>
 
         <div class="form-group mb-3">
+          <label class="form-label" for="new-task-labels">Nhãn:</label>
+          <input type="text" id="new-task-labels" class="text-input w-100" placeholder="Ngăn cách bằng dấu phẩy. Ví dụ: gấp, đối ngoại">
+        </div>
+
+        <div class="form-group mb-3">
           <label class="form-label">Bị chặn bởi (phụ thuộc):</label>
           <div class="multiselect-container">
             <div class="selectBox" onclick="showBlockerCheckboxes()">
@@ -767,7 +776,15 @@
       <h3><i class="fa-solid fa-comment-dots me-2"></i> Bình luận & Lịch sử: <span id="task-activity-name"></span></h3>
       <div class="task-activity-tabs">
         <button type="button" class="task-activity-tab active" data-tab="comments" onclick="switchTaskActivityTab('comments')">Bình luận</button>
+        <button type="button" class="task-activity-tab" data-tab="checklist" onclick="switchTaskActivityTab('checklist')">Danh sách kiểm</button>
         <button type="button" class="task-activity-tab" data-tab="history" onclick="switchTaskActivityTab('history')">Lịch sử</button>
+      </div>
+      <div id="task-activity-checklist-panel" class="task-activity-panel" style="display:none;">
+        <div id="task-checklist-list" class="task-checklist-list"><div class="p-2 text-muted small">Đang tải...</div></div>
+        <form id="task-checklist-form" class="d-flex gap-2 mt-2">
+          <input type="text" id="task-checklist-input" class="text-input w-100" placeholder="Thêm mục cần kiểm...">
+          <button type="submit" class="primary-btn">Thêm</button>
+        </form>
       </div>
       <div id="task-activity-comments-panel" class="task-activity-panel">
         <div id="task-comment-list" class="task-comment-list"><div class="p-2 text-muted small">Đang tải...</div></div>
@@ -819,6 +836,20 @@
       </div>
       <div class="d-flex justify-content-end pt-3">
         <button type="button" class="secondary-btn" onclick="hideModal('burndown-modal')">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="search-palette" class="search-palette" style="display:none;">
+    <div class="search-palette-box">
+      <div class="search-palette-input-row">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="search-palette-input" autocomplete="off" spellcheck="false"
+          placeholder="Tìm dự án, công việc, tệp...">
+        <kbd class="search-palette-esc">Esc</kbd>
+      </div>
+      <div id="search-palette-results" class="search-palette-results">
+        <div class="search-palette-hint">Gõ ít nhất 2 ký tự để tìm.</div>
       </div>
     </div>
   </div>
@@ -972,7 +1003,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785261482181"></script>
+  <script src="/api.js?v=1785262705116"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -1000,7 +1031,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1785261482181"></script>
+  <script src="/script.js?v=1785262705116"></script>
 
   <script>
     function switchTaskView(view) {

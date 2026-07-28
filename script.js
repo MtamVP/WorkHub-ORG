@@ -2067,7 +2067,8 @@ function renderTasks(tasks) {
                     <td class="bulk-select-col" style="display:none;"><input type="checkbox" class="bulk-select-checkbox" data-task-id="${t.id}" onchange="onBulkCheckboxChange('${t.id}', this.checked)" onclick="event.stopPropagation()"></td>
 
                     <td style="border-left: 5px solid ${statusColor}; font-weight: 500; ${isSubtask ? 'padding-left: 32px;' : ''}">
-                        ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}${getBlockedBadge(t)}
+                        ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}${getBlockedBadge(t)}${getChecklistBadge(t)}
+                        ${renderLabelChips(t.labels)}
                     </td>
 
                     <td>${avatarsHTML}</td>
@@ -2128,7 +2129,7 @@ function renderTasks(tasks) {
                     <div class="d-flex justify-content-between align-items-start">
                         <span class="fw-bold text-primary" style="font-size: 1.1rem;">
                             <input type="checkbox" class="bulk-select-checkbox bulk-select-col" style="display:none; margin-right:6px;" data-task-id="${t.id}" onchange="onBulkCheckboxChange('${t.id}', this.checked)">
-                            ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}${getBlockedBadge(t)}</span>
+                            ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}${getBlockedBadge(t)}${getChecklistBadge(t)}${renderLabelChips(t.labels)}</span>
 
                         <div class="dropdown">
                             <button class="btn btn-sm text-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -2287,7 +2288,8 @@ function renderKanbanBoard(tasks) {
 
             card.innerHTML = `
                 ${parentLabel}
-                <div class="kanban-card-title">${safeName}${getBlockedBadge(t)}</div>
+                <div class="kanban-card-title">${safeName}${getBlockedBadge(t)}${getChecklistBadge(t)}</div>
+                ${renderLabelChips(t.labels) ? `<div class="kanban-card-labels">${renderLabelChips(t.labels)}</div>` : ''}
                 <div class="kanban-card-meta">
                     ${renderBadge('priority', t.priority).replace('width: 100%', 'width:auto; display:inline-block; padding:2px 8px;')}
                     ${getDueDateBadge(t.dueDate, t.status)}
@@ -2424,6 +2426,146 @@ async function applyBulkDelete() {
             showToast('Lỗi: ' + err.message, 'error');
         }
     });
+}
+
+//  TÌM KIẾM TOÀN CỤC (Ctrl/Cmd + K)
+let searchPaletteResults = [];   // danh sách phẳng đang hiển thị, để điều hướng bằng phím
+let searchPaletteIndex = -1;     // mục đang được chọn
+let searchDebounceTimer = null;
+let searchRequestSeq = 0;        // chống kết quả cũ về sau đè kết quả mới
+
+function openSearchPalette() {
+    const palette = document.getElementById('search-palette');
+    const input = document.getElementById('search-palette-input');
+    if (!palette || !input) return;
+
+    palette.style.display = 'flex';
+    input.value = '';
+    searchPaletteResults = [];
+    searchPaletteIndex = -1;
+    renderSearchHint('Gõ ít nhất 2 ký tự để tìm.');
+    setTimeout(() => input.focus(), 30);
+}
+
+function closeSearchPalette() {
+    const palette = document.getElementById('search-palette');
+    if (palette) palette.style.display = 'none';
+    clearTimeout(searchDebounceTimer);
+    searchPaletteResults = [];
+    searchPaletteIndex = -1;
+}
+
+function renderSearchHint(text) {
+    const box = document.getElementById('search-palette-results');
+    if (box) box.innerHTML = `<div class="search-palette-hint">${escapeHtml(text)}</div>`;
+}
+
+function onSearchPaletteInput(value) {
+    clearTimeout(searchDebounceTimer);
+    const q = String(value || '').trim();
+
+    if (q.length < 2) {
+        searchPaletteResults = [];
+        searchPaletteIndex = -1;
+        renderSearchHint('Gõ ít nhất 2 ký tự để tìm.');
+        return;
+    }
+
+    renderSearchHint('Đang tìm...');
+    searchDebounceTimer = setTimeout(async () => {
+        const mySeq = ++searchRequestSeq;
+        try {
+            const response = await callGAS('globalSearch', { query: q, groupKey: activeGroup });
+            if (mySeq !== searchRequestSeq) return; // đã có lượt gõ mới hơn
+            if (response.status !== 'success') throw new Error(response.message);
+            renderSearchResults(response.data || { projects: [], tasks: [], files: [] });
+        } catch (err) {
+            if (mySeq !== searchRequestSeq) return;
+            renderSearchHint('Lỗi tìm kiếm: ' + err.message);
+        }
+    }, 250);
+}
+
+function renderSearchResults(data) {
+    const box = document.getElementById('search-palette-results');
+    if (!box) return;
+
+    searchPaletteResults = [
+        ...(data.projects || []).map(x => ({ ...x, type: 'project' })),
+        ...(data.tasks || []).map(x => ({ ...x, type: 'task' })),
+        ...(data.files || []).map(x => ({ ...x, type: 'file' }))
+    ];
+    searchPaletteIndex = searchPaletteResults.length > 0 ? 0 : -1;
+
+    if (searchPaletteResults.length === 0) {
+        renderSearchHint('Không tìm thấy kết quả nào.');
+        return;
+    }
+
+    const GROUP_META = {
+        project: { label: 'Dự án', icon: 'fa-diagram-project' },
+        task: { label: 'Công việc', icon: 'fa-list-check' },
+        file: { label: 'Tệp', icon: 'fa-file' }
+    };
+
+    let html = '';
+    let flatIndex = 0;
+    ['project', 'task', 'file'].forEach(type => {
+        const items = searchPaletteResults.filter(r => r.type === type);
+        if (items.length === 0) return;
+        html += `<div class="search-palette-group">${GROUP_META[type].label}</div>`;
+        items.forEach(item => {
+            const idx = flatIndex++;
+            const dueBadge = item.type === 'task' ? getDueDateBadge(item.dueDate, item.status) : '';
+            html += `
+                <div class="search-palette-item${idx === 0 ? ' is-active' : ''}" data-index="${idx}"
+                     onclick="activateSearchResult(${idx})" onmouseenter="setSearchActiveIndex(${idx})">
+                    <i class="fa-solid ${GROUP_META[type].icon}"></i>
+                    <div class="search-palette-item-text">
+                        <div class="search-palette-item-title">${escapeHtml(item.title || '')}${dueBadge}</div>
+                        ${item.subtitle ? `<div class="search-palette-item-sub">${escapeHtml(item.subtitle)}</div>` : ''}
+                    </div>
+                </div>`;
+        });
+    });
+
+    box.innerHTML = html;
+}
+
+function setSearchActiveIndex(idx) {
+    searchPaletteIndex = idx;
+    document.querySelectorAll('.search-palette-item').forEach(el => {
+        el.classList.toggle('is-active', Number(el.dataset.index) === idx);
+    });
+}
+
+function moveSearchSelection(step) {
+    if (searchPaletteResults.length === 0) return;
+    let next = searchPaletteIndex + step;
+    if (next < 0) next = searchPaletteResults.length - 1;
+    if (next >= searchPaletteResults.length) next = 0;
+    setSearchActiveIndex(next);
+    const el = document.querySelector(`.search-palette-item[data-index="${next}"]`);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+
+function activateSearchResult(idx) {
+    const item = searchPaletteResults[idx];
+    if (!item) return;
+    closeSearchPalette();
+
+    if (item.type === 'file') {
+        if (item.url) window.open(item.url, '_blank', 'noopener');
+        return;
+    }
+    if (item.type === 'task') {
+        if (typeof goToTaskInProject === 'function') goToTaskInProject(item.projectId);
+        return;
+    }
+    if (item.type === 'project') {
+        const progressNav = document.querySelector('.nav-item[data-section="progress"]');
+        if (progressNav) progressNav.click();
+    }
 }
 
 //  ĐỒNG BỘ THỜI GIAN THỰC
@@ -2779,6 +2921,7 @@ async function openTaskActivity(taskId, taskName) {
 
     loadTaskComments(taskId);
     loadTaskHistory(taskId);
+    loadTaskChecklist(taskId);
 }
 
 let mentionCheckboxesExpanded = false;
@@ -2793,8 +2936,82 @@ function switchTaskActivityTab(tab) {
     document.querySelectorAll('.task-activity-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     const commentsPanel = document.getElementById('task-activity-comments-panel');
     const historyPanel = document.getElementById('task-activity-history-panel');
+    const checklistPanel = document.getElementById('task-activity-checklist-panel');
     if (commentsPanel) commentsPanel.style.display = tab === 'comments' ? 'block' : 'none';
     if (historyPanel) historyPanel.style.display = tab === 'history' ? 'block' : 'none';
+    if (checklistPanel) checklistPanel.style.display = tab === 'checklist' ? 'block' : 'none';
+}
+
+//  DANH SÁCH KIỂM TRONG TASK
+async function loadTaskChecklist(taskId) {
+    const list = document.getElementById('task-checklist-list');
+    if (!list) return;
+    list.innerHTML = '<div class="p-2 text-muted small">Đang tải...</div>';
+    try {
+        const response = await callGAS('getChecklist', { taskId });
+        if (response.status !== 'success') throw new Error(response.message);
+        renderTaskChecklist(response.data || []);
+    } catch (err) {
+        list.innerHTML = `<div class="text-danger small p-2">Lỗi: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function renderTaskChecklist(items) {
+    const list = document.getElementById('task-checklist-list');
+    if (!list) return;
+
+    if (!items || items.length === 0) {
+        list.innerHTML = '<div class="p-2 text-muted small">Chưa có mục nào.</div>';
+        return;
+    }
+
+    const doneCount = items.filter(x => x.done).length;
+    const header = `<div class="checklist-progress small text-muted mb-2">${doneCount}/${items.length} đã xong</div>`;
+
+    list.innerHTML = header + items.map(it => {
+        const safeId = escapeHtml(escapeJs(it.id));
+        return `<div class="checklist-item${it.done ? ' is-done' : ''}">
+            <label class="d-flex align-items-center gap-2 flex-grow-1" style="cursor:pointer; margin:0;">
+                <input type="checkbox" ${it.done ? 'checked' : ''} onchange="toggleChecklistItemAction('${safeId}', this.checked)">
+                <span class="checklist-item-text">${escapeHtml(it.text)}</span>
+            </label>
+            <button class="btn btn-sm text-danger border-0" title="Xóa" onclick="deleteChecklistItemAction('${safeId}')">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        </div>`;
+    }).join('');
+}
+
+async function toggleChecklistItemAction(itemId, done) {
+    if (!currentActivityTaskId) return;
+    try {
+        const response = await callGAS('toggleChecklistItem', { taskId: currentActivityTaskId, itemId, done });
+        if (response.status !== 'success') throw new Error(response.message);
+        renderTaskChecklist(response.data || []);
+        refreshTaskListAfterChecklistChange();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        loadTaskChecklist(currentActivityTaskId);
+    }
+}
+
+async function deleteChecklistItemAction(itemId) {
+    if (!currentActivityTaskId) return;
+    try {
+        const response = await callGAS('deleteChecklistItem', { taskId: currentActivityTaskId, itemId });
+        if (response.status !== 'success') throw new Error(response.message);
+        renderTaskChecklist(response.data || []);
+        refreshTaskListAfterChecklistChange();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+// Cập nhật badge "x/y" trên danh sách task mà không phải tải lại cả trang
+function refreshTaskListAfterChecklistChange() {
+    if (typeof loadTasksForProject === 'function' && currentTaskProjectID) {
+        loadTasksForProject(currentTaskProjectID);
+    }
 }
 
 async function loadTaskComments(taskId) {
@@ -2902,6 +3119,9 @@ function openEditTask(id, name, status, priority, dueDate, assigneesStr, descrip
     const sourceTask = (globalAllTasks || []).find(t => t.id === id);
     editingTaskBaseUpdatedAt = sourceTask ? (sourceTask.updated_at || null) : null;
 
+    const labelsInput = document.getElementById('new-task-labels');
+    if (labelsInput) labelsInput.value = sourceTask ? (sourceTask.labels || '') : '';
+
     document.getElementById('task-id').value = id;
     document.getElementById('new-task-name').value = name;
     document.getElementById('new-task-status').value = status;
@@ -2972,6 +3192,7 @@ async function handleTaskFormSubmit(e) {
         description: document.getElementById('new-task-desc').value,
         parentTaskId: document.getElementById('new-task-parent-id').value || null,
         blockedBy: selectedBlockers,
+        labels: normalizeLabels(document.getElementById('new-task-labels') ? document.getElementById('new-task-labels').value : ''),
         baseUpdatedAt: editingTaskBaseUpdatedAt
     };
 
@@ -3106,6 +3327,52 @@ function getDueDateBadge(dueDate, status) {
     if (diffDays < 0) return `<span class="due-badge overdue"><i class="fa-solid fa-triangle-exclamation"></i> Quá hạn</span>`;
     if (diffDays <= 2) return `<span class="due-badge due-soon"><i class="fa-regular fa-clock"></i> Sắp đến hạn</span>`;
     return '';
+}
+
+// Badge tiến độ checklist, ví dụ "3/5" — chỉ hiện khi task có checklist
+function getChecklistBadge(task) {
+    const list = Array.isArray(task.checklist) ? task.checklist : [];
+    if (list.length === 0) return '';
+    const done = list.filter(x => x && x.done).length;
+    const allDone = done === list.length;
+    return `<span class="checklist-badge${allDone ? ' is-complete' : ''}" title="Danh sách kiểm: ${done}/${list.length} xong"><i class="fa-regular fa-square-check"></i> ${done}/${list.length}</span>`;
+}
+
+//  NHÃN CÔNG VIỆC
+// Chuẩn hóa chuỗi nhãn người dùng gõ: bỏ khoảng trắng thừa, bỏ rỗng, bỏ trùng (không phân biệt hoa thường)
+function normalizeLabels(raw) {
+    const seen = new Set();
+    const out = [];
+    String(raw || '').split(',').forEach(part => {
+        const label = part.trim();
+        if (!label) return;
+        const key = label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(label);
+    });
+    return out.join(', ');
+}
+
+function parseLabels(value) {
+    return String(value || '').split(',').map(x => x.trim()).filter(Boolean);
+}
+
+// Màu chip suy ra từ chính tên nhãn để cùng một nhãn luôn có cùng màu ở mọi nơi
+function labelHue(label) {
+    let hash = 0;
+    const s = String(label).toLowerCase();
+    for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) % 360;
+    return hash;
+}
+
+function renderLabelChips(labelsValue) {
+    const labels = parseLabels(labelsValue);
+    if (labels.length === 0) return '';
+    return labels.map(l => {
+        const hue = labelHue(l);
+        return `<span class="task-label-chip" style="--label-hue:${hue};">${escapeHtml(l)}</span>`;
+    }).join('');
 }
 
 // Badge "Bị chặn": hiện khi task còn công việc phụ thuộc (blocked_by) chưa Done
@@ -5015,6 +5282,43 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    //  8.9a TÌM KIẾM TOÀN CỤC: phím tắt + ô nhập
+    const searchPaletteInput = document.getElementById('search-palette-input');
+    if (searchPaletteInput) {
+        searchPaletteInput.addEventListener('input', function () {
+            onSearchPaletteInput(this.value);
+        });
+        searchPaletteInput.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); moveSearchSelection(1); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); moveSearchSelection(-1); }
+            else if (e.key === 'Enter') { e.preventDefault(); if (searchPaletteIndex >= 0) activateSearchResult(searchPaletteIndex); }
+            else if (e.key === 'Escape') { e.preventDefault(); closeSearchPalette(); }
+        });
+    }
+
+    const searchPaletteEl = document.getElementById('search-palette');
+    if (searchPaletteEl) {
+        // Bấm ra vùng nền tối thì đóng, bấm trong hộp thì không
+        searchPaletteEl.addEventListener('mousedown', function (e) {
+            if (e.target === searchPaletteEl) closeSearchPalette();
+        });
+    }
+
+    document.addEventListener('keydown', function (e) {
+        const key = (e.key || '').toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && key === 'k') {
+            e.preventDefault();
+            const palette = document.getElementById('search-palette');
+            if (palette && palette.style.display !== 'none') closeSearchPalette();
+            else openSearchPalette();
+            return;
+        }
+        if (key === 'escape') {
+            const palette = document.getElementById('search-palette');
+            if (palette && palette.style.display !== 'none') closeSearchPalette();
+        }
+    });
+
     //  8.9b FORM CẤP QUYỀN TRƯỚC CHO NGƯỜI DÙNG (ADMIN)
     const provisionUserForm = document.getElementById('provision-user-form');
     if (provisionUserForm) {
@@ -5036,6 +5340,27 @@ document.addEventListener('DOMContentLoaded', function () {
                 showToast(response.data || response.message, 'success');
                 provisionUserForm.reset();
                 if (typeof loadAdminUsersTable === 'function') loadAdminUsersTable();
+            } catch (err) {
+                showToast('Lỗi: ' + err.message, 'error');
+            }
+        });
+    }
+
+    //  8.9c FORM THÊM MỤC VÀO DANH SÁCH KIỂM
+    const checklistForm = document.getElementById('task-checklist-form');
+    if (checklistForm) {
+        checklistForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('task-checklist-input');
+            const text = input ? input.value.trim() : '';
+            if (!text || !currentActivityTaskId) return;
+
+            try {
+                const response = await callGAS('addChecklistItem', { taskId: currentActivityTaskId, text });
+                if (response.status !== 'success') throw new Error(response.message);
+                if (input) input.value = '';
+                renderTaskChecklist(response.data || []);
+                refreshTaskListAfterChecklistChange();
             } catch (err) {
                 showToast('Lỗi: ' + err.message, 'error');
             }

@@ -1040,6 +1040,47 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 .task-comment-content { color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
 .task-history-content { color: var(--text-secondary); }
 
+/* --- Bảng tìm kiếm toàn cục (Ctrl/Cmd + K) --- */
+.search-palette {
+  position: fixed; inset: 0; z-index: 20000;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 12vh 16px 16px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px);
+}
+.search-palette-box {
+  width: 100%; max-width: 620px; max-height: 70vh; display: flex; flex-direction: column;
+  background: var(--card-bg); border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-modal); overflow: hidden;
+  animation: dropdownPop 0.15s ease;
+}
+.search-palette-input-row {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color); color: var(--text-secondary);
+}
+.search-palette-input-row input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-size: 1.05rem; font-family: inherit; color: var(--text-primary);
+}
+.search-palette-esc {
+  font-size: var(--text-2xs); padding: 2px 7px; border-radius: var(--radius-sm);
+  background: var(--hover-bg); border: 1px solid var(--border-color); color: var(--text-muted);
+}
+.search-palette-results { overflow-y: auto; padding: 6px; }
+.search-palette-hint { padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: var(--text-sm); }
+.search-palette-group {
+  padding: 8px 12px 4px; font-size: var(--text-2xs); font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);
+}
+.search-palette-item {
+  display: flex; align-items: center; gap: 12px; padding: 9px 12px;
+  border-radius: var(--radius-sm); cursor: pointer; color: var(--text-primary);
+}
+.search-palette-item.is-active { background: color-mix(in srgb, var(--gold) 14%, var(--card-bg)); }
+.search-palette-item > i { color: var(--text-muted); width: 16px; text-align: center; }
+.search-palette-item-text { min-width: 0; flex: 1; }
+.search-palette-item-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search-palette-item-sub { font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* --- Chấm báo trạng thái đồng bộ trực tiếp --- */
 .realtime-indicator {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
@@ -1058,6 +1099,40 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
   border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;
 }
 #bulk-select-toggle.active { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+
+/* --- Danh sách kiểm trong task --- */
+.task-checklist-list { max-height: 300px; overflow-y: auto; }
+.checklist-item {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin-bottom: 6px;
+  background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+}
+.checklist-item.is-done .checklist-item-text { text-decoration: line-through; color: var(--text-muted); }
+.checklist-item-text { color: var(--text-primary); }
+.checklist-item input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--success-color); }
+
+/* --- Chip nhãn công việc (màu suy ra từ tên nhãn qua --label-hue) --- */
+.task-label-chip {
+  display: inline-block; margin: 3px 4px 0 0; padding: 1px 9px;
+  border-radius: var(--radius-pill); font-size: var(--text-2xs); font-weight: 700;
+  background: hsl(var(--label-hue, 40) 60% 50% / 0.16);
+  color: hsl(var(--label-hue, 40) 70% 38%);
+  border: 1px solid hsl(var(--label-hue, 40) 60% 50% / 0.32);
+  white-space: nowrap; vertical-align: middle;
+}
+[data-theme="dark"] .task-label-chip { color: hsl(var(--label-hue, 40) 70% 72%); }
+.kanban-card-labels { margin-bottom: 6px; }
+
+/* --- Badge tiến độ danh sách kiểm --- */
+.checklist-badge {
+  display: inline-block; margin-left: 6px; padding: 2px 8px;
+  border-radius: var(--radius-pill); font-size: var(--text-2xs); font-weight: 700;
+  background: var(--hover-bg); color: var(--text-secondary);
+  white-space: nowrap; vertical-align: middle;
+}
+.checklist-badge.is-complete {
+  background: color-mix(in srgb, var(--success-color) 16%, var(--card-bg));
+  color: var(--success-color);
+}
 
 /* --- Badge "Bị chặn" (dependency) --- */
 .blocked-badge {
