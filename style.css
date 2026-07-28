@@ -67,6 +67,15 @@
   --font-body: 'Jost', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'DM Mono', monospace;
 
+  /* Type scale — consolidates ~20 near-duplicate ad-hoc sizes (0.78rem/0.82rem/0.88rem/0.92rem/14.5px...)
+     that all served the same role into one deliberate ladder. Left untouched: badge/table/calendar cells
+     and the 576px crowded header, which are pixel-tuned against a specific overflow constraint. */
+  --text-2xs: 0.75rem;    /* 12px — uppercase labels, table headers, small badges */
+  --text-xs: 0.8125rem;   /* 13px — meta text, timestamps, secondary captions */
+  --text-sm: 0.875rem;    /* 14px — form labels, compact buttons, list rows */
+  --text-base: 0.9375rem; /* 15px — body default */
+  --heading-sm: 1.05rem;  /* 16.8px — small widget/panel headers (chat, calendar, today-events) */
+
   /* Motion — opacity/transform only, no bounce/spring */
   --transition-fast: all 0.15s ease;
   --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -391,8 +400,8 @@ body[data-module="science"] .text-primary { color: var(--science-accent-text) !i
 .status-offline { background-color: var(--text-muted); }
 
 .member-info { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.member-name { font-weight: 700; font-size: 0.9rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.member-status-text { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+.member-name { font-weight: 700; font-size: var(--text-sm); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-status-text { font-size: var(--text-2xs); color: var(--text-secondary); margin-top: 2px; }
 .text-online { color: var(--success-color); font-weight: 600; }
 
 /* ---------------------------------------------------------------------- */
@@ -491,7 +500,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 /* --- Inputs & Forms --- */
 .form-group { margin-bottom: 20px; position: relative; }
 
-label { font-weight: 600; margin-bottom: 8px; display: block; color: var(--text-secondary); font-size: 0.88rem; }
+label { font-weight: 600; margin-bottom: 8px; display: block; color: var(--text-secondary); font-size: var(--text-sm); }
 
 .text-input, textarea, select, input[type="text"], input[type="password"], input[type="number"], input[type="date"],
 input.text-input, select.text-input, .form-select, .form-control {
@@ -546,11 +555,11 @@ select.text-input option:checked { background-color: var(--hover-bg); color: var
   border: 1px solid var(--border-color);
 }
 
-.data-table { width: 100%; border-collapse: collapse; font-size: 14.5px; background: transparent; }
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--text-base); background: transparent; }
 .data-table th {
   background: var(--card-bg); color: var(--text-secondary); font-weight: 700;
   padding: 14px 18px; text-align: left;
-  text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;
+  text-transform: uppercase; font-size: var(--text-2xs); letter-spacing: 0.05em;
   border-bottom: 2px solid var(--border-color);
 }
 .data-table td { padding: 14px 18px; border-bottom: 1px solid var(--border-color); vertical-align: middle; color: var(--text-primary); }
@@ -574,11 +583,11 @@ table.table {
   border-color: var(--border-color);
 }
 table.table th, table.table td { background-color: transparent; border-bottom: 1px solid var(--border-color); color: var(--text-primary); vertical-align: middle; }
-table.table thead th { background: var(--card-bg); border-bottom: 2px solid var(--border-color); color: var(--text-secondary); font-weight: 700; text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.05em; }
+table.table thead th { background: var(--card-bg); border-bottom: 2px solid var(--border-color); color: var(--text-secondary); font-weight: 700; text-transform: uppercase; font-size: var(--text-2xs); letter-spacing: 0.05em; }
 table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: var(--text-primary); }
 
 .monday-table { width: 100%; border-collapse: separate; border-spacing: 0 10px; }
-.monday-table th { text-align: left; padding: 8px 15px; color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.monday-table th { text-align: left; padding: 8px 15px; color: var(--text-secondary); font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .monday-table tbody tr { transition: var(--transition-fast); background: var(--card-bg); border-radius: var(--radius-md); box-shadow: var(--shadow-soft); }
 .monday-table tbody tr:hover { background: var(--hover-bg); }
 .monday-table td { padding: 14px 15px; vertical-align: middle; color: var(--text-primary); border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); background: transparent; }
@@ -667,7 +676,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 
 .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border-color); }
-.calendar-header h2 { font-size: 1.1rem; font-weight: 800; color: var(--text-primary); margin: 0; text-transform: capitalize; }
+.calendar-header h2 { font-size: var(--heading-sm); font-weight: 800; color: var(--text-primary); margin: 0; text-transform: capitalize; }
 
 .btn-nav-month {
   background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm);
@@ -677,7 +686,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .btn-nav-month:hover { background: var(--border-color); color: var(--text-primary); }
 
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.calendar-day-name { text-align: center; font-weight: 700; color: var(--text-secondary); font-size: 0.78rem; padding-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+.calendar-day-name { text-align: center; font-weight: 700; color: var(--text-secondary); font-size: var(--text-2xs); padding-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
 
 .calendar-day {
   height: 78px;
@@ -699,7 +708,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .calendar-day.selected .event-dot { background-color: var(--card-bg); }
 
 .today-events-widget { min-height: 380px; background: var(--card-bg); border-radius: var(--radius-lg); border: 1px solid var(--border-color); box-shadow: var(--shadow-soft); padding: 22px; }
-.today-events-widget h3 { font-size: 1.05rem; font-weight: 800; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+.today-events-widget h3 { font-size: var(--heading-sm); font-weight: 800; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
 .today-events-widget h3::before { content: '\f073'; font-family: "Font Awesome 6 Free"; font-weight: 900; color: var(--text-secondary); }
 
 .event-item {
@@ -712,10 +721,10 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .event-item.important { border-left-color: var(--danger-color); background: color-mix(in srgb, var(--danger-color) 8%, var(--hover-bg)); }
 .event-item.important:hover { background: color-mix(in srgb, var(--danger-color) 14%, var(--hover-bg)); }
 
-.event-time { font-size: 0.82rem; font-weight: 800; color: var(--text-primary); margin-bottom: 6px; }
+.event-time { font-size: var(--text-xs); font-weight: 800; color: var(--text-primary); margin-bottom: 6px; }
 .event-item.important .event-time { color: var(--danger-color); }
 .event-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); line-height: 1.4; margin-bottom: 6px; }
-.event-meta { font-size: 0.82rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+.event-meta { font-size: var(--text-xs); color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
 
 .btn-delete-event-mini {
   position: absolute; top: 12px; right: 12px; border: none; background: transparent;
@@ -737,7 +746,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
   border-left: 4px solid var(--success-color);
   display: flex; align-items: center; justify-content: space-between;
   animation: toastSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  font-size: 14.5px; font-weight: 600; color: var(--text-primary);
+  font-size: var(--text-base); font-weight: 600; color: var(--text-primary);
   pointer-events: auto;
 }
 .custom-toast.success { border-left-color: var(--success-color); }
@@ -796,7 +805,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 
 .chat-header {
   background: var(--primary-color); color: var(--card-bg);
-  padding: 14px 18px; font-weight: 700; font-size: 1.05rem;
+  padding: 14px 18px; font-weight: 700; font-size: var(--heading-sm);
   display: flex; justify-content: space-between; align-items: center;
 }
 .close-chat-btn {
@@ -807,7 +816,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 .close-chat-btn:hover { background: var(--danger-color); }
 
-.online-count { font-size: 0.78rem; font-weight: 600; background: rgba(255,255,255,0.2); padding: 3px 10px; border-radius: var(--radius-pill); margin-left: 10px; }
+.online-count { font-size: var(--text-2xs); font-weight: 600; background: rgba(255,255,255,0.2); padding: 3px 10px; border-radius: var(--radius-pill); margin-left: 10px; }
 
 .messages-list { flex: 1; padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 
@@ -820,20 +829,20 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .msg-me .msg-name { color: rgba(255,255,255,0.75); text-align: right; }
 
 .msg-bubble.pinned { border: 2px solid var(--warning-color); background: color-mix(in srgb, var(--warning-color) 12%, var(--card-bg)); color: var(--text-primary); }
-.pinned-icon { color: var(--warning-color); margin-right: 6px; font-size: 13px; }
+.pinned-icon { color: var(--warning-color); margin-right: 6px; font-size: var(--text-xs); }
 .pinned-msg-item { background: color-mix(in srgb, var(--warning-color) 8%, var(--card-bg)); border-left: 4px solid var(--warning-color); padding: 12px; margin-bottom: 12px; border-radius: var(--radius-sm); font-size: 0.9em; border: 1px solid var(--border-color); }
 
-.reply-quote { background: var(--hover-bg); border-left: 3px solid var(--primary-color); padding: 6px 10px; margin-bottom: 8px; border-radius: 4px; font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; }
+.reply-quote { background: var(--hover-bg); border-left: 3px solid var(--primary-color); padding: 6px 10px; margin-bottom: 8px; border-radius: 4px; font-size: var(--text-xs); color: var(--text-secondary); display: flex; flex-direction: column; }
 .msg-me .reply-quote { background: rgba(255,255,255,0.15); border-left-color: rgba(255,255,255,0.7); color: rgba(255,255,255,0.9); }
 
-.msg-time { font-size: 0.7rem; color: var(--text-muted); margin-top: 5px; display: block; text-align: right; }
+.msg-time { font-size: var(--text-2xs); color: var(--text-muted); margin-top: 5px; display: block; text-align: right; }
 .msg-me .msg-time { color: rgba(255,255,255,0.7); font-weight: 600; }
 
 .msg-container { position: relative; }
 .msg-actions { display: inline-block; margin-left: 10px; opacity: 0; transition: opacity 0.2s; }
 .msg-container:hover .msg-actions { opacity: 1; }
 
-.pin-btn, .emoji-btn { cursor: pointer; font-size: 12px; color: var(--text-secondary); background: var(--hover-bg); padding: 4px 8px; border-radius: var(--radius-pill); border: 1px solid var(--border-color); transition: var(--transition-fast); }
+.pin-btn, .emoji-btn { cursor: pointer; font-size: var(--text-2xs); color: var(--text-secondary); background: var(--hover-bg); padding: 4px 8px; border-radius: var(--radius-pill); border: 1px solid var(--border-color); transition: var(--transition-fast); }
 .pin-btn:hover, .emoji-btn:hover { background: var(--primary-color); color: var(--card-bg); border-color: var(--primary-color); }
 
 /* Popup thả cảm xúc: chưa từng có CSS, trước đây hiện ra như hàng emoji trần không khung/định vị */
@@ -851,13 +860,13 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .emoji-picker-popup .emoji-btn:hover { background: var(--hover-bg); transform: scale(1.15); }
 
 .chat-input-area { padding: 14px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; background: var(--card-bg); }
-.chat-input-area input { flex: 1; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-pill); outline: none; background: var(--hover-bg); transition: var(--transition-fast); font-size: 14.5px; }
+.chat-input-area input { flex: 1; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-pill); outline: none; background: var(--hover-bg); transition: var(--transition-fast); font-size: var(--text-base); }
 .chat-input-area input:focus { background: var(--card-bg); border-color: var(--text-secondary); }
 .chat-input-area button { background: var(--primary-color); color: var(--card-bg); border: none; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; transition: var(--transition-fast); display: flex; align-items: center; justify-content: center; font-size: 15px; }
 .chat-input-area button:hover:not(:disabled) { background: var(--primary-hover); }
 .chat-input-area button:disabled { background: var(--text-muted); cursor: not-allowed; }
 
-#reply-preview-bar { background: var(--hover-bg); padding: 10px 15px; border-top: 1px solid var(--border-color); display: none; justify-content: space-between; align-items: center; font-size: 0.88rem; border-left: 4px solid var(--primary-color); }
+#reply-preview-bar { background: var(--hover-bg); padding: 10px 15px; border-top: 1px solid var(--border-color); display: none; justify-content: space-between; align-items: center; font-size: var(--text-sm); border-left: 4px solid var(--primary-color); }
 
 /* ---------------------------------------------------------------------- */
 /* 9. MODALS, DROPDOWNS & UTILITIES                                        */
@@ -916,7 +925,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 
 .view-btn {
   background: var(--hover-bg); border: 1px solid var(--border-color); color: var(--text-secondary);
-  padding: 7px 15px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 600; font-size: 0.88rem;
+  padding: 7px 15px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 600; font-size: var(--text-sm);
   transition: var(--transition-fast);
 }
 .view-btn:hover { background: var(--border-color); color: var(--text-primary); }
@@ -936,8 +945,8 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 .task-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
 
-.task-card .card-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.92rem; color: var(--text-primary); font-weight: 500; }
-.task-card .card-label { font-weight: 700; color: var(--text-muted); font-size: 0.78rem; min-width: 80px; text-transform: uppercase; letter-spacing: 0.04em; }
+.task-card .card-row { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-sm); color: var(--text-primary); font-weight: 500; }
+.task-card .card-label { font-weight: 700; color: var(--text-muted); font-size: var(--text-2xs); min-width: 80px; text-transform: uppercase; letter-spacing: 0.04em; }
 .task-card .task-title { font-size: 1.1rem; font-weight: 800; color: var(--text-primary); margin: 0 0 4px 0; line-height: 1.4; }
 
 .multiselect-container { position: relative; width: 100%; }
@@ -965,7 +974,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 /* --- Badges --- */
 .status-badge, .priority-badge {
   display: block; width: 100%; text-align: center; color: #120F0A;
-  padding: 7px 0; border-radius: var(--radius-pill); font-size: 0.78rem; font-weight: 700;
+  padding: 7px 0; border-radius: var(--radius-pill); font-size: var(--text-2xs); font-weight: 700;
   letter-spacing: 0.03em; cursor: pointer; transition: var(--transition-fast);
 }
 .status-badge:hover, .priority-badge:hover { filter: brightness(1.08); }
@@ -1158,7 +1167,7 @@ body.has-custom-bg .auth-card { background: rgba(253, 250, 246, 0.96); }
 .auth-success-icon { font-size: 54px; color: var(--success-color); margin-bottom: 16px; }
 @keyframes auth-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.auth-error-message { color: var(--danger-color); text-align: center; margin-top: 10px; font-size: 0.88rem; }
+.auth-error-message { color: var(--danger-color); text-align: center; margin-top: 10px; font-size: var(--text-sm); }
 
 /* Auth pages reuse the shared toast component but need it centered top for this dark hero layout */
 body.auth-page #toast-container { left: 50%; right: auto; top: 20px; transform: translateX(-50%); }
