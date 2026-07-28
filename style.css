@@ -192,6 +192,12 @@ html { scroll-behavior: smooth; }
   }
 }
 
+/* Loading spinners (fa-spin) were unstyled everywhere — picked up the browser's default
+   icon color instead of the module accent, reading as unfinished during every data fetch. */
+.fa-spin { color: var(--text-muted); opacity: 0.85; }
+body[data-module="finance"] .fa-spin { color: var(--finance-accent); }
+body[data-module="science"] .fa-spin { color: var(--science-accent); }
+
 body {
   font-family: var(--font-body);
   font-weight: 300;
@@ -1032,7 +1038,7 @@ div:where(.swal2-container) { z-index: 99999 !important; }
   #user-display.dropdown-toggle::after { display: none; }
   .user-info > .btn-link, .user-info .dropdown > .btn-link { padding: 4px 8px; }
   #logout-btn { padding: 7px 12px; font-size: 13px; white-space: nowrap; }
-  #theme-toggle-btn { width: 34px; height: 34px; }
+  #theme-toggle-btn { width: 36px; height: 36px; }
   #auto-theme-btn { padding: 5px 8px !important; font-size: 9px !important; }
 
   #right-sidebar { width: calc(100% - 32px); right: 16px; left: 16px; top: calc(var(--header-height) + 12px); }
@@ -1060,7 +1066,7 @@ div:where(.swal2-container) { z-index: 99999 !important; }
   .user-info .fs-5 { font-size: 1.05rem !important; }
   #user-display { padding: 4px 5px; }
   #logout-btn { padding: 6px 9px; font-size: 12px; }
-  #theme-toggle-btn { width: 30px; height: 30px; font-size: 13px; }
+  #theme-toggle-btn { width: 32px; height: 32px; font-size: 13px; }
   #auto-theme-btn { padding: 4px 6px !important; font-size: 8.5px !important; }
 
   .calendar-day { height: 56px; font-size: 0.85rem; }
