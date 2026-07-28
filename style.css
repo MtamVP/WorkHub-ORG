@@ -1100,6 +1100,17 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 }
 #bulk-select-toggle.active { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
 
+/* --- Tuổi mục trong thùng rác --- */
+.trash-age { font-size: var(--text-2xs); color: var(--text-muted); }
+.trash-age.is-old { color: var(--danger-color); font-weight: 700; }
+
+/* --- Thanh khối lượng công việc --- */
+.workload-bar {
+  height: 4px; margin-top: 5px; border-radius: var(--radius-pill);
+  background: var(--hover-bg); overflow: hidden; max-width: 220px;
+}
+.workload-bar > span { display: block; height: 100%; background: var(--gold); border-radius: inherit; }
+
 /* --- Danh sách kiểm trong task --- */
 .task-checklist-list { max-height: 300px; overflow-y: auto; }
 .checklist-item {

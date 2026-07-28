@@ -131,9 +131,14 @@ const API = {
         }
     },
     project: {
-        list: async (groupKey, searchName = "") => {
+        // includeArchived: 'active' (mặc định) chỉ lấy dự án đang chạy, 'archived' chỉ lấy đã lưu trữ,
+        // 'all' lấy cả hai. Mặc định phải là 'active' để dự án lưu trữ không lọt vào dropdown chọn dự án.
+        list: async (groupKey, searchName = "", archiveScope = 'active') => {
             if (!sbClient) return [];
             let query = sbClient.from('projects').select('*, users!owner_id(nickname)').is('deleted_at', null).order('updated_at', { ascending: false }).limit(300);
+
+            if (archiveScope === 'active') query = query.is('archived_at', null);
+            else if (archiveScope === 'archived') query = query.not('archived_at', 'is', null);
 
             if (groupKey === 'all') {
                 query = query.or('group_key.eq.all,is_shared.eq.true');
@@ -158,6 +163,7 @@ const API = {
                 lastUpdated: p.updated_at,
                 isShared: p.is_shared,
                 originGroup: p.group_key,
+                archivedAt: p.archived_at,
                 overdueCount: 0,
                 dueSoonCount: 0
             }));
@@ -219,6 +225,15 @@ const API = {
             if (error) throw error;
             return `Đã chia sẻ ${data.name} thành công!`;
         },
+        // Lưu trữ ≠ xóa: dự án xong việc được cất khỏi danh sách chính nhưng vẫn nguyên vẹn,
+        // không vào thùng rác, task bên trong không bị đụng tới.
+        setArchived: async (projectId, archived) => {
+            const { data, error } = await sbClient.from('projects')
+                .update({ archived_at: archived ? new Date().toISOString() : null })
+                .eq('id', projectId).select('name').single();
+            if (error) throw error;
+            return archived ? `Đã lưu trữ "${data.name}".` : `Đã đưa "${data.name}" trở lại danh sách đang chạy.`;
+        },
         delete: async (projectId, groupKey) => {
             // Chỉ cascade xóa những task CHƯA có trong thùng rác — giữ nguyên deleted_at gốc
             // của task đã bị xóa riêng từ trước, và đánh dấu deleted_by_cascade để restore
@@ -232,8 +247,8 @@ const API = {
             if (error) throw error;
             return `Đã đưa ${data.name} vào thùng rác!`;
         },
-        listWithStats: async (groupKey, searchName = "") => {
-            const projects = await API.project.list(groupKey, searchName);
+        listWithStats: async (groupKey, searchName = "", archiveScope = 'active') => {
+            const projects = await API.project.list(groupKey, searchName, archiveScope);
             if (!projects || projects.length === 0) return [];
             
             const projectIds = projects.map(p => p.id);
@@ -385,6 +400,62 @@ const API = {
             });
 
             return mine;
+        },
+        // Khối lượng theo người: đếm việc đang mở của từng người trong nhóm.
+        // Một task giao cho nhiều người sẽ được tính cho tất cả những người đó.
+        workload: async (groupKey) => {
+            if (!sbClient) return [];
+
+            let projectQuery = sbClient.from('projects').select('id').is('deleted_at', null).is('archived_at', null);
+            if (groupKey && groupKey !== 'all') projectQuery = projectQuery.eq('group_key', groupKey);
+            const { data: projects } = await projectQuery;
+            if (!projects || projects.length === 0) return [];
+            const projectIds = projects.map(p => p.id);
+
+            const { data: tasks, error } = await sbClient.from('tasks')
+                .select('assignees, status, priority, due_date')
+                .is('deleted_at', null)
+                .in('project_id', projectIds)
+                .not('status', 'eq', 'Done')
+                .limit(2000);
+            if (error) throw error;
+
+            const { data: users } = await sbClient.from('users').select('email, nickname');
+            const nameByEmail = {};
+            (users || []).forEach(u => { if (u.email) nameByEmail[u.email.toLowerCase()] = u.nickname; });
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const buckets = {};
+
+            (tasks || []).forEach(t => {
+                const emails = String(t.assignees || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+                const targets = emails.length > 0 ? emails : ['__unassigned__'];
+
+                targets.forEach(email => {
+                    if (!buckets[email]) {
+                        buckets[email] = {
+                            email: email === '__unassigned__' ? '' : email,
+                            name: email === '__unassigned__' ? 'Chưa giao ai' : (nameByEmail[email] || email.split('@')[0]),
+                            total: 0, notStarted: 0, working: 0, stuck: 0, overdue: 0, highPriority: 0
+                        };
+                    }
+                    const b = buckets[email];
+                    b.total++;
+
+                    const status = String(t.status || '').toLowerCase();
+                    if (status === 'working on it') b.working++;
+                    else if (status === 'stuck') b.stuck++;
+                    else b.notStarted++;
+
+                    if (t.priority === 'Critical' || t.priority === 'High') b.highPriority++;
+                    // due_date là timestamptz nên phải cắt lấy phần ngày trước khi ghép giờ,
+                    // nối thẳng chuỗi gốc sẽ tạo ra Invalid Date và không bao giờ đếm được quá hạn.
+                    if (t.due_date && new Date(t.due_date.slice(0, 10) + 'T00:00:00') < today) b.overdue++;
+                });
+            });
+
+            return Object.values(buckets).sort((a, b) => b.total - a.total);
         },
         delete: async (taskId, projectId, groupKey) => {
             // Tương tự project.delete: chỉ cascade xóa subtask CHƯA có trong thùng rác
@@ -767,12 +838,15 @@ const API = {
 
                     (dueTasks || []).forEach(t => {
                         if (String(t.status).toLowerCase() === 'done') return;
+                        // due_date là timestamptz: phải cắt lấy phần ngày rồi mới ghép giờ,
+                        // nối thẳng chuỗi gốc cho ra Invalid Date và task biến mất khỏi lịch.
+                        const dueDay = String(t.due_date).slice(0, 10);
                         results.push({
                             id: 'TASK_' + t.id,
                             taskId: t.id,
                             title: t.name,
-                            startTime: t.due_date + 'T00:00:00',
-                            endTime: t.due_date + 'T23:59:59',
+                            startTime: dueDay + 'T00:00:00',
+                            endTime: dueDay + 'T23:59:59',
                             isImportant: t.priority === 'Critical' || t.priority === 'High',
                             location: '',
                             description: '',
@@ -1284,7 +1358,7 @@ const MUTATING_ACTIONS = new Set([
     'saveTask', 'deleteTask', 'reorderTasks', 'bulkUpdateTaskStatus', 'bulkDeleteTasks',
     'uploadFileToTask', 'deleteFileFromTask', 'addTaskComment',
     'addChecklistItem', 'toggleChecklistItem', 'deleteChecklistItem',
-    'createProject', 'updateProject', 'shareProject', 'deleteProject',
+    'createProject', 'updateProject', 'shareProject', 'deleteProject', 'setProjectArchived',
     'addMilestone', 'toggleMilestone', 'deleteMilestone',
     'createEvent', 'updateEvent', 'deleteEvent', 'toggleImportant',
     'uploadFile', 'deleteFile', 'shareFile',
@@ -1326,8 +1400,9 @@ window.callGAS = async function(action, params = {}) {
             case 'deleteEvent': result = await API.calendar.deleteEvent(params.eventId, params.calendarType, params.groupKey, params.email); break;
             case 'toggleImportant': result = await API.calendar.toggleImportant(params.eventId, params.isImportant, params.calendarType, params.groupKey, params.email); break;
 
-            case 'getProjectList': result = await API.project.list(params.groupKey, params.searchName); break;
-            case 'getProjectListWithTaskStats': result = await API.project.listWithStats(params.groupKey, params.searchName); break;
+            case 'getProjectList': result = await API.project.list(params.groupKey, params.searchName, params.archiveScope); break;
+            case 'getProjectListWithTaskStats': result = await API.project.listWithStats(params.groupKey, params.searchName, params.archiveScope); break;
+            case 'setProjectArchived': result = await API.project.setArchived(params.projectId, params.archived); break;
             case 'createProject': result = await API.project.create(params, params.groupKey); break;
             case 'updateProject': result = await API.project.updateNote(params.projectId, { status: params.status, description: params.description }, params.groupKey); break;
             case 'shareProject': result = await API.project.share(params.projectId, params.groupKey); break;
@@ -1340,6 +1415,7 @@ window.callGAS = async function(action, params = {}) {
 
             case 'getTaskList': result = await API.task.list(params.projectId, params.groupKey); break;
             case 'listMyTasks': result = await API.task.listMine(params.email, params.groupKey); break;
+            case 'getWorkload': result = await API.task.workload(params.groupKey); break;
             case 'globalSearch': result = await API.search.global(params.query, params.groupKey); break;
             case 'getChecklist': result = await API.task.getChecklist(params.taskId); break;
             case 'addChecklistItem': result = await API.task.addChecklistItem(params.taskId, params.text); break;

@@ -1321,6 +1321,8 @@ window.showToast = function (message, type = 'success') {
  */
 
 let currentTaskProjectID = null;
+// Bảng Tiến độ đang xem dự án đang chạy hay dự án đã lưu trữ
+let showArchivedProjects = false;
 // Cache toàn bộ dự án đã fetch lần gần nhất — để lọc/sắp xếp ở client mà không cần
 // gọi lại API mỗi khi đổi dropdown filter/sort (trước đây loadProgressList() tự fetch riêng).
 let globalAllProjects = [];
@@ -1355,7 +1357,8 @@ async function loadProjectOverview() {
     try {
         const response = await callGAS("getProjectList", {
             filters: {},
-            groupKey: activeGroup
+            groupKey: activeGroup,
+            archiveScope: showArchivedProjects ? 'archived' : 'active'
         });
 
         if (response.status === 'success') {
@@ -1509,6 +1512,9 @@ function renderProgressTable() {
             <td class="small">${escapeHtml(p.lastUpdated)}</td>
             <td class="small fw-bold">${escapeHtml(p.owner)}</td>
             <td class="text-center text-nowrap">
+                <button class="btn btn-sm text-secondary border-0" onclick="toggleProjectArchive('${safeIdArg}', '${safeNameArg}', ${p.archivedAt ? 'false' : 'true'})" title="${p.archivedAt ? 'Đưa trở lại danh sách đang chạy' : 'Lưu trữ dự án'}">
+                    <i class="fa-solid ${p.archivedAt ? 'fa-box-open' : 'fa-box-archive'}"></i>
+                </button>
                 <button class="btn btn-sm text-warning border-0" onclick="openMilestonesModal('${safeIdArg}', '${safeNameArg}')" title="Cột mốc dự án">
                     <i class="fa-solid fa-flag-checkered"></i>
                 </button>
@@ -1527,6 +1533,98 @@ function renderProgressTable() {
 // rồi vẽ lại. Giữ tên cũ để không phải sửa mọi nơi đang gọi loadProgressList().
 async function loadProgressList() {
     return loadProjectOverview();
+}
+
+//  XUẤT CSV
+// Bọc ô theo chuẩn RFC 4180: nếu chứa dấu phẩy, nháy kép hay xuống dòng thì bao trong nháy
+// kép và nhân đôi nháy kép bên trong. Không làm vậy thì mô tả có dấu phẩy sẽ vỡ cả cột.
+function csvCell(value) {
+    const s = String(value === null || value === undefined ? '' : value);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function downloadCsv(filename, rows) {
+    const body = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+    // BOM UTF-8: thiếu nó thì Excel trên Windows đọc tiếng Việt thành ký tự lạ
+    const blob = new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function stamp() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+function exportProjectsCsv() {
+    const projects = globalAllProjects || [];
+    if (projects.length === 0) { showToast('Không có dự án nào để xuất.', 'error'); return; }
+
+    const rows = [['Tên dự án', 'Trạng thái', 'Tiến độ (%)', 'Mô tả', 'Chủ dự án', 'Quá hạn', 'Sắp đến hạn', 'Cập nhật lần cuối', 'Lưu trữ']];
+    projects.forEach(p => rows.push([
+        p.name, p.status || '', p.percent || 0, p.description || '', p.owner || '',
+        p.overdueCount || 0, p.dueSoonCount || 0, p.lastUpdated || '', p.archivedAt ? 'Có' : ''
+    ]));
+
+    downloadCsv(`du-an-${stamp()}.csv`, rows);
+    showToast(`Đã xuất ${projects.length} dự án.`, 'success');
+}
+
+function exportTasksCsv() {
+    const tasks = globalAllTasks || [];
+    if (tasks.length === 0) { showToast('Không có công việc nào để xuất.', 'error'); return; }
+
+    const nameById = {};
+    (globalAllTasks || []).forEach(t => { nameById[t.id] = t.name; });
+
+    const rows = [['Tên công việc', 'Trạng thái', 'Ưu tiên', 'Hạn chót', 'Người thực hiện', 'Nhãn', 'Mô tả', 'Thuộc việc cha', 'Bị chặn bởi', 'Danh sách kiểm']];
+    tasks.forEach(t => {
+        const list = Array.isArray(t.checklist) ? t.checklist : [];
+        const blockerNames = String(t.blocked_by || '').split(',').map(x => x.trim()).filter(Boolean)
+            .map(id => nameById[id] || id).join('; ');
+        rows.push([
+            t.name, t.status || '', t.priority || '', t.dueDate || '',
+            (t.assigneeNames || []).join('; ') || t.assignees || '',
+            t.labels || '', t.description || '',
+            t.parent_task_id ? (nameById[t.parent_task_id] || t.parent_task_id) : '',
+            blockerNames,
+            list.length ? `${list.filter(x => x.done).length}/${list.length}` : ''
+        ]);
+    });
+
+    downloadCsv(`cong-viec-${stamp()}.csv`, rows);
+    showToast(`Đã xuất ${tasks.length} công việc.`, 'success');
+}
+
+//  LƯU TRỮ DỰ ÁN
+async function toggleProjectArchive(projectId, projectName, archive) {
+    try {
+        const response = await callGAS('setProjectArchived', { projectId, archived: archive, groupKey: activeGroup });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+function toggleArchivedProjectsView() {
+    showArchivedProjects = !showArchivedProjects;
+    const btn = document.getElementById('toggle-archived-btn');
+    if (btn) {
+        btn.classList.toggle('active', showArchivedProjects);
+        btn.innerHTML = showArchivedProjects
+            ? '<i class="fa-solid fa-box-open me-1"></i> Đang xem: Kho lưu trữ'
+            : '<i class="fa-solid fa-box-archive me-1"></i> Xem kho lưu trữ';
+    }
+    if (typeof loadProjectOverview === 'function') loadProjectOverview();
 }
 
 //  CỘT MỐC DỰ ÁN (MILESTONES)
@@ -2671,6 +2769,52 @@ async function loadMyTasks() {
     } catch (err) {
         container.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
     }
+
+    loadWorkload();
+}
+
+//  KHỐI LƯỢNG CÔNG VIỆC THEO NGƯỜI
+async function loadWorkload() {
+    const tbody = document.getElementById('workload-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></td></tr>';
+
+    try {
+        const response = await callGAS('getWorkload', { groupKey: activeGroup });
+        if (response.status !== 'success') throw new Error(response.message);
+        renderWorkload(response.data || []);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-3">Lỗi: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+function renderWorkload(rows) {
+    const tbody = document.getElementById('workload-table-body');
+    if (!tbody) return;
+
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Không có công việc nào đang mở.</td></tr>';
+        return;
+    }
+
+    const busiest = Math.max(...rows.map(r => r.total), 1);
+
+    tbody.innerHTML = rows.map(r => {
+        // Thanh nền thể hiện tương quan với người đang ôm nhiều việc nhất
+        const share = Math.round((r.total / busiest) * 100);
+        return `<tr>
+            <td class="fw-bold">
+                ${escapeHtml(r.name)}
+                <div class="workload-bar"><span style="width:${share}%"></span></div>
+            </td>
+            <td class="text-center fw-bold">${r.total}</td>
+            <td class="text-center text-muted">${r.notStarted}</td>
+            <td class="text-center">${r.working}</td>
+            <td class="text-center ${r.stuck > 0 ? 'text-danger fw-bold' : 'text-muted'}">${r.stuck}</td>
+            <td class="text-center ${r.overdue > 0 ? 'text-danger fw-bold' : 'text-muted'}">${r.overdue}</td>
+            <td class="text-center ${r.highPriority > 0 ? 'text-warning fw-bold' : 'text-muted'}">${r.highPriority}</td>
+        </tr>`;
+    }).join('');
 }
 
 function renderMyTasks(tasks) {
@@ -5648,6 +5792,28 @@ function showTrashModal() {
     loadTrashItems();
 }
 
+// Số ngày giữ trong thùng rác trước khi khuyến nghị dọn.
+// Chỉ CẢNH BÁO chứ không tự xóa: xóa vĩnh viễn tự động cần tác vụ chạy nền phía server
+// (Cloudflare Worker), không thể làm đáng tin từ trình duyệt vì phải có người mở trang mới chạy.
+const TRASH_RETENTION_DAYS = 30;
+
+function getTrashAgeDays(deletedAt) {
+    if (!deletedAt) return null;
+    const t = new Date(deletedAt).getTime();
+    if (isNaN(t)) return null;
+    return Math.floor((Date.now() - t) / 86400000);
+}
+
+function getTrashAgeInfo(deletedAt) {
+    const days = getTrashAgeDays(deletedAt);
+    if (days === null) return '';
+    if (days >= TRASH_RETENTION_DAYS) {
+        return `<br><span class="trash-age is-old"><i class="fa-solid fa-triangle-exclamation"></i> Đã ${days} ngày — nên dọn</span>`;
+    }
+    if (days >= 1) return `<br><span class="trash-age">${days} ngày trước</span>`;
+    return '';
+}
+
 async function loadTrashItems() {
     const tbody = document.getElementById('trash-list-body');
     const category = document.getElementById('trash-category').value;
@@ -5666,11 +5832,12 @@ async function loadTrashItems() {
                     displayName += ` <br><small class="text-muted"><i class="fa-solid fa-folder-open"></i> Dự án: ${escapeHtml(item.projectName)}</small>`;
                 }
                 let dateStr = item.deleted_at ? new Date(item.deleted_at).toLocaleString('vi-VN') : 'N/A';
-                
+                const ageInfo = getTrashAgeInfo(item.deleted_at);
+
                 html += `
                 <tr>
                   <td>${displayName}</td>
-                  <td>${dateStr}</td>
+                  <td>${dateStr}${ageInfo}</td>
                   <td class="text-center">
                     <button class="btn btn-sm btn-success shadow-sm mb-1" onclick="restoreItemClick('${category}', '${item.id}')">
                       <i class="fa-solid fa-clock-rotate-left"></i> Khôi phục
@@ -5682,12 +5849,57 @@ async function loadTrashItems() {
                 </tr>`;
             });
             tbody.innerHTML = html;
+
+            const oldItems = response.data.filter(x => (getTrashAgeDays(x.deleted_at) || 0) >= TRASH_RETENTION_DAYS);
+            if (oldItems.length > 0) {
+                const ids = oldItems.map(x => x.id).join('|');
+                tbody.insertAdjacentHTML('beforeend', `
+                <tr>
+                  <td colspan="3" class="text-center py-3" style="background: color-mix(in srgb, var(--danger-color) 7%, transparent);">
+                    <span class="me-2">${oldItems.length} mục đã ở thùng rác quá ${TRASH_RETENTION_DAYS} ngày.</span>
+                    <button class="btn btn-sm btn-outline-danger" onclick="purgeOldTrash('${category}', '${ids}')">
+                      <i class="fa-solid fa-broom"></i> Dọn hết
+                    </button>
+                  </td>
+                </tr>`);
+            }
         } else {
             tbody.innerHTML = '<tr><td colspan="3" class="text-center py-5 text-muted">Thùng rác trống.</td></tr>';
         }
     } catch (e) {
         tbody.innerHTML = `<tr><td colspan="3" class="text-center py-5 text-danger">Lỗi tải dữ liệu: ${e.message}</td></tr>`;
     }
+}
+
+// Dọn hàng loạt các mục đã quá hạn giữ. Xóa vĩnh viễn nên bắt gõ xác nhận, không chỉ bấm OK.
+async function purgeOldTrash(category, idsJoined) {
+    const ids = String(idsJoined || '').split('|').filter(Boolean);
+    if (ids.length === 0) return;
+
+    const result = await Swal.fire({
+        title: `Xóa vĩnh viễn ${ids.length} mục?`,
+        html: `Các mục này đã ở thùng rác quá ${TRASH_RETENTION_DAYS} ngày.<br><b>Không thể hoàn tác.</b><br>Gõ <code>XOA</code> để xác nhận:`,
+        icon: 'warning',
+        input: 'text',
+        inputPlaceholder: 'XOA',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        confirmButtonText: 'Xóa vĩnh viễn',
+        cancelButtonText: 'Hủy',
+        inputValidator: (value) => (value || '').trim().toUpperCase() !== 'XOA' ? 'Gõ đúng chữ XOA để xác nhận.' : null
+    });
+    if (!result.isConfirmed) return;
+
+    let ok = 0, fail = 0;
+    for (const id of ids) {
+        try {
+            const r = await callGAS('hardDeleteItem', { tableName: category, id, groupKey: activeGroup });
+            if (r.status === 'success') ok++; else fail++;
+        } catch (err) { fail++; }
+    }
+
+    showToast(fail === 0 ? `Đã dọn ${ok} mục.` : `Đã dọn ${ok} mục, ${fail} mục lỗi.`, fail === 0 ? 'success' : 'error');
+    loadTrashItems();
 }
 
 async function restoreItemClick(category, id) {

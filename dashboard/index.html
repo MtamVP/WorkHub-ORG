@@ -384,6 +384,24 @@
         <div id="mytasks-list" class="task-card-grid">
           <div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>
         </div>
+
+        <h3 class="mt-4 mb-2"><i class="fa-solid fa-scale-balanced me-2"></i>Khối lượng công việc của nhóm</h3>
+        <div style="overflow-x:auto;">
+          <table class="monday-table">
+            <thead class="table-light">
+              <tr>
+                <th>Thành viên</th>
+                <th class="text-center">Đang mở</th>
+                <th class="text-center">Chưa bắt đầu</th>
+                <th class="text-center">Đang làm</th>
+                <th class="text-center">Bị kẹt</th>
+                <th class="text-center">Quá hạn</th>
+                <th class="text-center">Ưu tiên cao</th>
+              </tr>
+            </thead>
+            <tbody id="workload-table-body"></tbody>
+          </table>
+        </div>
       </section>
 
       <section id="progress-section" class="content-section" style="display:none;">
@@ -428,6 +446,16 @@
                 <option value="percent_desc">% Giảm dần</option>
                 <option value="percent_asc">% Tăng dần</option>
               </select></div>
+            <div style="flex: 0 0 auto; display:flex; align-items:flex-end; gap:8px;">
+              <button type="button" id="toggle-archived-btn" class="btn btn-outline-secondary btn-sm"
+                onclick="toggleArchivedProjectsView()">
+                <i class="fa-solid fa-box-archive me-1"></i> Xem kho lưu trữ
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportProjectsCsv()"
+                title="Xuất danh sách dự án ra CSV">
+                <i class="fa-solid fa-file-csv me-1"></i> Xuất CSV
+              </button>
+            </div>
           </div>
         </div>
         <div class="card file-list-card" style="margin-top: 20px;">
@@ -526,6 +554,9 @@
               </div>
               <button type="button" id="bulk-select-toggle" class="btn btn-outline-secondary btn-sm px-3 ms-2" onclick="toggleBulkSelectMode()" title="Chọn nhiều">
                 <i class="fa-regular fa-square-check"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm px-3 ms-2" onclick="exportTasksCsv()" title="Xuất công việc ra CSV">
+                <i class="fa-solid fa-file-csv"></i>
               </button>
             </div>
           </div>
@@ -1003,7 +1034,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785262705116"></script>
+  <script src="/api.js?v=1785263529615"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -1031,7 +1062,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1785262705116"></script>
+  <script src="/script.js?v=1785263529615"></script>
 
   <script>
     function switchTaskView(view) {
