@@ -4353,7 +4353,7 @@ window.handleLoginBgUpload = function(input) {
 
 window.confirmResetTheme = function() {
     Swal.fire({
-        title: 'Reset giao diện?', text: 'Xóa ảnh nền và quay về mặc định?', icon: 'question',
+        title: 'Reset giao diện?', text: "Xóa ảnh nền và quay về mặc định?", icon: 'question',
         showCancelButton: true, confirmButtonColor: '#d33', cancelButtonText: 'Khoan...', confirmButtonText: 'Ok, xóa đi ní!'
     }).then((result) => {
         if (result.isConfirmed) {

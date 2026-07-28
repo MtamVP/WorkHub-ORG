@@ -1,5 +1,5 @@
 const fs = require('fs');
-const js = `
+const newLogic = `
 window.handleLoginBgUpload = function(input) {
     if (input.files && input.files[0]) {
         var file = input.files[0];
@@ -23,7 +23,7 @@ window.handleLoginBgUpload = function(input) {
 
 window.confirmResetTheme = function() {
     Swal.fire({
-        title: 'Reset giao diện?', text: 'Xóa ảnh nền và quay về mặc định?', icon: 'question',
+        title: 'Reset giao diện?', text: "Xóa ảnh nền và quay về mặc định?", icon: 'question',
         showCancelButton: true, confirmButtonColor: '#d33', cancelButtonText: 'Khoan...', confirmButtonText: 'Ok, xóa đi ní!'
     }).then((result) => {
         if (result.isConfirmed) {
@@ -36,4 +36,12 @@ window.confirmResetTheme = function() {
     });
 };
 `;
-fs.appendFileSync('script.js', js, 'utf8');
+
+const content = fs.readFileSync('script.js', 'utf8');
+const lines = content.split('\n');
+const startIndex = lines.findIndex(l => l.includes('// --- LOGIC HÌNH NỀN LOGIN ---'));
+if (startIndex !== -1) {
+    lines.splice(startIndex, lines.length - startIndex);
+    fs.writeFileSync('script.js', lines.join('\n') + newLogic, 'utf8');
+    console.log('Reverted script.js to Firebase successfully');
+}

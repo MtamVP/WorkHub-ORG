@@ -128,11 +128,14 @@
     }
 
     // THEME BACKGROUND LOGIC (Dùng Supabase app_settings)
-    async function initLoginThemeListener() {
-        if (!window.supabaseClient) return;
-        const imageUrl = await API.settings.getSetting('login_theme');
-        if (imageUrl) applyCustomBackground(imageUrl);
-        else removeCustomBackground();
+    function initLoginThemeListener() {
+        db.collection("settings").doc("login_theme").onSnapshot((doc) => {
+            if (doc.exists && doc.data().backgroundImage) {
+                applyCustomBackground(doc.data().backgroundImage);
+            } else {
+                removeCustomBackground();
+            }
+        });
     }
 
     function applyCustomBackground(imageUrl) {
