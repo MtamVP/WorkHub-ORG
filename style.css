@@ -1040,6 +1040,17 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 .task-comment-content { color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
 .task-history-content { color: var(--text-secondary); }
 
+/* --- Chấm báo trạng thái đồng bộ trực tiếp --- */
+.realtime-indicator {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-muted); opacity: 0.45; vertical-align: middle;
+  margin-left: 2px; transition: var(--transition-fast);
+}
+.realtime-indicator.is-live {
+  background: var(--success-color); opacity: 1;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color) 22%, transparent);
+}
+
 /* --- Bulk select toolbar (Task) --- */
 .bulk-action-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;

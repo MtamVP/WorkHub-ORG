@@ -425,7 +425,24 @@ const API = {
             return newAttachments;
         },
         save: async (taskData, groupKey) => {
+            const isNew = !taskData.id;
             taskData.id = taskData.id || "T_" + Date.now();
+
+            // Chống ghi đè khi hai người sửa cùng lúc: client gửi kèm updated_at của bản nó
+            // đang xem; nếu bản trong DB đã mới hơn thì từ chối lưu thay vì đè âm thầm.
+            // (baseUpdatedAt rỗng = bỏ qua kiểm tra, để các luồng cũ không bị chặn oan.)
+            if (!isNew && taskData.baseUpdatedAt) {
+                const { data: current } = await sbClient.from('tasks')
+                    .select('updated_at').eq('id', taskData.id).maybeSingle();
+                if (current && current.updated_at) {
+                    const dbTime = new Date(current.updated_at).getTime();
+                    const seenTime = new Date(taskData.baseUpdatedAt).getTime();
+                    // Cho phép lệch 1 giây để tránh báo nhầm do làm tròn timestamp
+                    if (dbTime - seenTime > 1000) {
+                        throw new Error("Người khác vừa sửa công việc này. Hãy đóng cửa sổ, xem lại nội dung mới rồi sửa lại để không ghi đè lên thay đổi của họ.");
+                    }
+                }
+            }
 
             if (taskData.status === 'Done' && taskData.blockedBy) {
                 const blockerIds = String(taskData.blockedBy).split(',').map(x => x.trim()).filter(Boolean);
@@ -1126,8 +1143,59 @@ const API = {
             return [...logItems, ...mentionItems].sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
         }
     },
-    lounge: { sync: async () => "Synced" }
+    lounge: { sync: async () => "Synced" },
+    // Realtime: một kênh duy nhất nghe thay đổi trên các bảng lõi. Không tự vẽ lại gì —
+    // chỉ báo cho script.js biết bảng nào vừa đổi, việc quyết định tải lại phần nào là ở đó.
+    // Các bảng này đã được thêm vào publication `supabase_realtime` (migration 2026-07-29).
+    realtime: {
+        _channel: null,
+        WATCHED_TABLES: ['tasks', 'projects', 'events', 'task_comments', 'project_milestones'],
+        subscribe: function (handler, onStatus) {
+            if (!sbClient || typeof handler !== 'function') return null;
+            if (API.realtime._channel) API.realtime.unsubscribe();
+
+            const channel = sbClient.channel('workhub-core-changes');
+            API.realtime.WATCHED_TABLES.forEach(table => {
+                channel.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+                    try {
+                        handler({
+                            table: table,
+                            eventType: payload.eventType,
+                            row: payload.new || payload.old || null
+                        });
+                    } catch (err) {
+                        console.error('Realtime handler error:', err);
+                    }
+                });
+            });
+
+            channel.subscribe((status) => {
+                if (typeof onStatus === 'function') onStatus(status);
+            });
+
+            API.realtime._channel = channel;
+            return channel;
+        },
+        unsubscribe: function () {
+            if (!sbClient || !API.realtime._channel) return;
+            try { sbClient.removeChannel(API.realtime._channel); } catch (err) { /* kênh đã đóng */ }
+            API.realtime._channel = null;
+        }
+    }
 };
+
+// Các action GHI dữ liệu — dùng để đánh mốc "vừa tự thay đổi", giúp lớp realtime phân biệt
+// thay đổi của chính mình với thay đổi của người khác (tránh tải chồng + báo thừa).
+const MUTATING_ACTIONS = new Set([
+    'saveTask', 'deleteTask', 'reorderTasks', 'bulkUpdateTaskStatus', 'bulkDeleteTasks',
+    'uploadFileToTask', 'deleteFileFromTask', 'addTaskComment',
+    'createProject', 'updateProject', 'shareProject', 'deleteProject',
+    'addMilestone', 'toggleMilestone', 'deleteMilestone',
+    'createEvent', 'updateEvent', 'deleteEvent', 'toggleImportant',
+    'uploadFile', 'deleteFile', 'shareFile',
+    'restoreItem', 'hardDeleteItem',
+    'provisionUser', 'updateUserGroup', 'removeUser', 'updateNickname'
+]);
 
 window.callGAS = async function(action, params = {}) {
     if (!params.email || params.email === 'unknown' || params.email === 'Khách') {
@@ -1136,6 +1204,8 @@ window.callGAS = async function(action, params = {}) {
             params.email = storedEmail;
         }
     }
+
+    if (MUTATING_ACTIONS.has(action)) window.lastLocalMutationAt = Date.now();
 
     const traceId = "TRC_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
     try {
@@ -1214,6 +1284,10 @@ window.callGAS = async function(action, params = {}) {
         }
         let finalMessage = typeof result === 'string' ? result : 'OK';
         const entityId = params.taskId || params.id || params.eventId || params.projectId || null;
+
+        // Đặt lại mốc sau khi ghi xong: sự kiện realtime chỉ về tới sau thời điểm này,
+        // nên nếu chỉ đánh mốc lúc bắt đầu thì thao tác chậm sẽ bị hiểu nhầm là của người khác.
+        if (MUTATING_ACTIONS.has(action)) window.lastLocalMutationAt = Date.now();
 
         if (action !== 'getNotifications' && action !== 'syncLounge' && !action.startsWith('get')) {
             API.system.logAction(traceId, action, finalMessage, 'success', params.email, params.groupKey, entityId);

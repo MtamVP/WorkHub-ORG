@@ -2323,6 +2323,7 @@ async function handleKanbanDrop(newStatus) {
             description: task.description,
             parentTaskId: task.parent_task_id,
             blockedBy: task.blocked_by,
+            baseUpdatedAt: task.updated_at,
             groupKey: activeGroup
         });
         if (response.status !== 'success') throw new Error(response.message);
@@ -2423,6 +2424,90 @@ async function applyBulkDelete() {
             showToast('Lỗi: ' + err.message, 'error');
         }
     });
+}
+
+//  ĐỒNG BỘ THỜI GIAN THỰC
+// Chỉ tải lại đúng phần đang hiển thị, gom nhiều thay đổi liên tiếp thành 1 lần tải,
+// và không báo "vừa cập nhật" cho chính thao tác của mình vừa gây ra.
+let realtimePendingTables = new Set();
+let realtimeDebounceTimer = null;
+window.lastLocalMutationAt = 0; // callGAS cập nhật mốc này mỗi khi chính mình ghi dữ liệu
+
+function initRealtimeSync() {
+    if (typeof API === 'undefined' || !API.realtime) return;
+
+    API.realtime.subscribe(
+        (change) => {
+            realtimePendingTables.add(change.table);
+            clearTimeout(realtimeDebounceTimer);
+            realtimeDebounceTimer = setTimeout(flushRealtimeChanges, 400);
+        },
+        (status) => {
+            setRealtimeIndicator(status === 'SUBSCRIBED');
+        }
+    );
+}
+
+function stopRealtimeSync() {
+    if (typeof API !== 'undefined' && API.realtime) API.realtime.unsubscribe();
+    clearTimeout(realtimeDebounceTimer);
+    realtimePendingTables.clear();
+    setRealtimeIndicator(false);
+}
+
+function flushRealtimeChanges() {
+    const tables = new Set(realtimePendingTables);
+    realtimePendingTables.clear();
+    if (tables.size === 0) return;
+
+    // Thay đổi do chính mình vừa gây ra thì các hàm lưu đã tự tải lại rồi — bỏ qua để
+    // không tải chồng và không hiện thông báo thừa.
+    const isOwnChange = (Date.now() - window.lastLocalMutationAt) < 2500;
+    if (isOwnChange) return;
+
+    const activeItem = document.querySelector('.nav-item.active');
+    const section = activeItem ? activeItem.getAttribute('data-section') : null;
+
+    const touchedTasks = tables.has('tasks');
+    const touchedProjects = tables.has('projects') || tables.has('project_milestones');
+    const touchedEvents = tables.has('events');
+
+    if (section === 'task' && touchedTasks) {
+        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+    } else if (section === 'mytasks' && (touchedTasks || touchedProjects)) {
+        if (typeof loadMyTasks === 'function') loadMyTasks();
+    } else if (section === 'progress' && (touchedTasks || touchedProjects)) {
+        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+    } else if (section === 'calendar' && (touchedEvents || touchedTasks)) {
+        if (typeof loadCalendarData === 'function') loadCalendarData();
+    } else if (section === 'dashboard') {
+        if (touchedEvents || touchedTasks) {
+            if (typeof loadCalendarData === 'function') loadCalendarData();
+        }
+        if (touchedProjects || touchedTasks) {
+            if (typeof loadDashboardTopProgress === 'function') loadDashboardTopProgress();
+        }
+    } else {
+        return; // phần đang xem không liên quan tới bảng vừa đổi
+    }
+
+    if (tables.has('task_comments') && typeof loadNotifications === 'function') loadNotifications();
+    showToast('Dữ liệu vừa được người khác cập nhật.', 'info');
+}
+
+// Chấm nhỏ cạnh chuông báo: xanh = đang đồng bộ trực tiếp, xám = mất kết nối
+function setRealtimeIndicator(isLive) {
+    let dot = document.getElementById('realtime-indicator');
+    if (!dot) {
+        const anchor = document.querySelector('.noti-btn-container');
+        if (!anchor) return;
+        dot = document.createElement('span');
+        dot.id = 'realtime-indicator';
+        dot.className = 'realtime-indicator';
+        anchor.appendChild(dot);
+    }
+    dot.classList.toggle('is-live', !!isLive);
+    dot.title = isLive ? 'Đang đồng bộ trực tiếp' : 'Mất kết nối đồng bộ';
 }
 
 //  VIỆC CỦA TÔI (gom task được giao, xuyên suốt mọi dự án trong nhóm)
@@ -2765,9 +2850,14 @@ async function loadTaskHistory(taskId) {
 }
 
 // hàm reset modal task về trạng thái sạch (không còn dấu vết sửa/thêm-việc-con trước đó)
+// updated_at của bản task đang mở trong modal sửa — gửi kèm khi lưu để phát hiện
+// trường hợp người khác đã sửa trong lúc mình đang mở form (xem API.task.save).
+let editingTaskBaseUpdatedAt = null;
+
 function resetTaskModalUI() {
     const form = document.getElementById('task-form');
     if (form) form.reset();
+    editingTaskBaseUpdatedAt = null;
     document.getElementById('task-id').value = '';
     document.getElementById('new-task-parent-id').value = '';
     document.querySelectorAll('input[name="task-assignees"]').forEach(cb => cb.checked = false);
@@ -2809,6 +2899,9 @@ function openAddSubtask(parentId, parentName) {
 
 //  HÀM MỞ MODAL SỬA TASK
 function openEditTask(id, name, status, priority, dueDate, assigneesStr, description, parentTaskId, blockedByStr) {
+    const sourceTask = (globalAllTasks || []).find(t => t.id === id);
+    editingTaskBaseUpdatedAt = sourceTask ? (sourceTask.updated_at || null) : null;
+
     document.getElementById('task-id').value = id;
     document.getElementById('new-task-name').value = name;
     document.getElementById('new-task-status').value = status;
@@ -2878,7 +2971,8 @@ async function handleTaskFormSubmit(e) {
         assignees: selectedEmails,
         description: document.getElementById('new-task-desc').value,
         parentTaskId: document.getElementById('new-task-parent-id').value || null,
-        blockedBy: selectedBlockers
+        blockedBy: selectedBlockers,
+        baseUpdatedAt: editingTaskBaseUpdatedAt
     };
 
     if (!taskData.projectId) {
@@ -4443,9 +4537,13 @@ document.addEventListener('DOMContentLoaded', function () {
             // 5. Tải dữ liệu Project Overview ngay khi Login
             if (typeof loadProjectOverview === 'function') loadProjectOverview();
 
+            // 6. Bật đồng bộ thời gian thực
+            if (typeof initRealtimeSync === 'function') initRealtimeSync();
+
         } else {
             // case2: chưa đăng nhập
             chatUser = null;
+            if (typeof stopRealtimeSync === 'function') stopRealtimeSync();
 
             if (userDisplay) userDisplay.innerHTML = `<i class="fa-solid fa-user-circle"></i> Khách`;
             if (userEmailDisplay) userEmailDisplay.innerHTML = `<i class="fa-solid fa-at me-2"></i> Chưa đăng nhập`;
