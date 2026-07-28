@@ -88,10 +88,52 @@ const API = {
             return "Đã cập nhật ảnh nền";
         }
     },
+    // Quản lý người dùng trong app. LƯU Ý QUAN TRỌNG: đây chỉ quản lý hồ sơ QUYỀN (bảng
+    // public.users: email/nickname/group_key), KHÔNG tạo/xóa được tài khoản đăng nhập Firebase Auth
+    // thật sự — việc đó cần Firebase Admin SDK ở backend mà app này (frontend tĩnh) không có, và
+    // không nên giả lập bằng cách nhúng service-account key vào JS phía client. Vì vậy "thêm người
+    // dùng" ở đây thực chất là "cấp quyền trước" — người được cấp vẫn phải tự đăng ký tài khoản
+    // Firebase Auth bằng đúng email đó thì mới đăng nhập được.
+    user: {
+        listAll: async () => {
+            if (!sbClient) return [];
+            const { data, error } = await sbClient.from('users').select('email, nickname, group_key, created_at').order('created_at', { ascending: false }).limit(1000);
+            if (error) throw error;
+            return data;
+        },
+        provision: async (email, nickname, groupKey) => {
+            if (!sbClient) throw new Error("Chưa setup Supabase");
+            const cleanEmail = String(email || '').trim().toLowerCase();
+            if (!cleanEmail || !cleanEmail.includes('@')) throw new Error("Email không hợp lệ.");
+
+            const { error } = await sbClient.from('users').insert({
+                email: cleanEmail,
+                nickname: nickname && nickname.trim() ? nickname.trim() : cleanEmail.split('@')[0],
+                group_key: groupKey || 'guest'
+            });
+            if (error) {
+                if (error.code === '23505') throw new Error("Email này đã có hồ sơ quyền trong hệ thống rồi.");
+                throw error;
+            }
+            return `Đã cấp quyền trước cho ${cleanEmail}. Người này cần tự đăng ký tài khoản đăng nhập bằng đúng email này.`;
+        },
+        updateGroup: async (email, groupKey) => {
+            if (!sbClient) throw new Error("Chưa setup Supabase");
+            const { error } = await sbClient.from('users').update({ group_key: groupKey }).eq('email', email);
+            if (error) throw error;
+            return `Đã đổi quyền của ${email} thành "${groupKey}"!`;
+        },
+        remove: async (email) => {
+            if (!sbClient) throw new Error("Chưa setup Supabase");
+            const { error } = await sbClient.from('users').delete().eq('email', email);
+            if (error) throw error;
+            return `Đã thu hồi quyền truy cập của ${email}. (Tài khoản đăng nhập Firebase của họ vẫn còn tồn tại nếu có — không tự xóa được từ đây.)`;
+        }
+    },
     project: {
         list: async (groupKey, searchName = "") => {
             if (!sbClient) return [];
-            let query = sbClient.from('projects').select('*, users!owner_id(nickname)').is('deleted_at', null).order('updated_at', { ascending: false });
+            let query = sbClient.from('projects').select('*, users!owner_id(nickname)').is('deleted_at', null).order('updated_at', { ascending: false }).limit(300);
 
             if (groupKey === 'all') {
                 query = query.or('group_key.eq.all,is_shared.eq.true');
@@ -178,8 +220,14 @@ const API = {
             return `Đã chia sẻ ${data.name} thành công!`;
         },
         delete: async (projectId, groupKey) => {
-            await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('project_id', projectId);
-            
+            // Chỉ cascade xóa những task CHƯA có trong thùng rác — giữ nguyên deleted_at gốc
+            // của task đã bị xóa riêng từ trước, và đánh dấu deleted_by_cascade để restore
+            // đúng phạm vi (không hồi sinh nhầm task vốn đã bị xóa độc lập).
+            await sbClient.from('tasks')
+                .update({ deleted_at: new Date().toISOString(), deleted_by_cascade: true })
+                .eq('project_id', projectId)
+                .is('deleted_at', null);
+
             const { data, error } = await sbClient.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', projectId).select('name').single();
             if (error) throw error;
             return `Đã đưa ${data.name} vào thùng rác!`;
@@ -275,7 +323,7 @@ const API = {
     task: {
         list: async (projectId, groupKey) => {
             const { data, error } = await sbClient.from('tasks').select('*').is('deleted_at', null).eq('project_id', projectId)
-                .order('sort_order', { ascending: true }).order('created_at', { ascending: true });
+                .order('sort_order', { ascending: true }).order('created_at', { ascending: true }).limit(1000);
             if (error) throw error;
             
             const { data: users } = await sbClient.from('users').select('email, nickname');
@@ -296,8 +344,54 @@ const API = {
             }
             return data;
         },
+        // Việc của tôi: gom task được giao cho 1 email, xuyên suốt mọi dự án trong nhóm.
+        // Lọc bằng cách so khớp CHÍNH XÁC từng email trong cột assignees (CSV) ở JS,
+        // tránh lỗi so khớp con chuỗi (vd email này là tập con của email khác).
+        listMine: async (email, groupKey) => {
+            if (!sbClient || !email) return [];
+            const targetEmail = String(email).trim().toLowerCase();
+
+            let projectQuery = sbClient.from('projects').select('id, name').is('deleted_at', null);
+            if (groupKey && groupKey !== 'all') projectQuery = projectQuery.eq('group_key', groupKey);
+            const { data: projects } = await projectQuery;
+            if (!projects || projects.length === 0) return [];
+
+            const projectMap = {};
+            projects.forEach(p => { projectMap[p.id] = p.name; });
+            const projectIds = projects.map(p => p.id);
+
+            const { data, error } = await sbClient.from('tasks').select('*')
+                .is('deleted_at', null)
+                .in('project_id', projectIds)
+                .not('assignees', 'is', null)
+                .limit(2000);
+            if (error) throw error;
+
+            const mine = (data || []).filter(t => {
+                const emails = (t.assignees || '').split(',').map(e => e.trim().toLowerCase());
+                return emails.includes(targetEmail);
+            });
+
+            mine.forEach(task => {
+                task.dueDate = task.due_date ? task.due_date.slice(0, 10) : '';
+                task.projectName = projectMap[task.project_id] || '';
+            });
+
+            mine.sort((a, b) => {
+                if (!a.dueDate && !b.dueDate) return 0;
+                if (!a.dueDate) return 1;
+                if (!b.dueDate) return -1;
+                return a.dueDate.localeCompare(b.dueDate);
+            });
+
+            return mine;
+        },
         delete: async (taskId, projectId, groupKey) => {
-            await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('parent_task_id', taskId);
+            // Tương tự project.delete: chỉ cascade xóa subtask CHƯA có trong thùng rác
+            await sbClient.from('tasks')
+                .update({ deleted_at: new Date().toISOString(), deleted_by_cascade: true })
+                .eq('parent_task_id', taskId)
+                .is('deleted_at', null);
             const { data, error } = await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId).select('name').single();
             if (error) throw error;
             if (projectId) await API.project.recalculate(projectId, groupKey);
@@ -377,7 +471,10 @@ const API = {
         },
         bulkDelete: async (taskIds, projectId, groupKey) => {
             if (!Array.isArray(taskIds) || taskIds.length === 0) return "Không có công việc nào được chọn.";
-            await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).in('parent_task_id', taskIds);
+            await sbClient.from('tasks')
+                .update({ deleted_at: new Date().toISOString(), deleted_by_cascade: true })
+                .in('parent_task_id', taskIds)
+                .is('deleted_at', null);
             const { error } = await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).in('id', taskIds);
             if (error) throw error;
             if (projectId) await API.project.recalculate(projectId, groupKey);
@@ -439,7 +536,7 @@ const API = {
     file: {
         list: async (groupKey, filters) => {
             if (!sbClient) return [];
-            let query = sbClient.from('files').select('*, users!uploader_id(email)').is('deleted_at', null).order('created_at', { ascending: false });
+            let query = sbClient.from('files').select('*, users!uploader_id(email)').is('deleted_at', null).order('created_at', { ascending: false }).limit(500);
             if (groupKey === 'all') {
                 query = query.or('group_key.eq.all,is_shared.eq.true');
             } else {
@@ -526,7 +623,8 @@ const API = {
             let query = sbClient.from('events')
                 .select('*')
                 .is('deleted_at', null)
-                .eq('group_key', groupKey);
+                .eq('group_key', groupKey)
+                .limit(2000);
 
             if (calendarType) {
                 query = query.eq('calendar_type', calendarType);
@@ -597,6 +695,52 @@ const API = {
                     cursor = advance(cursor, recurrence, 1);
                 }
             });
+
+            // Gộp task có due_date vào lịch nhóm — Lịch Cá Nhân giữ nguyên chỉ hiện sự kiện tự tạo,
+            // vì task luôn thuộc dự án của cả nhóm, không phải việc riêng của 1 người.
+            if (calendarType !== 'personal') {
+                let projQuery = sbClient.from('projects').select('id, name').is('deleted_at', null);
+                projQuery = groupKey === 'all'
+                    ? projQuery.or('group_key.eq.all,is_shared.eq.true')
+                    : projQuery.eq('group_key', groupKey);
+                const { data: projectsForTasks } = await projQuery;
+
+                if (projectsForTasks && projectsForTasks.length > 0) {
+                    const projMap = {};
+                    projectsForTasks.forEach(p => { projMap[p.id] = p.name; });
+                    const projIds = projectsForTasks.map(p => p.id);
+
+                    const { data: dueTasks } = await sbClient.from('tasks')
+                        .select('id, name, due_date, status, priority, project_id')
+                        .is('deleted_at', null)
+                        .in('project_id', projIds)
+                        .not('due_date', 'is', null)
+                        .gte('due_date', rangeStart.toISOString().slice(0, 10))
+                        .lte('due_date', rangeEnd.toISOString().slice(0, 10));
+
+                    (dueTasks || []).forEach(t => {
+                        if (String(t.status).toLowerCase() === 'done') return;
+                        results.push({
+                            id: 'TASK_' + t.id,
+                            taskId: t.id,
+                            title: t.name,
+                            startTime: t.due_date + 'T00:00:00',
+                            endTime: t.due_date + 'T23:59:59',
+                            isImportant: t.priority === 'Critical' || t.priority === 'High',
+                            location: '',
+                            description: '',
+                            recurrence: 'none',
+                            recurrenceEnd: null,
+                            attendees: null,
+                            createdBy: null,
+                            type: 'task',
+                            projectId: t.project_id,
+                            projectName: projMap[t.project_id] || '',
+                            status: t.status
+                        });
+                    });
+                }
+            }
 
             return results;
         },
@@ -810,8 +954,9 @@ const API = {
         },
         getDeletedItems: async (tableName, groupKey) => {
             if (!sbClient) return [];
-            let query = sbClient.from(tableName).select('*').not('deleted_at', 'is', null);
-            
+            let query = sbClient.from(tableName).select('*').not('deleted_at', 'is', null)
+                .order('deleted_at', { ascending: false }).limit(300);
+
             if (tableName === 'tasks' && groupKey) {
                 const { data: projects } = await sbClient.from('projects').select('id, name').eq('group_key', groupKey);
                 if (!projects || projects.length === 0) return [];
@@ -840,14 +985,22 @@ const API = {
             if (!sbClient) return false;
 
             if (tableName === 'projects') {
-                await sbClient.from('tasks').update({ deleted_at: null }).eq('project_id', id);
+                // Chỉ khôi phục những task bị xóa THEO (cascade) khi dự án bị xóa —
+                // không đụng tới task vốn đã bị xóa riêng từ trước đó (deleted_by_cascade = false)
+                await sbClient.from('tasks')
+                    .update({ deleted_at: null, deleted_by_cascade: false })
+                    .eq('project_id', id)
+                    .eq('deleted_by_cascade', true);
             }
 
             const { data, error } = await sbClient.from(tableName).update({ deleted_at: null }).eq('id', id).select('*').single();
             if (error) throw error;
 
             if (tableName === 'tasks') {
-                await sbClient.from('tasks').update({ deleted_at: null }).eq('parent_task_id', id);
+                await sbClient.from('tasks')
+                    .update({ deleted_at: null, deleted_by_cascade: false })
+                    .eq('parent_task_id', id)
+                    .eq('deleted_by_cascade', true);
                 if (data.project_id) {
                     await sbClient.from('projects').update({ deleted_at: null }).eq('id', data.project_id);
                     await API.project.recalculate(data.project_id, null);
@@ -991,6 +1144,10 @@ window.callGAS = async function(action, params = {}) {
             case 'updateNickname': result = await API.auth.updateNickname(params.email, params.newNickname); break;
             case 'getAllUsers': result = await API.auth.getAllUsers(params.groupKey); break;
             case 'getUserGroup': result = await API.auth.getUserGroup(params.email); break;
+            case 'listAllUsers': result = await API.user.listAll(); break;
+            case 'provisionUser': result = await API.user.provision(params.email, params.nickname, params.groupKey); break;
+            case 'updateUserGroup': result = await API.user.updateGroup(params.email, params.groupKey); break;
+            case 'removeUser': result = await API.user.remove(params.email); break;
 
             case 'getRecentFilesForDashboard': result = await API.file.getRecentFilesForDashboard(params.groupKey); break;
             case 'getFileList': result = await API.file.list(params.groupKey, params); break;
@@ -1017,6 +1174,7 @@ window.callGAS = async function(action, params = {}) {
             case 'getBurndownData': result = await API.project.getBurndownData(params.projectId); break;
 
             case 'getTaskList': result = await API.task.list(params.projectId, params.groupKey); break;
+            case 'listMyTasks': result = await API.task.listMine(params.email, params.groupKey); break;
             case 'saveTask': result = await API.task.save(params, params.groupKey); break;
             case 'deleteTask': result = await API.task.delete(params.taskId, params.projectId, params.groupKey); break;
             case 'deleteFileFromTask': result = await API.task.deleteFile(params.taskId, params.fileId, params.groupKey); break;

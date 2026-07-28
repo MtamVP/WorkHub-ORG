@@ -730,6 +730,8 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .event-item:hover { background: var(--border-color); }
 .event-item.important { border-left-color: var(--danger-color); background: color-mix(in srgb, var(--danger-color) 8%, var(--hover-bg)); }
 .event-item.important:hover { background: color-mix(in srgb, var(--danger-color) 14%, var(--hover-bg)); }
+.event-item.task-event-item { border-left-color: var(--gold); background: color-mix(in srgb, var(--gold) 8%, var(--hover-bg)); border-left-style: dashed; }
+.event-item.task-event-item:hover { background: color-mix(in srgb, var(--gold) 14%, var(--hover-bg)); }
 
 .event-time { font-size: var(--text-xs); font-weight: 800; color: var(--text-primary); margin-bottom: 6px; }
 .event-item.important .event-time { color: var(--danger-color); }

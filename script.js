@@ -990,6 +990,21 @@ function renderEventsForSelectedDate() {
     }
 
     dailyEvents.forEach(event => {
+        // Task có due_date được gộp vào lịch dưới dạng mục riêng — render khác hẳn sự kiện thật
+        if (event.type === 'task') {
+            const taskDiv = document.createElement('div');
+            taskDiv.className = 'event-item task-event-item';
+            taskDiv.innerHTML =
+                '<div class="event-title"><i class="fa-solid fa-list-check me-1"></i>' + escapeHtml(event.title) + '</div>' +
+                '<div class="small text-muted mb-1"><i class="fa-solid fa-diagram-project me-1"></i>' + escapeHtml(event.projectName || '') + '</div>' +
+                '<div class="event-meta">' + (typeof renderBadge === 'function' ? renderBadge('status', event.status) : escapeHtml(event.status || '')) + '</div>';
+            taskDiv.addEventListener('click', () => {
+                if (typeof goToTaskInProject === 'function') goToTaskInProject(event.projectId);
+            });
+            listContainer.appendChild(taskDiv);
+            return;
+        }
+
         const timeStr = new Date(event.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         const endTimeStr = new Date(event.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         const isImportant = event.isImportant ? 'important' : '';
@@ -1245,10 +1260,10 @@ function renderDashboardCalendar(events) {
     const itemsToShow = todayEvents.slice(0, displayLimit);
 
     itemsToShow.forEach(e => {
-        const time = new Date(e.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        const time = e.type === 'task' ? 'Hạn chót' : new Date(e.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         const iconColor = e.isImportant ? 'var(--danger-color)' : 'var(--info-color)';
         const bgColor = e.isImportant ? 'color-mix(in srgb, var(--danger-color) 15%, var(--card-bg))' : 'color-mix(in srgb, var(--info-color) 15%, var(--card-bg))';
-        const iconClass = e.isImportant ? 'fa-star' : 'fa-circle';
+        const iconClass = e.type === 'task' ? 'fa-list-check' : (e.isImportant ? 'fa-star' : 'fa-circle');
 
         html += `
             <li style="background: ${bgColor}; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; border-left: 3px solid ${iconColor}; display: flex; align-items: center;">
@@ -2404,6 +2419,197 @@ async function applyBulkDelete() {
             bulkSelectedIds.clear();
             if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
             if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        } catch (err) {
+            showToast('Lỗi: ' + err.message, 'error');
+        }
+    });
+}
+
+//  VIỆC CỦA TÔI (gom task được giao, xuyên suốt mọi dự án trong nhóm)
+async function loadMyTasks() {
+    const container = document.getElementById('mytasks-list');
+    if (!container) return;
+    container.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>';
+
+    const email = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+    if (!email) {
+        container.innerHTML = '<div class="text-center text-muted py-5">Chưa đăng nhập.</div>';
+        return;
+    }
+
+    try {
+        const response = await callGAS('listMyTasks', { email, groupKey: activeGroup });
+        if (response.status !== 'success') throw new Error(response.message);
+        renderMyTasks(response.data || []);
+    } catch (err) {
+        container.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
+    }
+}
+
+function renderMyTasks(tasks) {
+    const container = document.getElementById('mytasks-list');
+    if (!container) return;
+
+    if (!tasks || tasks.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted w-100 py-5">Bạn không có công việc nào đang được giao.</div>';
+        return;
+    }
+
+    container.innerHTML = tasks.map(t => {
+        const safeName = escapeHtml(t.name);
+        const safeProjectId = escapeHtml(escapeJs(t.project_id));
+        const statusColor = typeof getStatusColor === 'function' ? getStatusColor(t.status) : '#6c757d';
+        return `
+            <div class="task-card" style="border-left-color:${statusColor}; cursor:pointer;" onclick="goToTaskInProject('${safeProjectId}')">
+                <div class="d-flex justify-content-between align-items-start">
+                    <span class="fw-bold text-primary" style="font-size: 1.05rem;">${safeName}${getBlockedBadge(t)}</span>
+                    ${renderBadge('priority', t.priority)}
+                </div>
+                <div class="small text-muted mb-2"><i class="fa-solid fa-diagram-project me-1"></i>${escapeHtml(t.projectName || '')}</div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    ${renderBadge('status', t.status)}
+                    ${t.dueDate ? `<span class="small text-muted">Hạn: ${escapeHtml(t.dueDate)}</span>` : ''}
+                    ${getDueDateBadge(t.dueDate, t.status)}
+                </div>
+            </div>`;
+    }).join('');
+}
+
+// Nhảy từ "Việc của tôi" sang màn Task của đúng dự án chứa task đó
+function goToTaskInProject(projectId) {
+    const taskNavItem = document.querySelector('.nav-item[data-section="task"]');
+    if (taskNavItem) taskNavItem.click();
+
+    let attempts = 0;
+    const tryPick = () => {
+        const select = document.getElementById('task-project-select');
+        const hasOption = select && Array.from(select.options).some(o => o.value === projectId);
+        if (hasOption) {
+            select.value = projectId;
+            select.dispatchEvent(new Event('change'));
+        } else if (attempts < 20) {
+            attempts++;
+            setTimeout(tryPick, 200);
+        }
+    };
+    setTimeout(tryPick, 200);
+}
+
+//  QUẢN LÝ NGƯỜI DÙNG (ADMIN) — chỉ quản lý hồ sơ quyền (public.users), không tạo/xóa được
+// tài khoản đăng nhập Firebase Auth thật. Gate quyền chỉ ở client (cùng mức bảo mật hiện có
+// của cả app — chưa có RLS thật sự trên Supabase).
+const USER_GROUP_LABELS = { guest: 'Guest', finance: 'Finance', science: 'Science', all: 'All (Toàn quyền)' };
+
+async function loadAdminUsers() {
+    const guard = document.getElementById('admin-users-guard');
+    const body = document.getElementById('admin-users-body');
+    if (!guard || !body) return;
+
+    body.style.display = 'none';
+    guard.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra quyền...</div>';
+
+    const email = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+    if (!email) {
+        guard.innerHTML = '<div class="text-center text-muted py-5">Chưa đăng nhập.</div>';
+        return;
+    }
+
+    try {
+        const groupResp = await callGAS('getUserGroup', { email });
+        const myGroup = groupResp.status === 'success' ? groupResp.data : 'guest';
+        if (myGroup !== 'all') {
+            guard.innerHTML = '<div class="text-center text-danger py-5"><i class="fa-solid fa-lock fa-2x mb-2"></i><br>Bạn không có quyền truy cập trang này.</div>';
+            return;
+        }
+        guard.innerHTML = '';
+        body.style.display = 'block';
+        loadAdminUsersTable();
+    } catch (err) {
+        guard.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
+    }
+}
+
+async function loadAdminUsersTable() {
+    const tbody = document.getElementById('admin-users-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</td></tr>';
+
+    try {
+        const response = await callGAS('listAllUsers', {});
+        if (response.status !== 'success') throw new Error(response.message);
+        renderAdminUsersTable(response.data || []);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-4">Lỗi: ${err.message}</td></tr>`;
+    }
+}
+
+function renderAdminUsersTable(users) {
+    const tbody = document.getElementById('admin-users-table-body');
+    if (!tbody) return;
+
+    if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Chưa có hồ sơ người dùng nào.</td></tr>';
+        return;
+    }
+
+    const myEmail = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+
+    tbody.innerHTML = users.map(u => {
+        const safeEmail = escapeHtml(escapeJs(u.email));
+        const groupOptions = Object.keys(USER_GROUP_LABELS).map(g =>
+            `<option value="${g}" ${g === u.group_key ? 'selected' : ''}>${USER_GROUP_LABELS[g]}</option>`
+        ).join('');
+        const createdStr = u.created_at ? new Date(u.created_at).toLocaleDateString('vi-VN') : '--';
+        const isSelf = !!(myEmail && myEmail.toLowerCase() === (u.email || '').toLowerCase());
+
+        return `
+            <tr>
+                <td>${escapeHtml(u.email)}${isSelf ? ' <span class="badge bg-secondary">Bạn</span>' : ''}</td>
+                <td>${escapeHtml(u.nickname || '')}</td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:140px;" onchange="updateUserGroupAction('${safeEmail}', this.value)">
+                        ${groupOptions}
+                    </select>
+                </td>
+                <td class="small text-muted">${createdStr}</td>
+                <td class="text-center">
+                    <button class="btn btn-sm text-danger border-0" title="Thu hồi quyền" onclick="removeUserAction('${safeEmail}', ${isSelf})">
+                        <i class="fa-solid fa-user-slash"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+}
+
+async function updateUserGroupAction(email, newGroup) {
+    try {
+        const response = await callGAS('updateUserGroup', { email, groupKey: newGroup });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        loadAdminUsersTable();
+    }
+}
+
+function removeUserAction(email, isSelf) {
+    Swal.fire({
+        title: isSelf ? 'Bạn đang tự thu hồi quyền của chính mình?' : `Thu hồi quyền của ${email}?`,
+        text: isSelf
+            ? 'Bạn sẽ mất quyền truy cập ngay khi hồ sơ bị xóa. Hành động khó hoàn tác nếu không còn ai khác có quyền "all".'
+            : 'Người này sẽ không truy cập được app nữa. Tài khoản đăng nhập của họ (nếu có) vẫn còn tồn tại, chỉ mất hồ sơ quyền.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        confirmButtonText: 'Thu hồi',
+        cancelButtonText: 'Hủy'
+    }).then(async (result) => {
+        if (!result.isConfirmed) return;
+        try {
+            const response = await callGAS('removeUser', { email });
+            if (response.status !== 'success') throw new Error(response.message);
+            showToast(response.data || response.message, 'success');
+            loadAdminUsersTable();
         } catch (err) {
             showToast('Lỗi: ' + err.message, 'error');
         }
@@ -4466,6 +4672,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (sectionName === 'progress' || sectionName === 'task') {
                     if (typeof loadProjectOverview === 'function') loadProjectOverview();
                 }
+
+                // D2. Tab Việc của tôi
+                if (sectionName === 'mytasks') {
+                    if (typeof loadMyTasks === 'function') loadMyTasks();
+                }
+
+                // D3. Tab Quản lý người dùng (admin)
+                if (sectionName === 'admin-users') {
+                    if (typeof loadAdminUsers === 'function') loadAdminUsers();
+                }
             }
         });
     });
@@ -4695,6 +4911,33 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.querySelectorAll('input[name="comment-mentions"]:checked').forEach(cb => cb.checked = false);
                 loadTaskComments(currentActivityTaskId);
                 loadTaskHistory(currentActivityTaskId);
+            } catch (err) {
+                showToast('Lỗi: ' + err.message, 'error');
+            }
+        });
+    }
+
+    //  8.9b FORM CẤP QUYỀN TRƯỚC CHO NGƯỜI DÙNG (ADMIN)
+    const provisionUserForm = document.getElementById('provision-user-form');
+    if (provisionUserForm) {
+        provisionUserForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const emailInput = document.getElementById('provision-email');
+            const nicknameInput = document.getElementById('provision-nickname');
+            const groupSelect = document.getElementById('provision-group');
+            const email = emailInput ? emailInput.value.trim() : '';
+            if (!email) return;
+
+            try {
+                const response = await callGAS('provisionUser', {
+                    email,
+                    nickname: nicknameInput ? nicknameInput.value.trim() : '',
+                    groupKey: groupSelect ? groupSelect.value : 'guest'
+                });
+                if (response.status !== 'success') throw new Error(response.message);
+                showToast(response.data || response.message, 'success');
+                provisionUserForm.reset();
+                if (typeof loadAdminUsersTable === 'function') loadAdminUsersTable();
             } catch (err) {
                 showToast('Lỗi: ' + err.message, 'error');
             }

@@ -179,10 +179,12 @@
         <li class="nav-item" data-section="calendar"><i class="fa-solid fa-calendar-check"></i><span> Calendar</span>
         </li>
         <li class="nav-item" data-section="progress"><i class="fa-solid fa-chart-line"></i><span> Progress</span></li>
+        <li class="nav-item" data-section="mytasks"><i class="fa-solid fa-user-check"></i><span> Việc của tôi</span></li>
         <li class="nav-item" data-section="task"><i class="fa-solid fa-list-check"></i><span> Task</span></li>
         <li class="nav-item" onclick="window.top.location.href='../tools'"><i
             class="fa-solid fa-toolbox"></i><span>Tools</span></li>
         <li class="nav-item" data-section="ai"><i class="fa-solid fa-robot"></i><span> AI</span></li>
+        <li class="nav-item" data-section="admin-users"><i class="fa-solid fa-user-gear"></i><span> Quản lý người dùng</span></li>
 
       </ul>
     </nav>
@@ -373,6 +375,13 @@
         </div>
       </section>
 
+      <section id="mytasks-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary mb-3"><i class="fa-solid fa-user-check"></i>Việc của tôi</h2>
+        <div id="mytasks-list" class="task-card-grid">
+          <div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>
+        </div>
+      </section>
+
       <section id="progress-section" class="content-section" style="display:none;">
         <h2 class="m-0 text-primary"><i class="fa-solid fa-chart-line"></i>Tiến Độ Học Tập & Dự Án Chung</h2>
         <div id="progress-form" style="margin-bottom: 25px; padding: 15px; border: 1px solid var(--border-color); border-radius: 8px;">
@@ -560,6 +569,54 @@
 
       <section id="ai-section" class="content-section" style="display:none;">
         <h2 class="m-0 text-primary"><i class="fa-solid fa-robot"></i>AI Assistant</h2>
+      </section>
+
+      <section id="admin-users-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary mb-3"><i class="fa-solid fa-user-gear"></i>Quản lý người dùng</h2>
+        <div id="admin-users-guard"></div>
+        <div id="admin-users-body" style="display:none;">
+          <div class="card p-3 mb-3">
+            <h5 class="mb-3">Cấp quyền trước cho email mới</h5>
+            <form id="provision-user-form" class="row g-2 align-items-end">
+              <div class="col-12 col-md-4">
+                <label class="form-label small">Email</label>
+                <input type="email" id="provision-email" class="text-input w-100" required placeholder="ten@vidu.com">
+              </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label small">Biệt danh</label>
+                <input type="text" id="provision-nickname" class="text-input w-100" placeholder="(tùy chọn)">
+              </div>
+              <div class="col-8 col-md-3">
+                <label class="form-label small">Quyền</label>
+                <select id="provision-group" class="form-select">
+                  <option value="guest">Guest</option>
+                  <option value="finance">Finance</option>
+                  <option value="science">Science</option>
+                  <option value="all">All (Toàn quyền)</option>
+                </select>
+              </div>
+              <div class="col-4 col-md-2">
+                <button type="submit" class="primary-btn w-100">Cấp quyền</button>
+              </div>
+            </form>
+            <div class="small text-muted mt-2"><i class="fa-solid fa-circle-info me-1"></i>Người được cấp quyền trước vẫn cần tự đăng ký tài khoản đăng nhập bằng đúng email này thì mới vào được.</div>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table class="monday-table">
+              <thead class="table-light">
+                <tr>
+                  <th>Email</th>
+                  <th>Biệt danh</th>
+                  <th>Quyền</th>
+                  <th>Ngày tạo hồ sơ</th>
+                  <th class="text-center">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-table-body"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
     </main>
@@ -915,7 +972,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785246773261"></script>
+  <script src="/api.js?v=1785260562147"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -943,7 +1000,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1785246773261"></script>
+  <script src="/script.js?v=1785260562147"></script>
 
   <script>
     function switchTaskView(view) {
