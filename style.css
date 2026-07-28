@@ -183,6 +183,15 @@
 
 html { scroll-behavior: smooth; }
 
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body {
   font-family: var(--font-body);
   font-weight: 300;
@@ -420,7 +429,10 @@ button {
   cursor: pointer; font-weight: 600;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   border: none;
+  touch-action: manipulation;
 }
+
+a, .nav-item { touch-action: manipulation; }
 
 .primary-btn {
   background: var(--primary-color);
@@ -1107,7 +1119,7 @@ body.has-custom-bg .auth-card { background: rgba(253, 250, 246, 0.96); }
 }
 .auth-card.auth-card-wide { max-width: 440px; }
 .auth-card h2 { font-weight: 600; color: var(--text-primary); margin-bottom: 4px; text-align: center; }
-.auth-subtitle { text-align: center; color: var(--text-secondary); margin-bottom: 22px; font-family: var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.68rem; }
+.auth-subtitle { text-align: center; color: var(--text-secondary); margin-bottom: 22px; font-family: var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.75rem; }
 
 .auth-input-group { position: relative; margin-bottom: 16px; }
 .auth-input-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--text-muted); z-index: 2; }
