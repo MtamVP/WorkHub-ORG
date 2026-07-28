@@ -999,15 +999,19 @@ function renderEventsForSelectedDate() {
         div.setAttribute('data-id', event.id);
         div.setAttribute('data-important', event.isImportant);
 
+        const recurrenceLabel = { daily: 'Lặp hằng ngày', weekly: 'Lặp hằng tuần', monthly: 'Lặp hằng tháng' }[event.recurrence];
+        const attendeeCount = (event.attendees || '').split(',').map(x => x.trim()).filter(Boolean).length;
+
         div.innerHTML =
             '<div class="event-time">' + timeStr + ' - ' + endTimeStr + '</div>' +
 
-            '<div class="event-title">' + event.title + '</div>' +
+            '<div class="event-title">' + event.title + (recurrenceLabel ? ' <i class="fa-solid fa-rotate text-muted" style="font-size:0.75em;" title="' + recurrenceLabel + '"></i>' : '') + '</div>' +
 
             (event.description ? '<div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 5px; font-style: italic;">' + event.description + '</div>' : '') +
 
             '<div class="event-meta">' +
             (event.location ? '<span><i class="fa-solid fa-location-dot"></i> ' + event.location + '</span>' : '') +
+            (attendeeCount > 0 ? '<span><i class="fa-solid fa-user-group"></i> ' + attendeeCount + '</span>' : '') +
             '</div>' +
 
             '<button class="btn-edit-event-mini" title="Sửa" onclick="openEditEvent(\'' + event.id + '\', event)">' +
@@ -1035,6 +1039,60 @@ function renderEventsForSelectedDate() {
     });
 }
 
+// hàm ẩn/hiện ô "Lặp đến ngày" theo lựa chọn lặp lại
+function toggleRecurrenceEndVisibility() {
+    const sel = document.getElementById('event-recurrence');
+    const group = document.getElementById('recurrence-end-group');
+    if (!sel || !group) return;
+    group.style.display = sel.value === 'none' ? 'none' : 'block';
+}
+
+// hàm toggle danh sách checkbox mời thành viên
+let eventAttendeesExpanded = false;
+function showEventAttendeeCheckboxes() {
+    const box = document.getElementById('event-attendee-checkboxes');
+    if (!box) return;
+    eventAttendeesExpanded = !eventAttendeesExpanded;
+    box.style.display = eventAttendeesExpanded ? 'block' : 'none';
+}
+
+// hàm tải danh sách checkbox thành viên để mời vào sự kiện
+async function loadEventAttendeeCheckboxes() {
+    const container = document.getElementById('event-attendee-checkboxes');
+    if (!container) return;
+    container.innerHTML = '<div class="p-2 small text-muted">Đang tải...</div>';
+
+    try {
+        const response = await callGAS("getAllUsers", { groupKey: activeGroup });
+        if (response.status === 'success') {
+            const users = response.data;
+            container.innerHTML = '';
+
+            if (!users || users.length === 0) {
+                container.innerHTML = '<div class="p-2 small text-muted">Chưa có thành viên.</div>';
+                return;
+            }
+
+            users.forEach(u => {
+                const label = document.createElement('label');
+                label.style.display = 'block';
+                label.style.padding = '5px 10px';
+                label.style.cursor = 'pointer';
+                label.onmouseover = function () { this.style.backgroundColor = '#f1f1f1'; };
+                label.onmouseout = function () { this.style.backgroundColor = 'transparent'; };
+
+                label.innerHTML = `<input type="checkbox" name="event-attendees" value="${escapeHtml(u.email)}" style="margin-right:8px;" /> ${escapeHtml(u.name)}`;
+                container.appendChild(label);
+            });
+        } else {
+            container.innerHTML = `<div class="text-danger p-2 small">Lỗi: ${response.message}</div>`;
+        }
+    } catch (err) {
+        console.error("Lỗi tải danh sách mời:", err);
+        container.innerHTML = `<div class="text-danger p-2 small">Lỗi kết nối server!</div>`;
+    }
+}
+
 // hàm khôi phục modal về trạng thái "Tạo mới" (xóa dấu vết lần sửa trước đó)
 function resetEventModalUI() {
     document.getElementById('event-id').value = '';
@@ -1044,6 +1102,9 @@ function resetEventModalUI() {
 
     const submitBtn = eventForm ? eventForm.querySelector('button[type="submit"]') : null;
     if (submitBtn && eventModalDefaultSubmitHTML !== null) submitBtn.innerHTML = eventModalDefaultSubmitHTML;
+
+    document.querySelectorAll('input[name="event-attendees"]').forEach(cb => cb.checked = false);
+    toggleRecurrenceEndVisibility();
 }
 
 // hàm mở modal ở chế độ sửa sự kiện đã có
@@ -1067,6 +1128,17 @@ window.openEditEvent = function (id, e) {
     document.getElementById('end-time').value = toTimeStr(end);
     document.getElementById('location').value = event.location || '';
     document.getElementById('description').value = event.description || '';
+
+    const recurrenceSel = document.getElementById('event-recurrence');
+    if (recurrenceSel) recurrenceSel.value = event.recurrence || 'none';
+    const recurrenceEndInput = document.getElementById('event-recurrence-end');
+    if (recurrenceEndInput) recurrenceEndInput.value = event.recurrenceEnd || '';
+    toggleRecurrenceEndVisibility();
+
+    const attendeeEmails = (event.attendees || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+    document.querySelectorAll('input[name="event-attendees"]').forEach(cb => {
+        cb.checked = attendeeEmails.includes(cb.value.toLowerCase());
+    });
 
     const modalTitle = document.getElementById('event-modal-title');
     if (modalTitle) modalTitle.innerHTML = '<i class="fa-solid fa-pen me-2"></i> Sửa Sự Kiện';
@@ -1770,11 +1842,26 @@ function renderTasks(tasks) {
         return;
     }
 
-    tasks.forEach(t => {
+    // Sắp xếp: task cha trước, subtask nằm ngay sau cha của nó (nếu cha cũng đang hiển thị trong danh sách này)
+    const idsInView = new Set(tasks.map(x => x.id));
+    const topLevel = tasks.filter(x => !x.parent_task_id || !idsInView.has(x.parent_task_id));
+    const orderedTasks = [];
+    topLevel.forEach(x => {
+        orderedTasks.push(x);
+        tasks.filter(c => c.parent_task_id === x.id).forEach(c => orderedTasks.push(c));
+    });
+    tasks.forEach(x => { if (!orderedTasks.includes(x)) orderedTasks.push(x); });
+
+    orderedTasks.forEach(t => {
         // Escape 2 lớp: escapeJs cho chuỗi nằm trong tham số onclick, escapeHtml cho thuộc tính HTML
         const safeName = escapeHtml(escapeJs(t.name));
         const safeDesc = escapeHtml(escapeJs(t.description || '').replace(/\r?\n/g, "\\n"));
         const safeAssignees = escapeHtml(escapeJs(t.assignees || ''));
+        const isSubtask = !!t.parent_task_id && idsInView.has(t.parent_task_id);
+        const subtaskBtn = t.parent_task_id ? '' : `
+                        <button class="btn btn-sm text-secondary border-0" title="Thêm việc con" onclick="openAddSubtask('${t.id}', '${safeName}')">
+                            <i class="fa-solid fa-diagram-project"></i>
+                        </button>`;
 
         // XỬ LÝ FILE ATTACHMENTS
         const safeAttachments = escapeHtml(escapeJs(t.attachments || '[]'));
@@ -1813,9 +1900,17 @@ function renderTasks(tasks) {
         // RENDER TABLE
         if (tableBody) {
             const tr = document.createElement('tr');
+            if (!t.parent_task_id) {
+                tr.draggable = true;
+                tr.classList.add('draggable-row');
+                tr.addEventListener('dragstart', (e) => handleTaskDragStart(e, t.id));
+                tr.addEventListener('dragover', handleTaskDragOver);
+                tr.addEventListener('drop', (e) => handleTaskDrop(e, t.id));
+                tr.addEventListener('dragend', handleTaskDragEnd);
+            }
             tr.innerHTML = `
-                    <td style="border-left: 5px solid ${statusColor}; font-weight: 500;">
-                        ${escapeHtml(t.name)}
+                    <td style="border-left: 5px solid ${statusColor}; font-weight: 500; ${isSubtask ? 'padding-left: 32px;' : ''}">
+                        ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}
                     </td>
 
                     <td>${avatarsHTML}</td>
@@ -1839,10 +1934,13 @@ function renderTasks(tasks) {
 
                     <td>${renderBadge('priority', t.priority)}</td>
 
-                    <td>
+                    <td class="text-nowrap">
                         <button class="btn btn-sm text-primary border-0" title="Sửa"
-                            onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}')">
+                            onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}', '${t.parent_task_id || ''}')">
                             <i class="fa-solid fa-pen"></i>
+                        </button>${subtaskBtn}
+                        <button class="btn btn-sm text-secondary border-0" title="Bình luận & Lịch sử" onclick="openTaskActivity('${t.id}', '${safeName}')">
+                            <i class="fa-solid fa-comment-dots"></i>
                         </button>
                         <button class="btn btn-sm text-danger border-0" title="Xóa" onclick="deleteTaskAction('${t.id}', '${safeName}')">
                             <i class="fa-solid fa-trash"></i>
@@ -1852,11 +1950,18 @@ function renderTasks(tasks) {
             tableBody.appendChild(tr);
         }
 
-        // RENDER CARD 
+        // RENDER CARD
         if (cardContainer) {
             const card = document.createElement('div');
-            card.className = 'task-card';
+            card.className = isSubtask ? 'task-card task-card-subtask' : 'task-card';
             card.style.borderLeftColor = statusColor;
+            if (!t.parent_task_id) {
+                card.draggable = true;
+                card.addEventListener('dragstart', (e) => handleTaskDragStart(e, t.id));
+                card.addEventListener('dragover', handleTaskDragOver);
+                card.addEventListener('drop', (e) => handleTaskDrop(e, t.id));
+                card.addEventListener('dragend', handleTaskDragEnd);
+            }
 
             const descDisplay = t.description
                 ? `<div class="text-muted small fst-italic mb-2" style="border-bottom:1px solid #eee; padding-bottom:5px;">${escapeHtml(t.description)}</div>`
@@ -1864,21 +1969,31 @@ function renderTasks(tasks) {
 
             card.innerHTML = `
                     <div class="d-flex justify-content-between align-items-start">
-                        <span class="fw-bold text-primary" style="font-size: 1.1rem;">${escapeHtml(t.name)}</span>
-                        
+                        <span class="fw-bold text-primary" style="font-size: 1.1rem;">${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}</span>
+
                         <div class="dropdown">
                             <button class="btn btn-sm text-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fa-solid fa-ellipsis"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li>
-                                    <button class="dropdown-item" type="button" 
-                                        onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}')">
+                                    <button class="dropdown-item" type="button"
+                                        onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}', '${t.parent_task_id || ''}')">
                                         <i class="fa-solid fa-pen me-2 text-primary"></i> Sửa
                                     </button>
                                 </li>
+                                ${t.parent_task_id ? '' : `<li>
+                                    <button class="dropdown-item" type="button" onclick="openAddSubtask('${t.id}', '${safeName}')">
+                                        <i class="fa-solid fa-diagram-project me-2 text-secondary"></i> Thêm việc con
+                                    </button>
+                                </li>`}
                                 <li>
-                                    <button class="dropdown-item text-danger" type="button" 
+                                    <button class="dropdown-item" type="button" onclick="openTaskActivity('${t.id}', '${safeName}')">
+                                        <i class="fa-solid fa-comment-dots me-2 text-secondary"></i> Bình luận & Lịch sử
+                                    </button>
+                                </li>
+                                <li>
+                                    <button class="dropdown-item text-danger" type="button"
                                         onclick="deleteTaskAction('${t.id}', '${safeName}')">
                                         <i class="fa-solid fa-trash me-2"></i> Xóa
                                     </button>
@@ -1925,14 +2040,200 @@ function renderTasks(tasks) {
 }
 
 
-//  HÀM MỞ MODAL SỬA TASK 
-function openEditTask(id, name, status, priority, dueDate, assigneesStr, description) {
+//  KÉO-THẢ SẮP XẾP TASK (chỉ áp dụng cho task cấp cao nhất, việc con luôn bám theo cha)
+let draggedTaskId = null;
+
+function handleTaskDragStart(e, taskId) {
+    draggedTaskId = taskId;
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    if (e.currentTarget && e.currentTarget.classList) e.currentTarget.classList.add('dragging-task');
+}
+
+function handleTaskDragOver(e) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+}
+
+async function handleTaskDrop(e, targetTaskId) {
+    e.preventDefault();
+    if (!draggedTaskId || draggedTaskId === targetTaskId || !globalAllTasks) return;
+
+    const fromIdx = globalAllTasks.findIndex(t => t.id === draggedTaskId);
+    const toIdx = globalAllTasks.findIndex(t => t.id === targetTaskId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const [moved] = globalAllTasks.splice(fromIdx, 1);
+    const newToIdx = globalAllTasks.findIndex(t => t.id === targetTaskId);
+    globalAllTasks.splice(newToIdx, 0, moved);
+
+    if (typeof applyTaskFilters === 'function') applyTaskFilters(); // vẽ lại ngay (optimistic)
+
+    const orderedIds = globalAllTasks.filter(t => !t.parent_task_id).map(t => t.id);
+    try {
+        await callGAS('reorderTasks', { orderedIds, groupKey: activeGroup });
+    } catch (err) {
+        console.error('Lỗi lưu thứ tự task:', err);
+        showToast('Lỗi lưu thứ tự, đang tải lại...', 'error');
+        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+    }
+}
+
+function handleTaskDragEnd(e) {
+    draggedTaskId = null;
+    document.querySelectorAll('.dragging-task').forEach(el => el.classList.remove('dragging-task'));
+}
+
+//  BÌNH LUẬN & LỊCH SỬ TASK
+let currentActivityTaskId = null;
+let taskActivityUserMap = {};
+const TASK_ACTION_LABELS = {
+    saveTask: 'Đã lưu / cập nhật công việc',
+    deleteTask: 'Đã xóa công việc',
+    addTaskComment: 'Đã thêm bình luận',
+    uploadFileToTask: 'Đã tải tệp lên',
+    deleteFileFromTask: 'Đã xóa tệp'
+};
+
+async function openTaskActivity(taskId, taskName) {
+    currentActivityTaskId = taskId;
+    const nameEl = document.getElementById('task-activity-name');
+    if (nameEl) nameEl.textContent = taskName;
+    switchTaskActivityTab('comments');
+    showModal('task-activity-modal');
+
+    try {
+        const userResp = await callGAS('getAllUsers', { groupKey: activeGroup });
+        taskActivityUserMap = {};
+        if (userResp.status === 'success' && Array.isArray(userResp.data)) {
+            userResp.data.forEach(u => { taskActivityUserMap[u.email] = u.name; });
+        }
+    } catch (err) { taskActivityUserMap = {}; }
+
+    loadTaskComments(taskId);
+    loadTaskHistory(taskId);
+}
+
+function switchTaskActivityTab(tab) {
+    document.querySelectorAll('.task-activity-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+    const commentsPanel = document.getElementById('task-activity-comments-panel');
+    const historyPanel = document.getElementById('task-activity-history-panel');
+    if (commentsPanel) commentsPanel.style.display = tab === 'comments' ? 'block' : 'none';
+    if (historyPanel) historyPanel.style.display = tab === 'history' ? 'block' : 'none';
+}
+
+async function loadTaskComments(taskId) {
+    const list = document.getElementById('task-comment-list');
+    if (!list) return;
+    list.innerHTML = '<div class="p-2 text-muted small">Đang tải...</div>';
+    try {
+        const response = await callGAS('getTaskComments', { taskId });
+        if (response.status !== 'success') throw new Error(response.message);
+        const comments = response.data || [];
+        if (comments.length === 0) {
+            list.innerHTML = '<div class="p-2 text-muted small">Chưa có bình luận nào.</div>';
+            return;
+        }
+        list.innerHTML = comments.map(c => {
+            const authorName = taskActivityUserMap[c.author_email] || c.author_email;
+            const time = new Date(c.created_at).toLocaleString('vi-VN');
+            return `<div class="task-comment-item">
+                <div class="task-comment-meta"><span class="fw-bold">${escapeHtml(authorName)}</span><span class="text-muted small ms-2">${time}</span></div>
+                <div class="task-comment-content">${escapeHtml(c.content)}</div>
+            </div>`;
+        }).join('');
+        list.scrollTop = list.scrollHeight;
+    } catch (err) {
+        list.innerHTML = `<div class="text-danger small p-2">Lỗi: ${err.message}</div>`;
+    }
+}
+
+async function loadTaskHistory(taskId) {
+    const list = document.getElementById('task-history-list');
+    if (!list) return;
+    list.innerHTML = '<div class="p-2 text-muted small">Đang tải...</div>';
+    try {
+        const response = await callGAS('getTaskHistory', { taskId });
+        if (response.status !== 'success') throw new Error(response.message);
+        const logs = response.data || [];
+        if (logs.length === 0) {
+            list.innerHTML = '<div class="p-2 text-muted small">Chưa có lịch sử.</div>';
+            return;
+        }
+        list.innerHTML = logs.map(l => {
+            const authorName = taskActivityUserMap[l.user_email] || l.user_email || 'unknown';
+            const time = new Date(l.created_at).toLocaleString('vi-VN');
+            const actionLabel = TASK_ACTION_LABELS[l.action] || l.action;
+            return `<div class="task-history-item">
+                <div class="task-history-meta"><span class="fw-bold">${escapeHtml(authorName)}</span><span class="text-muted small ms-2">${time}</span></div>
+                <div class="task-history-content small">${escapeHtml(actionLabel)}</div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        list.innerHTML = `<div class="text-danger small p-2">Lỗi: ${err.message}</div>`;
+    }
+}
+
+// hàm reset modal task về trạng thái sạch (không còn dấu vết sửa/thêm-việc-con trước đó)
+function resetTaskModalUI() {
+    const form = document.getElementById('task-form');
+    if (form) form.reset();
+    document.getElementById('task-id').value = '';
+    document.getElementById('new-task-parent-id').value = '';
+    document.querySelectorAll('input[name="task-assignees"]').forEach(cb => cb.checked = false);
+
+    const subtaskLabel = document.getElementById('subtask-of-label');
+    if (subtaskLabel) subtaskLabel.style.display = 'none';
+
+    const submitBtn = document.querySelector('#task-form button[type="submit"]');
+    if (submitBtn) submitBtn.innerHTML = "Lưu Công Việc";
+}
+
+// hàm mở modal để thêm task mới (top-level)
+function openAddTask() {
+    resetTaskModalUI();
+    if (typeof currentTaskProjectID !== 'undefined' && currentTaskProjectID) {
+        document.getElementById('new-task-project-id').value = currentTaskProjectID;
+    }
+    showModal('add-task-modal');
+}
+
+// hàm mở modal để thêm việc con cho 1 task cha
+function openAddSubtask(parentId, parentName) {
+    resetTaskModalUI();
+    if (typeof currentTaskProjectID !== 'undefined' && currentTaskProjectID) {
+        document.getElementById('new-task-project-id').value = currentTaskProjectID;
+    }
+    document.getElementById('new-task-parent-id').value = parentId;
+    const subtaskLabel = document.getElementById('subtask-of-label');
+    const subtaskName = document.getElementById('subtask-of-name');
+    if (subtaskLabel && subtaskName) {
+        subtaskName.textContent = parentName;
+        subtaskLabel.style.display = 'block';
+    }
+    showModal('add-task-modal');
+}
+
+//  HÀM MỞ MODAL SỬA TASK
+function openEditTask(id, name, status, priority, dueDate, assigneesStr, description, parentTaskId) {
     document.getElementById('task-id').value = id;
     document.getElementById('new-task-name').value = name;
     document.getElementById('new-task-status').value = status;
     document.getElementById('new-task-priority').value = priority;
     document.getElementById('new-task-duedate').value = dueDate;
     document.getElementById('new-task-desc').value = description || '';
+    document.getElementById('new-task-parent-id').value = parentTaskId || '';
+
+    const subtaskLabel = document.getElementById('subtask-of-label');
+    const subtaskName = document.getElementById('subtask-of-name');
+    if (subtaskLabel && subtaskName) {
+        if (parentTaskId) {
+            const parent = (globalAllTasks || []).find(t => t.id === parentTaskId);
+            subtaskName.textContent = parent ? parent.name : parentTaskId;
+            subtaskLabel.style.display = 'block';
+        } else {
+            subtaskLabel.style.display = 'none';
+        }
+    }
 
     if (typeof currentTaskProjectID !== 'undefined' && currentTaskProjectID) {
         document.getElementById('new-task-project-id').value = currentTaskProjectID;
@@ -1971,7 +2272,8 @@ async function handleTaskFormSubmit(e) {
         priority: document.getElementById('new-task-priority').value,
         dueDate: document.getElementById('new-task-duedate').value,
         assignees: selectedEmails,
-        description: document.getElementById('new-task-desc').value
+        description: document.getElementById('new-task-desc').value,
+        parentTaskId: document.getElementById('new-task-parent-id').value || null
     };
 
     if (!taskData.projectId) {
@@ -1994,9 +2296,7 @@ async function handleTaskFormSubmit(e) {
             showToast(response.data || response.message, "success");
             if (typeof hideModal === 'function') hideModal('add-task-modal');
 
-            form.reset();
-            document.getElementById('task-id').value = '';
-            document.querySelectorAll('input[name="task-assignees"]').forEach(cb => cb.checked = false);
+            resetTaskModalUI();
 
             if (typeof loadTasksForProject === 'function') loadTasksForProject(taskData.projectId);
             if (typeof loadProjectOverview === 'function') loadProjectOverview();
@@ -3940,7 +4240,34 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (document.getElementById('full-calendar-display')) loadCalendarData();
+    if (document.getElementById('event-attendee-checkboxes')) loadEventAttendeeCheckboxes();
     selectedEventId = null;
+
+    //  8.9 FORM BÌNH LUẬN TASK
+    const taskCommentForm = document.getElementById('task-comment-form');
+    if (taskCommentForm) {
+        taskCommentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('task-comment-input');
+            const content = input ? input.value.trim() : '';
+            if (!content || !currentActivityTaskId) return;
+
+            try {
+                const response = await callGAS('addTaskComment', {
+                    taskId: currentActivityTaskId,
+                    content: content,
+                    groupKey: activeGroup,
+                    email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
+                });
+                if (response.status !== 'success') throw new Error(response.message);
+                if (input) input.value = '';
+                loadTaskComments(currentActivityTaskId);
+                loadTaskHistory(currentActivityTaskId);
+            } catch (err) {
+                showToast('Lỗi: ' + err.message, 'error');
+            }
+        });
+    }
 
     if (addEventBtn) addEventBtn.addEventListener('click', () => {
         if (eventForm) eventForm.reset();
@@ -3966,6 +4293,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // Chuyển FormData thành Object
             for (const [key, value] of formData.entries()) eventData[key] = value;
+
+            // Gom danh sách thành viên được mời (checkbox nhiều name trùng, FormData không gom được)
+            const attendeeCbs = document.querySelectorAll('input[name="event-attendees"]:checked');
+            eventData.attendees = Array.from(attendeeCbs).map(cb => cb.value).join(',');
 
             if (!eventData.title || !eventData.startDate || !eventData.startTime || !eventData.endDate || !eventData.endTime) {
                 showToast("Vui lòng điền đầy đủ thông tin!", "error");

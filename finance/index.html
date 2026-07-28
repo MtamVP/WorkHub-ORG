@@ -425,7 +425,7 @@
       <section id="task-section" class="content-section" style="display:none;">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h2 class="m-0 text-primary"><i class="fa-solid fa-list-check"></i> Công Việc Chi Tiết</h2>
-          <button class="primary-btn" onclick="showModal('add-task-modal')"><i class="fa-solid fa-plus"></i> New
+          <button class="primary-btn" onclick="openAddTask()"><i class="fa-solid fa-plus"></i> New
             Task</button>
         </div>
 
@@ -545,6 +545,32 @@
           <div class="col-6 form-group mb-3"><label>Giờ</label><input type="time" id="end-time" name="endTime"
               class="text-input w-100" value="10:00" required></div>
         </div>
+        <div class="row">
+          <div class="col-6 form-group mb-3"><label for="event-recurrence" class="form-label">Lặp lại</label>
+            <select id="event-recurrence" name="recurrence" class="text-input w-100" onchange="toggleRecurrenceEndVisibility()">
+              <option value="none">Không lặp lại</option>
+              <option value="daily">Hằng ngày</option>
+              <option value="weekly">Hằng tuần</option>
+              <option value="monthly">Hằng tháng</option>
+            </select>
+          </div>
+          <div class="col-6 form-group mb-3" id="recurrence-end-group" style="display:none;">
+            <label for="event-recurrence-end" class="form-label">Lặp đến ngày</label>
+            <input type="date" id="event-recurrence-end" name="recurrenceEnd" class="text-input w-100">
+          </div>
+        </div>
+        <div class="form-group mb-3">
+          <label class="form-label">Mời thành viên tham dự:</label>
+          <div class="multiselect-container">
+            <div class="selectBox" onclick="showEventAttendeeCheckboxes()">
+              <select class="text-input w-100"><option>-- Chọn thành viên --</option></select>
+              <div class="overSelect"></div>
+            </div>
+            <div id="event-attendee-checkboxes">
+              <div class="p-2 text-muted small">Đang tải...</div>
+            </div>
+          </div>
+        </div>
         <div class="form-group mb-3"><label>Địa điểm</label><input type="text" id="location" name="location"
             class="text-input w-100"></div>
         <div class="form-group mb-4"><label>Mô tả</label><textarea id="description" name="description"
@@ -562,6 +588,8 @@
       <form id="task-form">
         <input type="hidden" id="new-task-project-id">
         <input type="hidden" id="task-id">
+        <input type="hidden" id="new-task-parent-id">
+        <div id="subtask-of-label" class="small text-muted mb-2" style="display:none;"><i class="fa-solid fa-diagram-project me-1"></i> Việc con của: <span id="subtask-of-name"></span></div>
         <div class="form-group mb-3"><label class="fw-bold">Tên công việc:</label><input type="text" id="new-task-name"
             class="text-input w-100" required></div>
         <div class="form-group mb-3"><label class="fw-bold">Mô tả:</label><textarea id="new-task-desc"
@@ -602,6 +630,29 @@
             onclick="hideModal('add-task-modal')">Hủy</button><button type="submit" class="primary-btn">Lưu</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="task-activity-modal" class="custom-modal">
+    <div class="modal-content card" style="max-width: 560px;">
+      <h3><i class="fa-solid fa-comment-dots me-2"></i> Bình luận & Lịch sử: <span id="task-activity-name"></span></h3>
+      <div class="task-activity-tabs">
+        <button type="button" class="task-activity-tab active" data-tab="comments" onclick="switchTaskActivityTab('comments')">Bình luận</button>
+        <button type="button" class="task-activity-tab" data-tab="history" onclick="switchTaskActivityTab('history')">Lịch sử</button>
+      </div>
+      <div id="task-activity-comments-panel" class="task-activity-panel">
+        <div id="task-comment-list" class="task-comment-list"><div class="p-2 text-muted small">Đang tải...</div></div>
+        <form id="task-comment-form" class="d-flex gap-2 mt-2">
+          <input type="text" id="task-comment-input" class="text-input w-100" placeholder="Viết bình luận...">
+          <button type="submit" class="primary-btn">Gửi</button>
+        </form>
+      </div>
+      <div id="task-activity-history-panel" class="task-activity-panel" style="display:none;">
+        <div id="task-history-list" class="task-history-list"><div class="p-2 text-muted small">Đang tải...</div></div>
+      </div>
+      <div class="d-flex justify-content-end pt-3">
+        <button type="button" class="secondary-btn" onclick="hideModal('task-activity-modal')">Đóng</button>
+      </div>
     </div>
   </div>
 
@@ -781,8 +832,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785242726518"></script>
-  <script src="/script.js?v=1785242726518"></script>
+  <script src="/api.js?v=1785244728916"></script>
+  <script src="/script.js?v=1785244728916"></script>
 
   <script>
     function switchTaskView(view) {

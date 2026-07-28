@@ -972,7 +972,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .selectBox:hover select { border-color: var(--text-secondary); }
 .overSelect { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
 
-#checkboxes {
+#checkboxes, #event-attendee-checkboxes {
   display: none; position: absolute; width: 100%; margin-top: 6px; padding: 6px;
   background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md);
   box-shadow: var(--shadow-modal); max-height: 240px; overflow-y: auto; z-index: 1050;
@@ -980,9 +980,9 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 @keyframes dropdownPop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
-#checkboxes label { display: flex; align-items: center; padding: 9px 12px; cursor: pointer; border-radius: var(--radius-sm); color: var(--text-primary); font-weight: 500; transition: var(--transition-fast); }
-#checkboxes label:hover { background-color: var(--hover-bg); }
-#checkboxes input[type="checkbox"] { margin-right: 12px; width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary-color); }
+#checkboxes label, #event-attendee-checkboxes label { display: flex; align-items: center; padding: 9px 12px; cursor: pointer; border-radius: var(--radius-sm); color: var(--text-primary); font-weight: 500; transition: var(--transition-fast); }
+#checkboxes label:hover, #event-attendee-checkboxes label:hover { background-color: var(--hover-bg); }
+#checkboxes input[type="checkbox"], #event-attendee-checkboxes input[type="checkbox"] { margin-right: 12px; width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary-color); }
 
 /* --- Badges --- */
 .status-badge, .priority-badge {
@@ -1014,6 +1014,29 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 .due-badge.overdue { background: color-mix(in srgb, var(--danger-color) 20%, var(--card-bg)); color: var(--danger-color); }
 .due-badge.due-soon { background: color-mix(in srgb, var(--warning-color) 20%, var(--card-bg)); color: var(--warning-color); }
+
+/* --- Subtask + kéo-thả sắp xếp task --- */
+.task-card-subtask { margin-left: 24px; opacity: 0.92; background: var(--hover-bg); }
+tr[draggable="true"], .task-card[draggable="true"] { cursor: grab; }
+tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabbing; }
+.dragging-task { opacity: 0.4; }
+
+/* --- Modal Bình luận & Lịch sử task --- */
+.task-activity-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color); margin-bottom: 14px; }
+.task-activity-tab {
+  background: none; border: none; padding: 8px 16px; font-weight: 600; color: var(--text-muted);
+  cursor: pointer; border-bottom: 2px solid transparent; transition: var(--transition-fast);
+}
+.task-activity-tab:hover { color: var(--text-primary); }
+.task-activity-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.task-activity-panel { max-height: 320px; overflow-y: auto; }
+.task-comment-list, .task-history-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.task-comment-item, .task-history-item {
+  background: var(--hover-bg); border-radius: var(--radius-sm); padding: 10px 12px; border: 1px solid var(--border-color);
+}
+.task-comment-meta, .task-history-meta { margin-bottom: 4px; }
+.task-comment-content { color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
+.task-history-content { color: var(--text-secondary); }
 
 /* --- SweetAlert2 --- */
 div:where(.swal2-container) { z-index: 99999 !important; }

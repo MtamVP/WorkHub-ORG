@@ -213,13 +213,15 @@ const API = {
     },
     task: {
         list: async (projectId, groupKey) => {
-            const { data, error } = await sbClient.from('tasks').select('*').is('deleted_at', null).eq('project_id', projectId);
+            const { data, error } = await sbClient.from('tasks').select('*').is('deleted_at', null).eq('project_id', projectId)
+                .order('sort_order', { ascending: true }).order('created_at', { ascending: true });
             if (error) throw error;
             
             const { data: users } = await sbClient.from('users').select('email, nickname');
-            if (users && data) {
+            if (data) {
                 data.forEach(task => {
-                    if (task.assignees) {
+                    task.dueDate = task.due_date ? task.due_date.slice(0, 10) : '';
+                    if (users && task.assignees) {
                         const emails = task.assignees.split(',').map(e => e.trim().toLowerCase());
                         const names = [];
                         emails.forEach(email => {
@@ -234,6 +236,7 @@ const API = {
             return data;
         },
         delete: async (taskId, projectId, groupKey) => {
+            await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('parent_task_id', taskId);
             const { data, error } = await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId).select('name').single();
             if (error) throw error;
             if (projectId) await API.project.recalculate(projectId, groupKey);
@@ -267,8 +270,9 @@ const API = {
             return newAttachments;
         },
         save: async (taskData, groupKey) => {
+            taskData.id = taskData.id || "T_" + Date.now();
             const { error } = await sbClient.from('tasks').upsert({
-                id: taskData.id || "T_" + Date.now(),
+                id: taskData.id,
                 project_id: taskData.projectId,
                 name: taskData.name,
                 status: taskData.status,
@@ -276,11 +280,35 @@ const API = {
                 due_date: taskData.dueDate,
                 description: taskData.description,
                 attachments: typeof taskData.attachments === 'string' ? JSON.parse(taskData.attachments || '[]') : taskData.attachments,
-                assignees: Array.isArray(taskData.assignees) ? taskData.assignees.join(', ') : taskData.assignees
+                assignees: Array.isArray(taskData.assignees) ? taskData.assignees.join(', ') : taskData.assignees,
+                parent_task_id: taskData.parentTaskId || null
             });
             if (error) throw error;
             if (taskData.projectId) await API.project.recalculate(taskData.projectId, groupKey);
             return `Đã lưu task "${taskData.name}"!`;
+        },
+        reorder: async (orderedIds) => {
+            if (!sbClient || !Array.isArray(orderedIds)) return "OK";
+            await Promise.all(orderedIds.map((id, idx) =>
+                sbClient.from('tasks').update({ sort_order: idx }).eq('id', id)
+            ));
+            return "Đã cập nhật thứ tự!";
+        },
+        getComments: async (taskId) => {
+            const { data, error } = await sbClient.from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true });
+            if (error) throw error;
+            return data;
+        },
+        addComment: async (taskId, content, authorEmail) => {
+            if (!content || !content.trim()) throw new Error("Bình luận không được để trống.");
+            const { error } = await sbClient.from('task_comments').insert({ task_id: taskId, author_email: authorEmail || 'unknown', content: content.trim() });
+            if (error) throw error;
+            return "Đã thêm bình luận!";
+        },
+        getHistory: async (taskId) => {
+            const { data, error } = await sbClient.from('system_logs').select('*').eq('entity_id', taskId).order('created_at', { ascending: true });
+            if (error) throw error;
+            return data;
         },
         uploadFile: async (fileData, fileName, mimeType, taskId, groupKey, description, uploaderEmail) => {
             if (!sbClient) return { success: false, message: "Chưa setup Supabase" };
@@ -399,11 +427,11 @@ const API = {
     },
     calendar: {
         getEvents: async (startDate, endDate, calendarType, groupKey, email) => {
+            // Không lọc theo start_time/end_time ở query: sự kiện lặp lại chỉ lưu 1 dòng gốc
+            // (mốc lần đầu), nên phải lấy hết rồi tự sinh các lần lặp rơi vào [startDate, endDate] ở dưới.
             let query = sbClient.from('events')
                 .select('*')
                 .is('deleted_at', null)
-                .gte('start_time', startDate)
-                .lte('end_time', endDate)
                 .eq('group_key', groupKey);
 
             if (calendarType) {
@@ -414,18 +442,69 @@ const API = {
             }
 
             const { data, error } = await query;
-
             if (error) throw error;
 
-            return data.map(ev => ({
-                id: ev.id,
-                title: ev.title,
-                startTime: ev.start_time,
-                endTime: ev.end_time,
-                isImportant: ev.is_important,
-                location: ev.location,
-                description: ev.description
-            }));
+            const rangeStart = new Date(startDate);
+            const rangeEnd = new Date(endDate);
+            const results = [];
+
+            const advance = (date, unit, n) => {
+                const d = new Date(date);
+                if (unit === 'daily') d.setDate(d.getDate() + n);
+                else if (unit === 'weekly') d.setDate(d.getDate() + n * 7);
+                else if (unit === 'monthly') d.setMonth(d.getMonth() + n);
+                return d;
+            };
+
+            data.forEach(ev => {
+                const baseStart = new Date(ev.start_time);
+                const baseEnd = new Date(ev.end_time);
+                const duration = baseEnd - baseStart;
+                const recurrence = ev.recurrence || 'none';
+
+                const pushInstance = (s) => results.push({
+                    id: ev.id,
+                    title: ev.title,
+                    startTime: s.toISOString(),
+                    endTime: new Date(s.getTime() + duration).toISOString(),
+                    isImportant: ev.is_important,
+                    location: ev.location,
+                    description: ev.description,
+                    recurrence: recurrence,
+                    recurrenceEnd: ev.recurrence_end,
+                    attendees: ev.attendees,
+                    createdBy: ev.created_by
+                });
+
+                if (recurrence === 'none') {
+                    if (baseEnd >= rangeStart && baseStart <= rangeEnd) pushInstance(baseStart);
+                    return;
+                }
+
+                const recEnd = ev.recurrence_end ? new Date(ev.recurrence_end + 'T23:59:59') : null;
+                if (recEnd && recEnd < rangeStart) return;
+                if (baseStart > rangeEnd) return;
+
+                // nhảy nhanh tới gần rangeStart thay vì lặp từng ngày/tuần/tháng từ mốc gốc
+                let cursor = new Date(baseStart);
+                if (cursor < rangeStart) {
+                    const periodMs = recurrence === 'daily' ? 86400000 : recurrence === 'weekly' ? 7 * 86400000 : 30 * 86400000;
+                    const approxN = Math.floor((rangeStart - cursor) / periodMs);
+                    if (approxN > 0) cursor = advance(cursor, recurrence, approxN);
+                    cursor = advance(cursor, recurrence, -2);
+                    if (cursor < baseStart) cursor = new Date(baseStart);
+                }
+
+                let guard = 0;
+                while (cursor <= rangeEnd && (!recEnd || cursor <= recEnd) && guard < 60) {
+                    guard++;
+                    const instEnd = new Date(cursor.getTime() + duration);
+                    if (instEnd >= rangeStart && cursor <= rangeEnd) pushInstance(cursor);
+                    cursor = advance(cursor, recurrence, 1);
+                }
+            });
+
+            return results;
         },
         create: async (eventData, calendarType, groupKey, email) => {
             const { error } = await sbClient.from('events').insert({
@@ -437,7 +516,10 @@ const API = {
                 location: eventData.location,
                 calendar_type: calendarType,
                 group_key: groupKey,
-                created_by: email
+                created_by: email,
+                recurrence: eventData.recurrence || 'none',
+                recurrence_end: eventData.recurrenceEnd || null,
+                attendees: eventData.attendees || null
             });
             if (error) throw error;
             return `Tạo sự kiện "${eventData.title}" thành công!`;
@@ -448,7 +530,10 @@ const API = {
                 start_time: eventData.startDate + ' ' + eventData.startTime,
                 end_time: eventData.endDate + ' ' + eventData.endTime,
                 description: eventData.description,
-                location: eventData.location
+                location: eventData.location,
+                recurrence: eventData.recurrence || 'none',
+                recurrence_end: eventData.recurrenceEnd || null,
+                attendees: eventData.attendees || null
             }).eq('id', eventId);
             if (calendarType === 'personal' && email) {
                 query = query.eq('created_by', email);
@@ -616,7 +701,7 @@ const API = {
         getColors: async () => ({})
     },
     system: {
-        logAction: async (traceId, action, details, status, email, groupKey) => {
+        logAction: async (traceId, action, details, status, email, groupKey, entityId) => {
             if (!sbClient) return;
             const { error } = await sbClient.from('system_logs').insert({
                 trace_id: traceId,
@@ -624,7 +709,8 @@ const API = {
                 details: typeof details === 'object' ? JSON.stringify(details) : details,
                 status: status,
                 user_email: email || 'unknown',
-                group_key: groupKey || 'general'
+                group_key: groupKey || 'general',
+                entity_id: entityId || null
             });
             if (error) console.error("System Log Error", error);
         },
@@ -666,9 +752,12 @@ const API = {
             const { data, error } = await sbClient.from(tableName).update({ deleted_at: null }).eq('id', id).select('*').single();
             if (error) throw error;
 
-            if (tableName === 'tasks' && data.project_id) {
-                await sbClient.from('projects').update({ deleted_at: null }).eq('id', data.project_id);
-                await API.project.recalculate(data.project_id, null);
+            if (tableName === 'tasks') {
+                await sbClient.from('tasks').update({ deleted_at: null }).eq('parent_task_id', id);
+                if (data.project_id) {
+                    await sbClient.from('projects').update({ deleted_at: null }).eq('id', data.project_id);
+                    await API.project.recalculate(data.project_id, null);
+                }
             } else if (tableName === 'projects') {
                 await API.project.recalculate(id, null);
             }
@@ -807,6 +896,10 @@ window.callGAS = async function(action, params = {}) {
             case 'deleteTask': result = await API.task.delete(params.taskId, params.projectId, params.groupKey); break;
             case 'deleteFileFromTask': result = await API.task.deleteFile(params.taskId, params.fileId, params.groupKey); break;
             case 'uploadFileToTask': result = await API.task.uploadFile(params.fileData, params.fileName, params.mimeType, params.taskId, params.groupKey, params.description, params.email); break;
+            case 'reorderTasks': result = await API.task.reorder(params.orderedIds); break;
+            case 'getTaskComments': result = await API.task.getComments(params.taskId); break;
+            case 'addTaskComment': result = await API.task.addComment(params.taskId, params.content, params.email); break;
+            case 'getTaskHistory': result = await API.task.getHistory(params.taskId); break;
 
             case 'getAssetData':
                 return await API.asset.getAssetData(params.email);
@@ -835,17 +928,19 @@ window.callGAS = async function(action, params = {}) {
                 return { status: 'success', data: [], message: `Chưa cấu hình hành động ${action}` };
         }
         let finalMessage = typeof result === 'string' ? result : 'OK';
-        
+        const entityId = params.taskId || params.id || params.eventId || params.projectId || null;
+
         if (action !== 'getNotifications' && action !== 'syncLounge' && !action.startsWith('get')) {
-            API.system.logAction(traceId, action, finalMessage, 'success', params.email, params.groupKey);
+            API.system.logAction(traceId, action, finalMessage, 'success', params.email, params.groupKey, entityId);
         }
 
         return { status: 'success', data: result, message: finalMessage };
     } catch (error) {
         console.error(`Supabase lỗi tại ${action}:`, error);
-        
+        const entityId = params.taskId || params.id || params.eventId || params.projectId || null;
+
         if (action !== 'getNotifications' && action !== 'syncLounge' && !action.startsWith('get')) {
-            API.system.logAction(traceId, action, error.message || String(error), 'error', params.email, params.groupKey);
+            API.system.logAction(traceId, action, error.message || String(error), 'error', params.email, params.groupKey, entityId);
         }
         
         return { status: 'error', data: null, message: error.message || String(error) };
