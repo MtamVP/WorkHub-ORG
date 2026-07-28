@@ -1835,7 +1835,7 @@ function renderTasks(tasks) {
 
                     <td>${renderBadge('status', t.status)}</td>
 
-                    <td class="small text-muted">${escapeHtml(t.dueDate || '--')}</td>
+                    <td class="small text-muted">${escapeHtml(t.dueDate || '--')}${getDueDateBadge(t.dueDate, t.status)}</td>
 
                     <td>${renderBadge('priority', t.priority)}</td>
 
@@ -1916,7 +1916,7 @@ function renderTasks(tasks) {
 
                     <div class="card-row">
                         <span class="card-label"><i class="fa-regular fa-clock me-1"></i>Due:</span>
-                        <span class="fw-bold text-dark">${t.dueDate || '--'}</span>
+                        <span class="fw-bold text-dark">${t.dueDate || '--'}${getDueDateBadge(t.dueDate, t.status)}</span>
                     </div>
                 `;
             cardContainer.appendChild(card);
@@ -2094,6 +2094,19 @@ function getStatusColor(status) {
     if (status === 'Working on it') return '#fdab3d';
     if (status === 'Stuck') return '#e2445c';
     return '#c4c4c4';
+}
+
+// Badge cảnh báo hạn task: đỏ nếu đã quá hạn, vàng nếu còn <=2 ngày. Ẩn khi task đã Done.
+function getDueDateBadge(dueDate, status) {
+    if (!dueDate || status === 'Done') return '';
+    const due = new Date(dueDate + 'T00:00:00');
+    if (isNaN(due.getTime())) return '';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((due - today) / 86400000);
+    if (diffDays < 0) return `<span class="due-badge overdue"><i class="fa-solid fa-triangle-exclamation"></i> Quá hạn</span>`;
+    if (diffDays <= 2) return `<span class="due-badge due-soon"><i class="fa-regular fa-clock"></i> Sắp đến hạn</span>`;
+    return '';
 }
 
 function getProgressBarColor(percent) {

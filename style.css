@@ -1007,6 +1007,14 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .bg-medium { background: color-mix(in srgb, var(--info-color) 18%, var(--card-bg)); color: var(--info-color); }
 .bg-low { background: var(--hover-bg); color: var(--text-muted); }
 
+.due-badge {
+  display: inline-block; margin-left: 6px; padding: 2px 8px;
+  border-radius: var(--radius-pill); font-size: var(--text-2xs); font-weight: 700;
+  letter-spacing: 0.02em; white-space: nowrap; vertical-align: middle;
+}
+.due-badge.overdue { background: color-mix(in srgb, var(--danger-color) 20%, var(--card-bg)); color: var(--danger-color); }
+.due-badge.due-soon { background: color-mix(in srgb, var(--warning-color) 20%, var(--card-bg)); color: var(--warning-color); }
+
 /* --- SweetAlert2 --- */
 div:where(.swal2-container) { z-index: 99999 !important; }
 .swal2-title, .swal2-html-container { color: var(--text-primary) !important; }
