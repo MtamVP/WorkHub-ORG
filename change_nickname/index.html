@@ -24,7 +24,7 @@
     <meta name="apple-mobile-web-app-title" content="WorkHub">
     <link rel="apple-touch-icon" href="/logo.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1784713168016"></script>
+  <script src="/api.js?v=1785061363157"></script>
 
     <style>
         .auth-avatar-preview:hover { transform: scale(1.05) rotate(5deg); }
@@ -169,6 +169,10 @@
                         displayName: newName,
                         photoURL: 'https://ui-avatars.com/api/?name=' + newName + '&background=random&size=128&bold=true'
                     });
+
+                    if (window.API && API.system) {
+                        await API.system.logAction(Date.now().toString(), 'auth', `Đã đổi biệt danh thành "${newName}"`, 'success', user.email, 'all');
+                    }
 
                     Swal.fire({
                         title: 'Thành công!',

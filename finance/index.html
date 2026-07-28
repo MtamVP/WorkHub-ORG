@@ -98,9 +98,9 @@
       <button id="auto-theme-btn" onclick="setAutoMode()" title="Bật tự động theo giờ (18h-6h)"
         class="btn btn-sm btn-outline-primary     rounded-circle" style="font-weight: bold; font-size: 10px;">Auto
       </button>
-      <div class="dropdown">
-        <button type="button" class="btn btn-link position-relative text-decoration-none" id="notiDropdownBtn"
-          data-bs-toggle="dropdown" aria-expanded="false" style="color: var(--text-color);">
+      <div class="noti-btn-container">
+        <button type="button" class="btn btn-link position-relative text-decoration-none" 
+          data-bs-toggle="offcanvas" data-bs-target="#notiOffcanvas" aria-controls="notiOffcanvas" style="color: var(--text-color);">
           <i class="fa-solid fa-bell fs-5"></i>
           <span id="noti-badge"
             class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle"
@@ -108,19 +108,6 @@
             <span class="visually-hidden">New alerts</span>
           </span>
         </button>
-        <ul class="dropdown-menu dropdown-menu-end shadow p-0" aria-labelledby="notiDropdownBtn"
-          style="width: 320px; max-height: 400px; overflow-y: auto;" id="noti-list">
-          <li class="dropdown-header d-flex justify-content-between align-items-center">
-            <span>Thông báo mới</span>
-            <small><a href="#" onclick="markAllRead(event)">Đánh dấu đã đọc</a></small>
-          </li>
-          <li>
-            <hr class="dropdown-divider m-0">
-          </li>
-          <div id="noti-content">
-            <li class="text-center p-3 text-muted"><small>Đang tải...</small></li>
-          </div>
-        </ul>
       </div>
       <div class="dropdown">
         <span id="user-display" class="dropdown-toggle" style="cursor: pointer;" data-bs-toggle="dropdown"
@@ -135,11 +122,19 @@
           <li><a class="dropdown-item" href="/change_nickname/"><i class="fa-solid fa-address-card me-2"></i> Đổi Biệt
               danh</a></li>
           <li><a class="dropdown-item" href="/reset/"><i class="fa-solid fa-key me-2"></i> Đổi Mật khẩu</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="#" onclick="document.getElementById('login-bg-input').click()"><i class="fa-solid fa-image me-2 text-info"></i> Đổi Ảnh nền</a></li>
+          <li><a class="dropdown-item" href="#" onclick="confirmResetTheme()"><i class="fa-solid fa-eraser me-2 text-danger"></i> Reset Ảnh nền</a></li>
         </ul>
+        <input type="file" id="login-bg-input" accept="image/*" style="display: none;" onchange="handleLoginBgUpload(this)">
       </div>
       <button type="button" class="btn btn-link text-decoration-none" onclick="goToLounge('in-lounge')"
         title="Vào phòng nghỉ" style="color: var(--text-color);">
         <i class="fa-solid fa-mug-hot fs-5"></i>
+      </button>
+      <button type="button" class="btn btn-link text-decoration-none" onclick="showTrashModal()"
+        title="Thùng rác" style="color: var(--text-color);">
+        <i class="fa-solid fa-trash-can fs-5 text-danger"></i>
       </button>
 
       <button id="logout-btn">Đăng xuất</button>
@@ -716,9 +711,71 @@
   </div>
 
 
+  <div class="modal fade" id="trashModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header glass-panel pb-2">
+          <h5 class="modal-title fw-bold text-danger">
+            <i class="fa-solid fa-trash-can me-2"></i>Thùng rác
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex justify-content-between mb-3">
+            <select id="trash-category" class="form-select form-select-sm w-auto" onchange="loadTrashItems()">
+              <option value="files">Tệp tin (Files)</option>
+              <option value="projects">Dự án (Projects)</option>
+              <option value="events">Sự kiện (Events)</option>
+              <option value="tasks">Công việc (Tasks)</option>
+            </select>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadTrashItems()"><i class="fa-solid fa-rotate-right"></i> Làm mới</button>
+          </div>
+          <div class="table-responsive border rounded" style="max-height: 350px; overflow-y: auto; min-height: 150px;">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>Tên/Tiêu đề</th>
+                  <th>Ngày xóa</th>
+                  <th class="text-center">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="trash-list-body">
+                <tr><td colspan="3" class="text-center py-5 text-muted">Đang tải...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
+    <div class="offcanvas-header border-bottom bg-light">
+      <h5 class="offcanvas-title fw-bold text-primary" id="notiOffcanvasLabel"><i class="fa-solid fa-satellite-dish me-2"></i> Hệ Thống Giám Sát</h5>
+      <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    
+    <div class="offcanvas-body p-0 d-flex flex-column h-100">
+      <div class="d-flex bg-light px-2 pt-2" id="notiTabs" style="gap: 5px; border-bottom: 1px solid #dee2e6;">
+        <button class="btn btn-outline-primary active flex-fill fw-bold noti-tab-btn" data-filter="all" type="button" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none;"><i class="fa-solid fa-list-ul"></i> Tất cả</button>
+        <button class="btn btn-outline-primary flex-fill fw-bold noti-tab-btn" data-filter="auth" type="button" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none;"><i class="fa-solid fa-shield-halved"></i> Auth</button>
+        <button class="btn btn-outline-primary flex-fill fw-bold noti-tab-btn" data-filter="data" type="button" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none;"><i class="fa-solid fa-database"></i> Data</button>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center p-2 bg-light border-bottom">
+        <span class="text-muted small">Cập nhật theo thời gian thực</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="markAllRead(event)"><i class="fa-solid fa-check-double"></i> Đã đọc hết</button>
+      </div>
+
+      <div class="flex-grow-1 overflow-auto" id="noti-content-offcanvas" style="background-color: var(--bg-color);">
+        <div class="text-center p-4 text-muted"><i class="fa-solid fa-spinner fa-spin fs-3 mb-2"></i><br>Đang tải dữ liệu...</div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1784713168016"></script>
-  <script src="/script.js?v=1784713168016"></script>
+  <script src="/api.js?v=1785061363157"></script>
+  <script src="/script.js?v=1785061363157"></script>
 
   <script>
     function switchTaskView(view) {

@@ -3238,57 +3238,110 @@ async function sendChatMessage() {
  * Thông báo
 */
 let lastReadTime = parseInt(localStorage.getItem('user_last_read_noti')) || 0;
+let currentNotiFilter = 'all';
+let allNotifications = [];
+
+// Khởi tạo tab listener
+document.addEventListener('DOMContentLoaded', () => {
+    const notiTabs = document.querySelectorAll('.noti-tab-btn');
+    notiTabs.forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const btn = e.target.closest('.noti-tab-btn');
+            if (!btn) return;
+            
+            notiTabs.forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+
+            currentNotiFilter = btn.getAttribute('data-filter') || 'all';
+            renderNotifications();
+        });
+    });
+});
+
 async function loadNotifications() {
-    const notiContent = document.getElementById('noti-content');
     const badge = document.getElementById('noti-badge');
+    const notiContent = document.getElementById('noti-content-offcanvas');
 
     try {
-        const response = await callGAS('getNotifications', { groupKey: activeGroup, limit: 50 });
+        const response = await callGAS('getNotifications', { groupKey: activeGroup, limit: 100 });
 
         if (response.status === 'success' || Array.isArray(response)) {
-            const list = Array.isArray(response) ? response : response.data;
-
-            if (list.length === 0) {
-                notiContent.innerHTML = '<li class="text-center p-3 text-muted">Chưa có thông báo nào.</li>';
-                return;
-            }
-
-            // Render danh sách
-            let html = '';
+            allNotifications = Array.isArray(response) ? response : response.data;
+            
+            // Tính số lượng chưa đọc (Toàn bộ)
             let unreadCount = 0;
-
-            list.forEach(item => {
-                // Kiểm tra đã đọc chưa dựa trên timestamp
-                const isUnread = item.timestamp > lastReadTime;
-                if (isUnread) unreadCount++;
-
-                // Format thời gian
-                const dateStr = new Date(item.timestamp).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
-
-                html += `
-                <li>
-                    <a class="dropdown-item noti-item ${isUnread ? 'unread' : ''}" href="${item.link || '#'}" onclick="handleNotiClick(this)">
-                        <div class="d-flex w-100 justify-content-between">
-                            <strong class="mb-1 text-truncate" style="max-width: 180px;">${item.creator || 'System'}</strong>
-                            <small class="noti-time">${dateStr}</small>
-                        </div>
-                        <p class="mb-1 text-wrap small">${item.message}</p>
-                    </a>
-                </li>`;
+            allNotifications.forEach(item => {
+                if (item.timestamp > lastReadTime) unreadCount++;
             });
 
-            notiContent.innerHTML = html;
-
-            // Hiển thị chấm đỏ nếu có tin mới
             if (unreadCount > 0) {
                 badge.style.display = 'block';
             } else {
                 badge.style.display = 'none';
             }
+
+            renderNotifications();
         }
     } catch (e) {
         console.error("Lỗi tải thông báo:", e);
+        if (notiContent) notiContent.innerHTML = `<div class="p-4 text-danger text-center"><i class="fa-solid fa-triangle-exclamation"></i> Lỗi hệ thống: ${e.message}</div>`;
     }
+}
+
+function renderNotifications() {
+    const notiContent = document.getElementById('noti-content-offcanvas');
+    if (!notiContent) return;
+
+    // Lọc bỏ tất cả các hành động get tự động để không hiển thị cho người dùng
+    let filtered = allNotifications.filter(n => !(n.action || '').startsWith('get') && !(n.details || '').includes('Truy xuất'));
+    
+    if (currentNotiFilter === 'auth') {
+        filtered = filtered.filter(n => (n.action || '').toLowerCase().includes('auth') || (n.action || '').toLowerCase() === 'login' || (n.action || '').toLowerCase() === 'logout');
+    } else if (currentNotiFilter === 'data') {
+        filtered = filtered.filter(n => !((n.action || '').toLowerCase().includes('auth') || (n.action || '').toLowerCase() === 'login'));
+    }
+
+    if (filtered.length === 0) {
+        notiContent.innerHTML = `
+        <div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted" style="min-height: 200px;">
+            <i class="fa-solid fa-ghost fs-1 mb-3"></i>
+            <p>Khu vực trống.</p>
+        </div>`;
+        return;
+    }
+
+    let html = '<div class="list-group list-group-flush border-top-0">';
+    
+    filtered.forEach(item => {
+        const isUnread = item.timestamp > lastReadTime;
+        const dateStr = new Date(item.timestamp).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+        
+        let iconHtml = '<i class="fa-solid fa-circle-info text-primary"></i>';
+        let bgClass = isUnread ? 'bg-light border-start border-primary border-4' : '';
+        let act = (item.action || '').toLowerCase();
+        
+        if (act.includes('delete')) iconHtml = '<i class="fa-solid fa-trash-can text-danger"></i>';
+        else if (act.includes('create') || act.includes('upload') || act.includes('add')) iconHtml = '<i class="fa-solid fa-plus-circle text-success"></i>';
+        else if (act.includes('login') || act.includes('auth')) iconHtml = '<i class="fa-solid fa-user-shield text-info"></i>';
+        else if (act.startsWith('get') || (item.details || '').includes('Truy xuất')) iconHtml = '<i class="fa-solid fa-eye text-secondary"></i>';
+        
+        html += `
+        <div class="list-group-item list-group-item-action p-3 ${bgClass}" style="cursor: default;">
+            <div class="d-flex w-100 justify-content-between align-items-center mb-1">
+                <h6 class="mb-0 fw-bold text-truncate" style="font-size: 0.95rem;">
+                    ${iconHtml} <span class="ms-1">${escapeHtml(item.creator || 'Hệ thống')}</span>
+                </h6>
+                <small class="text-muted" style="font-size: 0.75rem;">${dateStr}</small>
+            </div>
+            <div class="mb-1 text-wrap text-dark" style="font-size: 0.85rem;">
+                <span class="badge bg-secondary me-1">${item.action || 'Event'}</span>
+                ${escapeHtml(item.details || item.message)}
+            </div>
+        </div>`;
+    });
+    
+    html += '</div>';
+    notiContent.innerHTML = html;
 }
 
 // Hàm đánh dấu tất cả là đã đọc khi người dùng bấm chuông
@@ -3565,6 +3618,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (typeof showToast === 'function') showToast("Đang đăng xuất...", "info");
 
             if (auth) {
+                if (window.API && API.system) {
+                    API.system.logAction(Date.now().toString(), 'logout', `Người dùng đã đăng xuất hệ thống`, 'success', localStorage.getItem('userEmail'), localStorage.getItem('userGroup'));
+                }
                 auth.signOut()
                     .then(() => {
                         performRedirect();
@@ -4156,3 +4212,156 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 }); // Kết thúc DOMContentLoaded
+
+// ==========================================
+// THÙNG RÁC (RESTORE MANAGER)
+// ==========================================
+function showTrashModal() {
+    const trashModalEl = document.getElementById('trashModal');
+    if (!trashModalEl) return;
+    const modal = new bootstrap.Modal(trashModalEl);
+    modal.show();
+    loadTrashItems();
+}
+
+async function loadTrashItems() {
+    const tbody = document.getElementById('trash-list-body');
+    const category = document.getElementById('trash-category').value;
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center py-5 text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</td></tr>';
+    
+    try {
+        const response = await callGAS('getDeletedItems', { tableName: category, groupKey: activeGroup });
+        if (response.status === 'success' && response.data && response.data.length > 0) {
+            let html = '';
+            response.data.forEach(item => {
+                let name = item.name || item.title || 'Không có tên';
+                let displayName = escapeHtml(name);
+                if (category === 'tasks' && item.projectName) {
+                    displayName += ` <br><small class="text-muted"><i class="fa-solid fa-folder-open"></i> Dự án: ${escapeHtml(item.projectName)}</small>`;
+                }
+                let dateStr = item.deleted_at ? new Date(item.deleted_at).toLocaleString('vi-VN') : 'N/A';
+                
+                html += `
+                <tr>
+                  <td>${displayName}</td>
+                  <td>${dateStr}</td>
+                  <td class="text-center">
+                    <button class="btn btn-sm btn-success shadow-sm mb-1" onclick="restoreItemClick('${category}', '${item.id}')">
+                      <i class="fa-solid fa-clock-rotate-left"></i> Khôi phục
+                    </button>
+                    <button class="btn btn-sm btn-danger shadow-sm mb-1" onclick="hardDeleteItemClick('${category}', '${item.id}')">
+                      <i class="fa-solid fa-trash"></i> Xóa hẳn
+                    </button>
+                  </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center py-5 text-muted">Thùng rác trống.</td></tr>';
+        }
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center py-5 text-danger">Lỗi tải dữ liệu: ${e.message}</td></tr>`;
+    }
+}
+
+async function restoreItemClick(category, id) {
+    const result = await Swal.fire({
+        title: 'Xác nhận khôi phục',
+        html: `Khôi phục hả ku? Chắc chưa`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Khôi phục đi bruh',
+        cancelButtonText: 'Nghĩ lại ồi',
+        confirmButtonColor: '#28a745',
+        cancelButtonColor: '#6c757d'
+    });
+    
+    if (!result.isConfirmed) return;        
+    
+    try {
+        const response = await callGAS('restoreItem', { tableName: category, id: id, groupKey: activeGroup });
+        if (response.status === 'success') {
+            showToast('Khôi phục thành công!', 'success');
+            loadTrashItems();
+            
+            // Reload lại giao diện nếu đang ở tab đó
+            if (category === 'files') {
+                if (typeof loadFileList === 'function') loadFileList();
+            } else if (category === 'projects' || category === 'tasks') {
+                if (typeof loadProgressList === 'function') loadProgressList();
+            } else if (category === 'events') {
+                if (typeof loadCalendarData === 'function') loadCalendarData();
+            }
+        } else {
+            showToast('Khôi phục thất bại: ' + response.message, 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function hardDeleteItemClick(category, id) {
+    const result = await Swal.fire({
+        title: 'Xác nhận xóa vĩnh viễn',
+        html: `Bro chắc chưa? Xóa rùi là mất đó nha`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Xóa vĩnh viễn',
+        cancelButtonText: 'Nghĩ lại ồi',
+        confirmButtonColor: '#d9534f',
+        cancelButtonColor: '#6c757d'
+    });
+    
+    if (!result.isConfirmed) return;
+    
+    try {
+        const response = await callGAS('hardDeleteItem', { tableName: category, id: id, groupKey: activeGroup });
+        if (response.status === 'success') {
+            showToast('Đã xóa vĩnh viễn!', 'success');
+            loadTrashItems();
+        } else {
+            showToast('Xóa thất bại: ' + response.message, 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi: ' + e.message, 'error');
+    }
+}
+
+// --- LOGIC HÌNH NỀN LOGIN ---
+window.handleLoginBgUpload = function(input) {
+    if (input.files && input.files[0]) {
+        var file = input.files[0];
+        if (file.size > 700 * 1024) { Swal.fire('Ảnh nặng quá!', 'Ảnh lưu vào Firestore (giới hạn 1MB/document) nên cần dưới 700KB.', 'warning'); return; }
+        
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            db.collection('settings').doc('login_theme').set({
+                backgroundImage: e.target.result,
+                updatedBy: auth.currentUser ? auth.currentUser.email : 'Unknown',
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                Swal.fire({ icon: 'success', title: 'Đã đổi nền!', text: 'Hình nền Login đã được cập nhật.', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+            }).catch(err => {
+                Swal.fire('Lỗi', err.message, 'error');
+            });
+        }
+        reader.readAsDataURL(file);
+    }
+};
+
+window.confirmResetTheme = function() {
+    Swal.fire({
+        title: 'Reset giao diện?', text: 'Xóa ảnh nền và quay về mặc định?', icon: 'question',
+        showCancelButton: true, confirmButtonColor: '#d33', cancelButtonText: 'Khoan...', confirmButtonText: 'Ok, xóa đi ní!'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            db.collection('settings').doc('login_theme').update({
+                backgroundImage: firebase.firestore.FieldValue.delete()
+            }).then(() => {
+                Swal.fire({ icon: 'success', title: 'Đã Reset!', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+            });
+        }
+    });
+};
