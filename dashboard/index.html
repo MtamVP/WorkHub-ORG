@@ -381,7 +381,14 @@
           <input type="text" id="progress-project-name" placeholder="Hoặc nhập Tên dự án mới"
             style="width: 100%; margin-bottom: 10px; padding: 8px;">
 
-          <textarea id="progress-note-input" placeholder="Ghi chú (tùy chọn)"
+          <select id="progress-status-select" style="width: 100%; margin-bottom: 10px; padding: 8px;">
+            <option value="Planning">Planning</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="On Hold">On Hold</option>
+          </select>
+
+          <textarea id="progress-note-input" placeholder="Mô tả / ghi chú (tùy chọn)"
             style="width: 100%; margin-bottom: 10px; padding: 8px;"></textarea>
           <button id="update-progress-btn" type="button" class="primary-btn"><i class="fa-solid fa-plus"></i> Tạo / Cập
             Nhật</button>
@@ -780,7 +787,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785241355170"></script>
+  <script src="/api.js?v=1785241888968"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -808,7 +815,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1785241355170"></script>
+  <script src="/script.js?v=1785241888968"></script>
 
   <script>
     function switchTaskView(view) {

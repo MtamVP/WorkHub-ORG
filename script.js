@@ -1307,7 +1307,7 @@ async function loadProjectOverview() {
             // Nạp option cho dropdown chọn dự án (Task / Tạo mới)
             globalAllProjects.forEach(p => {
                 if (taskDropdown) { const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; taskDropdown.appendChild(opt); }
-                if (createDropdown) { const opt = document.createElement('option'); opt.value = p.name; opt.textContent = p.name; createDropdown.appendChild(opt); }
+                if (createDropdown) { const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; createDropdown.appendChild(opt); }
             });
 
             // Restore selection
@@ -1396,8 +1396,12 @@ function renderProgressTable() {
             }
         }
 
+        const statusBadge = p.status
+            ? `<span class="badge bg-secondary ms-1" style="font-size: 0.65rem; vertical-align: middle;">${escapeHtml(p.status)}</span>`
+            : '';
+
         row.innerHTML = `
-            <td class="fw-bold text-primary">${safeName}</td>
+            <td class="fw-bold text-primary">${safeName}${statusBadge}</td>
             <td>
                 <div class="progress" style="height: 20px; background-color: var(--hover-bg);">
                     <div class="progress-bar ${getProgressBarColor(p.percent)}" role="progressbar"
@@ -1406,7 +1410,7 @@ function renderProgressTable() {
                     </div>
                 </div>
             </td>
-            <td class="small text-muted">${escapeHtml(p.status || '')}</td>
+            <td class="small text-muted">${escapeHtml(p.description || '')}</td>
             <td class="text-center">${centerColContent}</td>
             <td class="small">${escapeHtml(p.lastUpdated)}</td>
             <td class="small fw-bold">${escapeHtml(p.owner)}</td>
@@ -1483,11 +1487,13 @@ async function handleProjectCreationOrUpdate() {
     const btn = document.getElementById('update-progress-btn');
     const nameInput = document.getElementById('progress-project-name');
     const noteInput = document.getElementById('progress-note-input');
-    const selectInput = document.getElementById('project-select'); // Dropdown chọn dự án
+    const statusInput = document.getElementById('progress-status-select');
+    const selectInput = document.getElementById('project-select'); // Dropdown chọn dự án có sẵn (value = id)
 
     const newName = nameInput.value.trim();
     const note = noteInput.value.trim();
-    const selectedProjectId = selectInput.value; // Lấy ID dự án
+    const status = statusInput ? statusInput.value : '';
+    const selectedProjectId = selectInput.value;
 
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
@@ -1495,16 +1501,11 @@ async function handleProjectCreationOrUpdate() {
 
     try {
         if (!selectedProjectId && newName) {
-            const newProjectData = {
-                name: newName,
-                owner: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : "Unknown",
-                status: note || "Planning"
-            };
-
             const response = await callGAS("createProject", {
                 name: newName,
                 owner: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : "Unknown",
-                status: note || "Planning",
+                status: status || "Planning",
+                description: note,
                 groupKey: activeGroup
             });
 
@@ -1513,6 +1514,7 @@ async function handleProjectCreationOrUpdate() {
 
                 nameInput.value = '';
                 noteInput.value = '';
+                if (statusInput) statusInput.value = 'Planning';
                 loadProjectOverview();
             } else {
                 showToast("Lỗi: " + response.message, "error");
@@ -1521,7 +1523,8 @@ async function handleProjectCreationOrUpdate() {
         else if (selectedProjectId) {
             const response = await callGAS("updateProject", {
                 projectId: selectedProjectId,
-                newNote: note,
+                status: status,
+                description: note,
                 groupKey: activeGroup
             });
 
@@ -3572,7 +3575,30 @@ document.addEventListener('DOMContentLoaded', function () {
     //if (document.getElementById('today-calendar-view')) loadCalendarData();
     //if (document.getElementById('project-progress-view') && typeof loadDashboardTopProgress === 'function') loadDashboardTopProgress();
 
-    //  8.4 SỰ KIỆN CHO TASK & PROGRESS 
+    //  8.4 SỰ KIỆN CHO TASK & PROGRESS
+
+    // Chọn 1 dự án có sẵn từ dropdown -> tự điền trạng thái/mô tả hiện tại để sửa
+    // (không chọn gì / chọn lại "-- Nhập mới --" -> quay về chế độ tạo mới, để trống form)
+    if (projectSelect) {
+        projectSelect.addEventListener('change', function () {
+            const nameInput = document.getElementById('progress-project-name');
+            const noteInput = document.getElementById('progress-note-input');
+            const statusInput = document.getElementById('progress-status-select');
+            const selectedId = projectSelect.value;
+
+            if (!selectedId) {
+                if (nameInput) nameInput.value = '';
+                if (noteInput) noteInput.value = '';
+                if (statusInput) statusInput.value = 'Planning';
+                return;
+            }
+
+            const project = (globalAllProjects || []).find(p => p.id === selectedId);
+            if (nameInput) nameInput.value = '';
+            if (noteInput) noteInput.value = (project && project.description) || '';
+            if (statusInput) statusInput.value = (project && project.status) || 'Planning';
+        });
+    }
 
     // tạo dự án / update note
     if (updateBtn) {

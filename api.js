@@ -112,6 +112,7 @@ const API = {
                 owner: p.users ? p.users.nickname : 'Unknown',
                 percent: p.percent,
                 status: p.status,
+                description: p.description,
                 lastUpdated: p.updated_at,
                 isShared: p.is_shared,
                 originGroup: p.group_key
@@ -126,15 +127,20 @@ const API = {
                 name: projectData.name,
                 owner_id: ownerId,
                 status: projectData.status || "Planning",
+                description: projectData.description || '',
                 group_key: groupKey
             });
             if (error) throw error;
             return `Đã tạo dự án ${projectData.name}!`;
         },
-        updateNote: async (projectId, newNote, groupKey) => {
-            const { data, error } = await sbClient.from('projects').update({ description: newNote }).eq('id', projectId).select('name').single();
+        updateNote: async (projectId, payload, groupKey) => {
+            const updates = { updated_at: new Date().toISOString() };
+            if (payload && payload.status) updates.status = payload.status;
+            if (payload && payload.description !== undefined) updates.description = payload.description;
+
+            const { data, error } = await sbClient.from('projects').update(updates).eq('id', projectId).select('name').single();
             if (error) throw error;
-            return `Đã cập nhật ghi chú ${newNote} vô ${data.name} thành công!`;
+            return `Đã cập nhật dự án "${data.name}" thành công!`;
         },
         share: async (projectId, groupKey) => {
             const { data, error } = await sbClient.from('projects').update({ is_shared: true }).eq('id', projectId).select('name').single();
@@ -792,7 +798,7 @@ window.callGAS = async function(action, params = {}) {
             case 'getProjectList': result = await API.project.list(params.groupKey, params.searchName); break;
             case 'getProjectListWithTaskStats': result = await API.project.listWithStats(params.groupKey, params.searchName); break;
             case 'createProject': result = await API.project.create(params, params.groupKey); break;
-            case 'updateProject': result = await API.project.updateNote(params.projectId, params.newNote, params.groupKey); break;
+            case 'updateProject': result = await API.project.updateNote(params.projectId, { status: params.status, description: params.description }, params.groupKey); break;
             case 'shareProject': result = await API.project.share(params.projectId, params.groupKey); break;
             case 'deleteProject': result = await API.project.delete(params.projectId, params.groupKey); break;
 
