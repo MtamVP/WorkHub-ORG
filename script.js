@@ -1472,8 +1472,15 @@ function renderProgressTable() {
             ? `<span class="badge bg-secondary ms-1" style="font-size: 0.65rem; vertical-align: middle;">${escapeHtml(p.status)}</span>`
             : '';
 
+        let overdueBadge = '';
+        if (p.overdueCount > 0) {
+            overdueBadge = `<span class="due-badge overdue" title="${p.overdueCount} công việc quá hạn"><i class="fa-solid fa-triangle-exclamation"></i> ${p.overdueCount}</span>`;
+        } else if (p.dueSoonCount > 0) {
+            overdueBadge = `<span class="due-badge due-soon" title="${p.dueSoonCount} công việc sắp đến hạn"><i class="fa-regular fa-clock"></i> ${p.dueSoonCount}</span>`;
+        }
+
         row.innerHTML = `
-            <td class="fw-bold text-primary">${safeName}${statusBadge}</td>
+            <td class="fw-bold text-primary">${safeName}${statusBadge}${overdueBadge}</td>
             <td>
                 <div class="progress" style="height: 20px; background-color: var(--hover-bg);">
                     <div class="progress-bar ${getProgressBarColor(p.percent)}" role="progressbar"
@@ -1486,7 +1493,13 @@ function renderProgressTable() {
             <td class="text-center">${centerColContent}</td>
             <td class="small">${escapeHtml(p.lastUpdated)}</td>
             <td class="small fw-bold">${escapeHtml(p.owner)}</td>
-            <td class="text-center">
+            <td class="text-center text-nowrap">
+                <button class="btn btn-sm text-warning border-0" onclick="openMilestonesModal('${safeIdArg}', '${safeNameArg}')" title="Cột mốc dự án">
+                    <i class="fa-solid fa-flag-checkered"></i>
+                </button>
+                <button class="btn btn-sm text-info border-0" onclick="openBurndownModal('${safeIdArg}', '${safeNameArg}')" title="Biểu đồ tiến độ">
+                    <i class="fa-solid fa-chart-line"></i>
+                </button>
                 <button class="btn btn-sm text-danger border-0" onclick="deleteProjectAction('${safeIdArg}', '${safeNameArg}')" title="Xóa Dự Án">
                     <i class="fa-solid fa-trash"></i>
                 </button>
@@ -1500,6 +1513,133 @@ function renderProgressTable() {
 async function loadProgressList() {
     return loadProjectOverview();
 }
+
+//  CỘT MỐC DỰ ÁN (MILESTONES)
+let currentMilestoneProjectId = null;
+
+function openMilestonesModal(projectId, projectName) {
+    currentMilestoneProjectId = projectId;
+    const nameEl = document.getElementById('milestones-project-name');
+    if (nameEl) nameEl.textContent = projectName;
+    showModal('milestones-modal');
+    loadMilestones(projectId);
+}
+
+async function loadMilestones(projectId) {
+    const list = document.getElementById('milestone-list');
+    if (!list) return;
+    list.innerHTML = '<div class="p-2 text-muted small">Đang tải...</div>';
+    try {
+        const response = await callGAS('getMilestones', { projectId });
+        if (response.status !== 'success') throw new Error(response.message);
+        const milestones = response.data || [];
+        if (milestones.length === 0) {
+            list.innerHTML = '<div class="p-2 text-muted small">Chưa có cột mốc nào.</div>';
+            return;
+        }
+        list.innerHTML = milestones.map(m => {
+            const dateStr = m.target_date ? new Date(m.target_date + 'T00:00:00').toLocaleDateString('vi-VN') : '';
+            return `<div class="milestone-item ${m.is_done ? 'milestone-done' : ''}">
+                <label class="d-flex align-items-center gap-2 flex-grow-1" style="cursor:pointer; margin:0;">
+                    <input type="checkbox" ${m.is_done ? 'checked' : ''} onchange="toggleMilestoneStatus('${m.id}', this.checked)">
+                    <span class="milestone-title">${escapeHtml(m.title)}</span>
+                    ${dateStr ? `<span class="text-muted small ms-auto">${dateStr}</span>` : ''}
+                </label>
+                <button class="btn btn-sm text-danger border-0" onclick="deleteMilestoneAction('${m.id}')" title="Xóa">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        list.innerHTML = `<div class="text-danger small p-2">Lỗi: ${err.message}</div>`;
+    }
+}
+
+async function toggleMilestoneStatus(milestoneId, isDone) {
+    try {
+        const response = await callGAS('toggleMilestone', { milestoneId, isDone });
+        if (response.status !== 'success') throw new Error(response.message);
+        loadMilestones(currentMilestoneProjectId);
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+async function deleteMilestoneAction(milestoneId) {
+    try {
+        const response = await callGAS('deleteMilestone', { milestoneId });
+        if (response.status !== 'success') throw new Error(response.message);
+        loadMilestones(currentMilestoneProjectId);
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+//  BIỂU ĐỒ TIẾN ĐỘ (BURNDOWN, xấp xỉ từ updated_at của task Done)
+let burndownChartInstance = null;
+
+async function openBurndownModal(projectId, projectName) {
+    const nameEl = document.getElementById('burndown-project-name');
+    if (nameEl) nameEl.textContent = projectName;
+    showModal('burndown-modal');
+
+    const canvas = document.getElementById('burndown-chart-canvas');
+    if (!canvas) return;
+
+    try {
+        const response = await callGAS('getBurndownData', { projectId });
+        if (response.status !== 'success') throw new Error(response.message);
+        const tasks = response.data || [];
+
+        if (tasks.length === 0 || typeof Chart === 'undefined') {
+            if (burndownChartInstance) { burndownChartInstance.destroy(); burndownChartInstance = null; }
+            return;
+        }
+
+        // Trục ngày: từ ngày tạo task sớm nhất tới hôm nay
+        const allDates = tasks.map(t => new Date(t.created_at));
+        let cursor = new Date(Math.min(...allDates));
+        cursor.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const labels = [];
+        const totalSeries = [];
+        const doneSeries = [];
+
+        while (cursor <= today) {
+            const dayEnd = new Date(cursor); dayEnd.setHours(23, 59, 59, 999);
+            const totalByDay = tasks.filter(t => new Date(t.created_at) <= dayEnd).length;
+            const doneByDay = tasks.filter(t => String(t.status).toLowerCase() === 'done' && new Date(t.updated_at) <= dayEnd).length;
+
+            labels.push(cursor.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }));
+            totalSeries.push(totalByDay);
+            doneSeries.push(doneByDay);
+
+            cursor.setDate(cursor.getDate() + 1);
+        }
+
+        if (burndownChartInstance) burndownChartInstance.destroy();
+        burndownChartInstance = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Tổng công việc', data: totalSeries, borderColor: '#9A6B0D', backgroundColor: 'transparent', stepped: true },
+                    { label: 'Đã hoàn thành', data: doneSeries, borderColor: '#1C8F5A', backgroundColor: 'transparent', stepped: true }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    } catch (err) {
+        showToast('Lỗi tải biểu đồ: ' + err.message, 'error');
+    }
+}
+
 // hàm xóa dự án
 function deleteProjectAction(projectId, projectName) {
     Swal.fire({
@@ -1909,8 +2049,10 @@ function renderTasks(tasks) {
                 tr.addEventListener('dragend', handleTaskDragEnd);
             }
             tr.innerHTML = `
+                    <td class="bulk-select-col" style="display:none;"><input type="checkbox" class="bulk-select-checkbox" data-task-id="${t.id}" onchange="onBulkCheckboxChange('${t.id}', this.checked)" onclick="event.stopPropagation()"></td>
+
                     <td style="border-left: 5px solid ${statusColor}; font-weight: 500; ${isSubtask ? 'padding-left: 32px;' : ''}">
-                        ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}
+                        ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}${getBlockedBadge(t)}
                     </td>
 
                     <td>${avatarsHTML}</td>
@@ -1936,7 +2078,7 @@ function renderTasks(tasks) {
 
                     <td class="text-nowrap">
                         <button class="btn btn-sm text-primary border-0" title="Sửa"
-                            onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}', '${t.parent_task_id || ''}')">
+                            onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}', '${t.parent_task_id || ''}', '${t.blocked_by || ''}')">
                             <i class="fa-solid fa-pen"></i>
                         </button>${subtaskBtn}
                         <button class="btn btn-sm text-secondary border-0" title="Bình luận & Lịch sử" onclick="openTaskActivity('${t.id}', '${safeName}')">
@@ -1969,7 +2111,9 @@ function renderTasks(tasks) {
 
             card.innerHTML = `
                     <div class="d-flex justify-content-between align-items-start">
-                        <span class="fw-bold text-primary" style="font-size: 1.1rem;">${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}</span>
+                        <span class="fw-bold text-primary" style="font-size: 1.1rem;">
+                            <input type="checkbox" class="bulk-select-checkbox bulk-select-col" style="display:none; margin-right:6px;" data-task-id="${t.id}" onchange="onBulkCheckboxChange('${t.id}', this.checked)">
+                            ${isSubtask ? '<i class="fa-solid fa-turn-up fa-rotate-90 text-muted me-1" style="font-size:0.75em;"></i>' : ''}${escapeHtml(t.name)}${getBlockedBadge(t)}</span>
 
                         <div class="dropdown">
                             <button class="btn btn-sm text-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1978,7 +2122,7 @@ function renderTasks(tasks) {
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li>
                                     <button class="dropdown-item" type="button"
-                                        onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}', '${t.parent_task_id || ''}')">
+                                        onclick="openEditTask('${t.id}', '${safeName}', '${escapeHtml(escapeJs(t.status))}', '${escapeHtml(escapeJs(t.priority))}', '${escapeHtml(escapeJs(t.dueDate || ''))}', '${safeAssignees}', '${safeDesc}', '${t.parent_task_id || ''}', '${t.blocked_by || ''}')">
                                         <i class="fa-solid fa-pen me-2 text-primary"></i> Sửa
                                     </button>
                                 </li>
@@ -2083,6 +2227,222 @@ function handleTaskDragEnd(e) {
     document.querySelectorAll('.dragging-task').forEach(el => el.classList.remove('dragging-task'));
 }
 
+//  BOARD KANBAN (kéo thẻ giữa các cột = đổi status)
+const KANBAN_STATUSES = ['Not Started', 'Working on it', 'Stuck', 'Done'];
+
+function renderKanbanBoard(tasks) {
+    const container = document.getElementById('kanban-board-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    KANBAN_STATUSES.forEach(status => {
+        const colTasks = (tasks || []).filter(t => (t.status || 'Not Started') === status);
+
+        const col = document.createElement('div');
+        col.className = 'kanban-column';
+        col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('kanban-column-dragover'); });
+        col.addEventListener('dragleave', () => col.classList.remove('kanban-column-dragover'));
+        col.addEventListener('drop', (e) => {
+            e.preventDefault();
+            col.classList.remove('kanban-column-dragover');
+            handleKanbanDrop(status);
+        });
+
+        const header = document.createElement('div');
+        header.className = 'kanban-column-header';
+        header.innerHTML = `<span>${escapeHtml(status)}</span><span class="kanban-count">${colTasks.length}</span>`;
+        col.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'kanban-column-body';
+
+        colTasks.forEach(t => {
+            const safeName = escapeHtml(t.name);
+            const card = document.createElement('div');
+            card.className = 'kanban-card';
+            card.draggable = true;
+            card.addEventListener('dragstart', () => { draggedTaskId = t.id; card.classList.add('dragging-task'); });
+            card.addEventListener('dragend', () => { card.classList.remove('dragging-task'); });
+            card.addEventListener('click', () => openTaskActivity(t.id, t.name));
+
+            const parent = t.parent_task_id ? (globalAllTasks || []).find(x => x.id === t.parent_task_id) : null;
+            const parentLabel = parent
+                ? `<div class="kanban-parent-label"><i class="fa-solid fa-turn-up fa-rotate-90"></i> ${escapeHtml(parent.name)}</div>`
+                : '';
+
+            card.innerHTML = `
+                ${parentLabel}
+                <div class="kanban-card-title">${safeName}${getBlockedBadge(t)}</div>
+                <div class="kanban-card-meta">
+                    ${renderBadge('priority', t.priority).replace('width: 100%', 'width:auto; display:inline-block; padding:2px 8px;')}
+                    ${getDueDateBadge(t.dueDate, t.status)}
+                </div>
+            `;
+            body.appendChild(card);
+        });
+
+        col.appendChild(body);
+        container.appendChild(col);
+    });
+}
+
+async function handleKanbanDrop(newStatus) {
+    if (!draggedTaskId || !globalAllTasks) return;
+    const task = globalAllTasks.find(t => t.id === draggedTaskId);
+    draggedTaskId = null;
+    if (!task || task.status === newStatus) return;
+
+    const oldStatus = task.status;
+    task.status = newStatus; // optimistic
+    if (typeof applyTaskFilters === 'function') applyTaskFilters();
+
+    try {
+        const response = await callGAS('saveTask', {
+            id: task.id,
+            projectId: task.project_id,
+            name: task.name,
+            status: newStatus,
+            priority: task.priority,
+            dueDate: task.dueDate,
+            assignees: task.assignees,
+            description: task.description,
+            parentTaskId: task.parent_task_id,
+            blockedBy: task.blocked_by,
+            groupKey: activeGroup
+        });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+    } catch (err) {
+        task.status = oldStatus; // revert nếu lỗi (vd bị chặn bởi task chưa Done)
+        if (typeof applyTaskFilters === 'function') applyTaskFilters();
+        showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+//  CHỌN NHIỀU (BULK ACTION) TASK
+let bulkSelectMode = false;
+let bulkSelectedIds = new Set();
+
+function toggleBulkSelectMode() {
+    bulkSelectMode = !bulkSelectMode;
+    if (!bulkSelectMode) bulkSelectedIds.clear();
+
+    document.querySelectorAll('.bulk-select-col').forEach(el => {
+        if (!bulkSelectMode) { el.style.display = 'none'; return; }
+        el.style.display = (el.tagName === 'TH' || el.tagName === 'TD') ? 'table-cell' : 'inline-block';
+    });
+    document.querySelectorAll('.bulk-select-checkbox').forEach(cb => { if (!bulkSelectMode) cb.checked = false; });
+
+    const toggleBtn = document.getElementById('bulk-select-toggle');
+    if (toggleBtn) toggleBtn.classList.toggle('active', bulkSelectMode);
+
+    refreshBulkSelectionUI();
+}
+
+function onBulkCheckboxChange(taskId, checked) {
+    if (checked) bulkSelectedIds.add(taskId);
+    else bulkSelectedIds.delete(taskId);
+    // đồng bộ trạng thái checkbox của cùng 1 task giữa view bảng và view card
+    document.querySelectorAll(`.bulk-select-checkbox[data-task-id="${taskId}"]`).forEach(cb => cb.checked = checked);
+    refreshBulkSelectionUI();
+}
+
+function toggleSelectAllTasks(checked) {
+    document.querySelectorAll('.bulk-select-checkbox').forEach(cb => {
+        cb.checked = checked;
+        const id = cb.dataset.taskId;
+        if (checked) bulkSelectedIds.add(id); else bulkSelectedIds.delete(id);
+    });
+    refreshBulkSelectionUI();
+}
+
+function refreshBulkSelectionUI() {
+    const bar = document.getElementById('bulk-action-bar');
+    const countEl = document.getElementById('bulk-selected-count');
+    if (countEl) countEl.textContent = `${bulkSelectedIds.size} đã chọn`;
+    if (bar) bar.style.display = (bulkSelectMode && bulkSelectedIds.size > 0) ? 'flex' : 'none';
+}
+
+async function applyBulkStatusChange() {
+    const statusSel = document.getElementById('bulk-status-select');
+    const status = statusSel ? statusSel.value : null;
+    const ids = Array.from(bulkSelectedIds);
+    if (!status || ids.length === 0) return;
+
+    try {
+        const response = await callGAS('bulkUpdateTaskStatus', { taskIds: ids, status, projectId: currentTaskProjectID, groupKey: activeGroup });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+        bulkSelectedIds.clear();
+        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+async function applyBulkDelete() {
+    const ids = Array.from(bulkSelectedIds);
+    if (ids.length === 0) return;
+
+    Swal.fire({
+        title: `Xóa ${ids.length} công việc?`,
+        text: 'Hành động này sẽ đưa các công việc đã chọn vào thùng rác.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Xóa liền đi người ae!',
+        cancelButtonText: 'Nghĩ lại òi!'
+    }).then(async (result) => {
+        if (!result.isConfirmed) return;
+        try {
+            const response = await callGAS('bulkDeleteTasks', { taskIds: ids, projectId: currentTaskProjectID, groupKey: activeGroup });
+            if (response.status !== 'success') throw new Error(response.message);
+            showToast(response.data || response.message, 'success');
+            bulkSelectedIds.clear();
+            if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+            if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        } catch (err) {
+            showToast('Lỗi: ' + err.message, 'error');
+        }
+    });
+}
+
+//  CHỌN CÔNG VIỆC CHẶN (DEPENDENCY)
+let blockersExpanded = false;
+function showBlockerCheckboxes() {
+    const box = document.getElementById('blocker-checkboxes');
+    if (!box) return;
+    blockersExpanded = !blockersExpanded;
+    box.style.display = blockersExpanded ? 'block' : 'none';
+}
+
+// hàm tải danh sách checkbox công việc trong cùng dự án để chọn làm "chặn bởi" (loại trừ chính task đang sửa)
+function loadBlockerCheckboxes(excludeTaskId) {
+    const container = document.getElementById('blocker-checkboxes');
+    if (!container) return;
+    const tasks = (globalAllTasks || []).filter(t => t.id !== excludeTaskId);
+
+    if (tasks.length === 0) {
+        container.innerHTML = '<div class="p-2 text-muted small">Chưa có công việc nào khác trong dự án.</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+    tasks.forEach(t => {
+        const label = document.createElement('label');
+        label.style.display = 'block';
+        label.style.padding = '5px 10px';
+        label.style.cursor = 'pointer';
+        label.onmouseover = function () { this.style.backgroundColor = '#f1f1f1'; };
+        label.onmouseout = function () { this.style.backgroundColor = 'transparent'; };
+        label.innerHTML = `<input type="checkbox" name="task-blockers" value="${escapeHtml(t.id)}" style="margin-right:8px;" /> ${escapeHtml(t.name)}`;
+        container.appendChild(label);
+    });
+}
+
 //  BÌNH LUẬN & LỊCH SỬ TASK
 let currentActivityTaskId = null;
 let taskActivityUserMap = {};
@@ -2101,16 +2461,41 @@ async function openTaskActivity(taskId, taskName) {
     switchTaskActivityTab('comments');
     showModal('task-activity-modal');
 
+    const mentionContainer = document.getElementById('comment-mention-checkboxes');
+    if (mentionContainer) mentionContainer.innerHTML = '<div class="p-2 text-muted small">Đang tải...</div>';
+
     try {
         const userResp = await callGAS('getAllUsers', { groupKey: activeGroup });
         taskActivityUserMap = {};
         if (userResp.status === 'success' && Array.isArray(userResp.data)) {
             userResp.data.forEach(u => { taskActivityUserMap[u.email] = u.name; });
+
+            if (mentionContainer) {
+                mentionContainer.innerHTML = '';
+                userResp.data.forEach(u => {
+                    const label = document.createElement('label');
+                    label.style.display = 'block';
+                    label.style.padding = '5px 10px';
+                    label.style.cursor = 'pointer';
+                    label.onmouseover = function () { this.style.backgroundColor = '#f1f1f1'; };
+                    label.onmouseout = function () { this.style.backgroundColor = 'transparent'; };
+                    label.innerHTML = `<input type="checkbox" name="comment-mentions" value="${escapeHtml(u.email)}" style="margin-right:8px;" /> ${escapeHtml(u.name)}`;
+                    mentionContainer.appendChild(label);
+                });
+            }
         }
     } catch (err) { taskActivityUserMap = {}; }
 
     loadTaskComments(taskId);
     loadTaskHistory(taskId);
+}
+
+let mentionCheckboxesExpanded = false;
+function showMentionCheckboxes() {
+    const box = document.getElementById('comment-mention-checkboxes');
+    if (!box) return;
+    mentionCheckboxesExpanded = !mentionCheckboxesExpanded;
+    box.style.display = mentionCheckboxesExpanded ? 'block' : 'none';
 }
 
 function switchTaskActivityTab(tab) {
@@ -2180,6 +2565,7 @@ function resetTaskModalUI() {
     document.getElementById('task-id').value = '';
     document.getElementById('new-task-parent-id').value = '';
     document.querySelectorAll('input[name="task-assignees"]').forEach(cb => cb.checked = false);
+    document.querySelectorAll('input[name="task-blockers"]').forEach(cb => cb.checked = false);
 
     const subtaskLabel = document.getElementById('subtask-of-label');
     if (subtaskLabel) subtaskLabel.style.display = 'none';
@@ -2194,6 +2580,7 @@ function openAddTask() {
     if (typeof currentTaskProjectID !== 'undefined' && currentTaskProjectID) {
         document.getElementById('new-task-project-id').value = currentTaskProjectID;
     }
+    loadBlockerCheckboxes('');
     showModal('add-task-modal');
 }
 
@@ -2210,11 +2597,12 @@ function openAddSubtask(parentId, parentName) {
         subtaskName.textContent = parentName;
         subtaskLabel.style.display = 'block';
     }
+    loadBlockerCheckboxes('');
     showModal('add-task-modal');
 }
 
 //  HÀM MỞ MODAL SỬA TASK
-function openEditTask(id, name, status, priority, dueDate, assigneesStr, description, parentTaskId) {
+function openEditTask(id, name, status, priority, dueDate, assigneesStr, description, parentTaskId, blockedByStr) {
     document.getElementById('task-id').value = id;
     document.getElementById('new-task-name').value = name;
     document.getElementById('new-task-status').value = status;
@@ -2222,6 +2610,12 @@ function openEditTask(id, name, status, priority, dueDate, assigneesStr, descrip
     document.getElementById('new-task-duedate').value = dueDate;
     document.getElementById('new-task-desc').value = description || '';
     document.getElementById('new-task-parent-id').value = parentTaskId || '';
+
+    loadBlockerCheckboxes(id);
+    const blockerIds = (blockedByStr || '').split(',').map(x => x.trim()).filter(Boolean);
+    document.querySelectorAll('input[name="task-blockers"]').forEach(cb => {
+        cb.checked = blockerIds.includes(cb.value);
+    });
 
     const subtaskLabel = document.getElementById('subtask-of-label');
     const subtaskName = document.getElementById('subtask-of-name');
@@ -2263,6 +2657,10 @@ async function handleTaskFormSubmit(e) {
     const checkboxes = document.querySelectorAll('input[name="task-assignees"]:checked');
     const selectedEmails = Array.from(checkboxes).map(cb => cb.value).join(',');
 
+    // Gom danh sách công việc chặn được tick
+    const blockerCbs = document.querySelectorAll('input[name="task-blockers"]:checked');
+    const selectedBlockers = Array.from(blockerCbs).map(cb => cb.value).join(',');
+
     // Gom dữ liệu từ form
     const taskData = {
         id: document.getElementById('task-id').value,
@@ -2273,7 +2671,8 @@ async function handleTaskFormSubmit(e) {
         dueDate: document.getElementById('new-task-duedate').value,
         assignees: selectedEmails,
         description: document.getElementById('new-task-desc').value,
-        parentTaskId: document.getElementById('new-task-parent-id').value || null
+        parentTaskId: document.getElementById('new-task-parent-id').value || null,
+        blockedBy: selectedBlockers
     };
 
     if (!taskData.projectId) {
@@ -2409,6 +2808,19 @@ function getDueDateBadge(dueDate, status) {
     return '';
 }
 
+// Badge "Bị chặn": hiện khi task còn công việc phụ thuộc (blocked_by) chưa Done
+function getBlockedBadge(task) {
+    if (!task.blocked_by) return '';
+    const blockerIds = task.blocked_by.split(',').map(x => x.trim()).filter(Boolean);
+    if (blockerIds.length === 0) return '';
+    const unfinished = blockerIds
+        .map(id => (globalAllTasks || []).find(t => t.id === id))
+        .filter(b => b && String(b.status).toLowerCase() !== 'done');
+    if (unfinished.length === 0) return '';
+    const names = unfinished.map(b => escapeHtml(b.name)).join(', ');
+    return `<span class="blocked-badge" title="Bị chặn bởi: ${names}"><i class="fa-solid fa-lock"></i> Bị chặn</span>`;
+}
+
 function getProgressBarColor(percent) {
     if (percent == 100) return 'bg-success';
     if (percent >= 50) return 'bg-primary';
@@ -2532,12 +2944,14 @@ function applyTaskFilters() {
         return matchName && matchStatus && matchPriority && matchAssignee;
     });
 
-    const radioTable = document.getElementById('view-table');
-
-    const isTableView = radioTable ? radioTable.checked : true;
-
     if (typeof renderTasks === 'function') {
         renderTasks(filteredTasks);
+    }
+    if (typeof renderKanbanBoard === 'function') {
+        renderKanbanBoard(filteredTasks);
+    }
+    if (typeof refreshBulkSelectionUI === 'function') {
+        refreshBulkSelectionUI();
     }
 }
 
@@ -3514,6 +3928,13 @@ async function loadNotifications() {
     }
 }
 
+function closeNotiOffcanvas() {
+    const el = document.getElementById('notiOffcanvas');
+    if (!el || typeof bootstrap === 'undefined') return;
+    const instance = bootstrap.Offcanvas.getInstance(el);
+    if (instance) instance.hide();
+}
+
 function renderNotifications() {
     const notiContent = document.getElementById('noti-content-offcanvas');
     if (!notiContent) return;
@@ -3546,13 +3967,19 @@ function renderNotifications() {
         let bgClass = isUnread ? 'bg-light border-start border-primary border-4' : '';
         let act = (item.action || '').toLowerCase();
         
-        if (act.includes('delete')) iconHtml = '<i class="fa-solid fa-trash-can text-danger"></i>';
+        if (act === 'mention') iconHtml = '<i class="fa-solid fa-at text-warning"></i>';
+        else if (act.includes('delete')) iconHtml = '<i class="fa-solid fa-trash-can text-danger"></i>';
         else if (act.includes('create') || act.includes('upload') || act.includes('add')) iconHtml = '<i class="fa-solid fa-plus-circle text-success"></i>';
         else if (act.includes('login') || act.includes('auth')) iconHtml = '<i class="fa-solid fa-user-shield text-info"></i>';
         else if (act.startsWith('get') || (item.details || '').includes('Truy xuất')) iconHtml = '<i class="fa-solid fa-eye text-secondary"></i>';
-        
+
+        const isMention = act === 'mention' && item.taskId;
+        const clickAttr = isMention
+            ? `onclick="closeNotiOffcanvas(); openTaskActivity('${escapeHtml(escapeJs(item.taskId))}', '')"`
+            : '';
+
         html += `
-        <div class="list-group-item list-group-item-action p-3 ${bgClass}" style="cursor: default;">
+        <div class="list-group-item list-group-item-action p-3 ${bgClass}" style="cursor: ${isMention ? 'pointer' : 'default'};" ${clickAttr}>
             <div class="d-flex w-100 justify-content-between align-items-center mb-1">
                 <h6 class="mb-0 fw-bold text-truncate" style="font-size: 0.95rem;">
                     ${iconHtml} <span class="ms-1">${escapeHtml(item.creator || 'Hệ thống')}</span>
@@ -3560,7 +3987,7 @@ function renderNotifications() {
                 <small class="text-muted" style="font-size: 0.75rem;">${dateStr}</small>
             </div>
             <div class="mb-1 text-wrap text-dark" style="font-size: 0.85rem;">
-                <span class="badge bg-secondary me-1">${item.action || 'Event'}</span>
+                <span class="badge ${isMention ? 'bg-warning text-dark' : 'bg-secondary'} me-1">${isMention ? 'Nhắc đến bạn' : (item.action || 'Event')}</span>
                 ${escapeHtml(item.details || item.message)}
             </div>
         </div>`;
@@ -4252,17 +4679,50 @@ document.addEventListener('DOMContentLoaded', function () {
             const content = input ? input.value.trim() : '';
             if (!content || !currentActivityTaskId) return;
 
+            const mentionCbs = document.querySelectorAll('input[name="comment-mentions"]:checked');
+            const mentionedEmails = Array.from(mentionCbs).map(cb => cb.value).join(',');
+
             try {
                 const response = await callGAS('addTaskComment', {
                     taskId: currentActivityTaskId,
                     content: content,
+                    mentionedEmails: mentionedEmails,
                     groupKey: activeGroup,
                     email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
                 });
                 if (response.status !== 'success') throw new Error(response.message);
                 if (input) input.value = '';
+                document.querySelectorAll('input[name="comment-mentions"]:checked').forEach(cb => cb.checked = false);
                 loadTaskComments(currentActivityTaskId);
                 loadTaskHistory(currentActivityTaskId);
+            } catch (err) {
+                showToast('Lỗi: ' + err.message, 'error');
+            }
+        });
+    }
+
+    //  8.10 FORM THÊM CỘT MỐC DỰ ÁN
+    const milestoneForm = document.getElementById('milestone-form');
+    if (milestoneForm) {
+        milestoneForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const titleInput = document.getElementById('milestone-title-input');
+            const dateInput = document.getElementById('milestone-date-input');
+            const title = titleInput ? titleInput.value.trim() : '';
+            if (!title || !currentMilestoneProjectId) return;
+
+            try {
+                const response = await callGAS('addMilestone', {
+                    projectId: currentMilestoneProjectId,
+                    title: title,
+                    targetDate: dateInput ? dateInput.value : '',
+                    groupKey: activeGroup,
+                    email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
+                });
+                if (response.status !== 'success') throw new Error(response.message);
+                if (titleInput) titleInput.value = '';
+                if (dateInput) dateInput.value = '';
+                loadMilestones(currentMilestoneProjectId);
             } catch (err) {
                 showToast('Lỗi: ' + err.message, 'error');
             }

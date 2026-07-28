@@ -106,7 +106,7 @@ const API = {
             const { data, error } = await query;
             if (error) throw error;
 
-            return data.map(p => ({
+            const projects = data.map(p => ({
                 id: p.id,
                 name: p.name,
                 owner: p.users ? p.users.nickname : 'Unknown',
@@ -115,8 +115,38 @@ const API = {
                 description: p.description,
                 lastUpdated: p.updated_at,
                 isShared: p.is_shared,
-                originGroup: p.group_key
+                originGroup: p.group_key,
+                overdueCount: 0,
+                dueSoonCount: 0
             }));
+
+            if (projects.length > 0) {
+                const projectIds = projects.map(p => p.id);
+                const { data: openTasks } = await sbClient.from('tasks')
+                    .select('project_id, due_date')
+                    .in('project_id', projectIds)
+                    .is('deleted_at', null)
+                    .not('status', 'eq', 'Done')
+                    .not('due_date', 'is', null);
+
+                if (openTasks && openTasks.length > 0) {
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    const projectMap = {};
+                    projects.forEach(p => { projectMap[p.id] = p; });
+
+                    openTasks.forEach(t => {
+                        const p = projectMap[t.project_id];
+                        if (!p) return;
+                        const due = new Date(t.due_date);
+                        due.setHours(0, 0, 0, 0);
+                        const diffDays = Math.round((due - today) / 86400000);
+                        if (diffDays < 0) p.overdueCount++;
+                        else if (diffDays <= 2) p.dueSoonCount++;
+                    });
+                }
+            }
+
+            return projects;
         },
         create: async (projectData, groupKey) => {
             const id = "PJ_" + Date.now();
@@ -209,6 +239,37 @@ const API = {
             }
             await sbClient.from('projects').update({ percent, updated_at: new Date().toISOString() }).eq('id', projectId);
             return percent;
+        },
+        getMilestones: async (projectId) => {
+            const { data, error } = await sbClient.from('project_milestones').select('*').eq('project_id', projectId).order('target_date', { ascending: true, nullsFirst: false });
+            if (error) throw error;
+            return data;
+        },
+        addMilestone: async (projectId, title, targetDate) => {
+            if (!title || !title.trim()) throw new Error("Tên cột mốc không được để trống.");
+            const { error } = await sbClient.from('project_milestones').insert({
+                id: "MS_" + Date.now(),
+                project_id: projectId,
+                title: title.trim(),
+                target_date: targetDate || null
+            });
+            if (error) throw error;
+            return "Đã thêm cột mốc!";
+        },
+        toggleMilestone: async (milestoneId, isDone) => {
+            const { error } = await sbClient.from('project_milestones').update({ is_done: isDone }).eq('id', milestoneId);
+            if (error) throw error;
+            return "Đã cập nhật cột mốc!";
+        },
+        deleteMilestone: async (milestoneId) => {
+            const { error } = await sbClient.from('project_milestones').delete().eq('id', milestoneId);
+            if (error) throw error;
+            return "Đã xóa cột mốc!";
+        },
+        getBurndownData: async (projectId) => {
+            const { data, error } = await sbClient.from('tasks').select('status, created_at, updated_at').is('deleted_at', null).eq('project_id', projectId);
+            if (error) throw error;
+            return data;
         }
     },
     task: {
@@ -271,6 +332,18 @@ const API = {
         },
         save: async (taskData, groupKey) => {
             taskData.id = taskData.id || "T_" + Date.now();
+
+            if (taskData.status === 'Done' && taskData.blockedBy) {
+                const blockerIds = String(taskData.blockedBy).split(',').map(x => x.trim()).filter(Boolean);
+                if (blockerIds.length > 0) {
+                    const { data: blockers } = await sbClient.from('tasks').select('name, status').in('id', blockerIds).is('deleted_at', null);
+                    const unfinished = (blockers || []).filter(b => String(b.status).toLowerCase() !== 'done');
+                    if (unfinished.length > 0) {
+                        throw new Error(`Không thể đánh dấu Done: còn đang bị chặn bởi "${unfinished.map(b => b.name).join('", "')}"`);
+                    }
+                }
+            }
+
             const { error } = await sbClient.from('tasks').upsert({
                 id: taskData.id,
                 project_id: taskData.projectId,
@@ -281,7 +354,8 @@ const API = {
                 description: taskData.description,
                 attachments: typeof taskData.attachments === 'string' ? JSON.parse(taskData.attachments || '[]') : taskData.attachments,
                 assignees: Array.isArray(taskData.assignees) ? taskData.assignees.join(', ') : taskData.assignees,
-                parent_task_id: taskData.parentTaskId || null
+                parent_task_id: taskData.parentTaskId || null,
+                blocked_by: taskData.blockedBy || null
             });
             if (error) throw error;
             if (taskData.projectId) await API.project.recalculate(taskData.projectId, groupKey);
@@ -294,14 +368,34 @@ const API = {
             ));
             return "Đã cập nhật thứ tự!";
         },
+        bulkUpdateStatus: async (taskIds, status, projectId, groupKey) => {
+            if (!Array.isArray(taskIds) || taskIds.length === 0) return "Không có công việc nào được chọn.";
+            const { error } = await sbClient.from('tasks').update({ status, updated_at: new Date().toISOString() }).in('id', taskIds);
+            if (error) throw error;
+            if (projectId) await API.project.recalculate(projectId, groupKey);
+            return `Đã cập nhật trạng thái cho ${taskIds.length} công việc!`;
+        },
+        bulkDelete: async (taskIds, projectId, groupKey) => {
+            if (!Array.isArray(taskIds) || taskIds.length === 0) return "Không có công việc nào được chọn.";
+            await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).in('parent_task_id', taskIds);
+            const { error } = await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).in('id', taskIds);
+            if (error) throw error;
+            if (projectId) await API.project.recalculate(projectId, groupKey);
+            return `Đã xóa ${taskIds.length} công việc!`;
+        },
         getComments: async (taskId) => {
             const { data, error } = await sbClient.from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true });
             if (error) throw error;
             return data;
         },
-        addComment: async (taskId, content, authorEmail) => {
+        addComment: async (taskId, content, authorEmail, mentionedEmails) => {
             if (!content || !content.trim()) throw new Error("Bình luận không được để trống.");
-            const { error } = await sbClient.from('task_comments').insert({ task_id: taskId, author_email: authorEmail || 'unknown', content: content.trim() });
+            const { error } = await sbClient.from('task_comments').insert({
+                task_id: taskId,
+                author_email: authorEmail || 'unknown',
+                content: content.trim(),
+                mentioned_emails: mentionedEmails || null
+            });
             if (error) throw error;
             return "Đã thêm bình luận!";
         },
@@ -824,24 +918,24 @@ const API = {
         }
     },
     notification: {
-        get: async (groupKey, limit = 50) => {
+        get: async (groupKey, limit = 50, viewerEmail) => {
             if (!sbClient) return [];
             let query = sbClient.from('system_logs')
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(limit);
-                
+
             if (groupKey) {
                 query = query.eq('group_key', groupKey);
             }
-            
+
             const { data, error } = await query;
             if (error) {
                 console.error("Notification Error", error);
                 return [];
             }
-            
-            return data.map(log => ({
+
+            const logItems = data.map(log => ({
                 id: log.id,
                 timestamp: new Date(log.created_at).getTime(),
                 creator: log.user_email,
@@ -851,6 +945,32 @@ const API = {
                 message: `Đã thực hiện ${log.status === 'success' ? 'thành công' : 'nhưng thất bại'} ${log.action}: ${log.details}`,
                 link: '#'
             }));
+
+            let mentionItems = [];
+            if (viewerEmail) {
+                const { data: mentions } = await sbClient.from('task_comments')
+                    .select('id, task_id, author_email, content, mentioned_emails, created_at')
+                    .not('mentioned_emails', 'is', null)
+                    .ilike('mentioned_emails', `%${viewerEmail}%`)
+                    .order('created_at', { ascending: false })
+                    .limit(limit);
+
+                mentionItems = (mentions || [])
+                    .filter(m => (m.mentioned_emails || '').split(',').map(e => e.trim().toLowerCase()).includes(viewerEmail.toLowerCase()))
+                    .map(m => ({
+                        id: 'mention_' + m.id,
+                        timestamp: new Date(m.created_at).getTime(),
+                        creator: m.author_email,
+                        action: 'mention',
+                        status: 'success',
+                        details: m.content,
+                        taskId: m.task_id,
+                        message: `${m.author_email} đã nhắc đến bạn: "${m.content}"`,
+                        link: '#'
+                    }));
+            }
+
+            return [...logItems, ...mentionItems].sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
         }
     },
     lounge: { sync: async () => "Synced" }
@@ -890,6 +1010,11 @@ window.callGAS = async function(action, params = {}) {
             case 'updateProject': result = await API.project.updateNote(params.projectId, { status: params.status, description: params.description }, params.groupKey); break;
             case 'shareProject': result = await API.project.share(params.projectId, params.groupKey); break;
             case 'deleteProject': result = await API.project.delete(params.projectId, params.groupKey); break;
+            case 'getMilestones': result = await API.project.getMilestones(params.projectId); break;
+            case 'addMilestone': result = await API.project.addMilestone(params.projectId, params.title, params.targetDate); break;
+            case 'toggleMilestone': result = await API.project.toggleMilestone(params.milestoneId, params.isDone); break;
+            case 'deleteMilestone': result = await API.project.deleteMilestone(params.milestoneId); break;
+            case 'getBurndownData': result = await API.project.getBurndownData(params.projectId); break;
 
             case 'getTaskList': result = await API.task.list(params.projectId, params.groupKey); break;
             case 'saveTask': result = await API.task.save(params, params.groupKey); break;
@@ -898,7 +1023,9 @@ window.callGAS = async function(action, params = {}) {
             case 'uploadFileToTask': result = await API.task.uploadFile(params.fileData, params.fileName, params.mimeType, params.taskId, params.groupKey, params.description, params.email); break;
             case 'reorderTasks': result = await API.task.reorder(params.orderedIds); break;
             case 'getTaskComments': result = await API.task.getComments(params.taskId); break;
-            case 'addTaskComment': result = await API.task.addComment(params.taskId, params.content, params.email); break;
+            case 'addTaskComment': result = await API.task.addComment(params.taskId, params.content, params.email, params.mentionedEmails); break;
+            case 'bulkUpdateTaskStatus': result = await API.task.bulkUpdateStatus(params.taskIds, params.status, params.projectId, params.groupKey); break;
+            case 'bulkDeleteTasks': result = await API.task.bulkDelete(params.taskIds, params.projectId, params.groupKey); break;
             case 'getTaskHistory': result = await API.task.getHistory(params.taskId); break;
 
             case 'getAssetData':
@@ -920,7 +1047,7 @@ window.callGAS = async function(action, params = {}) {
             case 'restoreItem': result = await API.system.restoreItem(params.tableName, params.id); break;
             case 'hardDeleteItem': result = await API.system.hardDeleteItem(params.tableName, params.id); break;
 
-            case 'getNotifications': result = await API.notification.get(params.groupKey, params.limit); break;
+            case 'getNotifications': result = await API.notification.get(params.groupKey, params.limit, params.email); break;
             case 'syncLounge': result = await API.lounge.sync(params); break;
 
             default:

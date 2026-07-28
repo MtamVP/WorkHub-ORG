@@ -972,7 +972,7 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .selectBox:hover select { border-color: var(--text-secondary); }
 .overSelect { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
 
-#checkboxes, #event-attendee-checkboxes {
+#checkboxes, #event-attendee-checkboxes, #blocker-checkboxes, #comment-mention-checkboxes {
   display: none; position: absolute; width: 100%; margin-top: 6px; padding: 6px;
   background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md);
   box-shadow: var(--shadow-modal); max-height: 240px; overflow-y: auto; z-index: 1050;
@@ -980,9 +980,9 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 @keyframes dropdownPop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
-#checkboxes label, #event-attendee-checkboxes label { display: flex; align-items: center; padding: 9px 12px; cursor: pointer; border-radius: var(--radius-sm); color: var(--text-primary); font-weight: 500; transition: var(--transition-fast); }
-#checkboxes label:hover, #event-attendee-checkboxes label:hover { background-color: var(--hover-bg); }
-#checkboxes input[type="checkbox"], #event-attendee-checkboxes input[type="checkbox"] { margin-right: 12px; width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary-color); }
+#checkboxes label, #event-attendee-checkboxes label, #blocker-checkboxes label, #comment-mention-checkboxes label { display: flex; align-items: center; padding: 9px 12px; cursor: pointer; border-radius: var(--radius-sm); color: var(--text-primary); font-weight: 500; transition: var(--transition-fast); }
+#checkboxes label:hover, #event-attendee-checkboxes label:hover, #blocker-checkboxes label:hover, #comment-mention-checkboxes label:hover { background-color: var(--hover-bg); }
+#checkboxes input[type="checkbox"], #event-attendee-checkboxes input[type="checkbox"], #blocker-checkboxes input[type="checkbox"], #comment-mention-checkboxes input[type="checkbox"] { margin-right: 12px; width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary-color); }
 
 /* --- Badges --- */
 .status-badge, .priority-badge {
@@ -1037,6 +1037,58 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 .task-comment-meta, .task-history-meta { margin-bottom: 4px; }
 .task-comment-content { color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
 .task-history-content { color: var(--text-secondary); }
+
+/* --- Bulk select toolbar (Task) --- */
+.bulk-action-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: color-mix(in srgb, var(--gold) 10%, var(--card-bg)); border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;
+}
+#bulk-select-toggle.active { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+
+/* --- Badge "Bị chặn" (dependency) --- */
+.blocked-badge {
+  display: inline-block; margin-left: 6px; padding: 2px 8px;
+  border-radius: var(--radius-pill); font-size: var(--text-2xs); font-weight: 700;
+  background: color-mix(in srgb, var(--danger-color) 16%, var(--card-bg)); color: var(--danger-color);
+  white-space: nowrap; vertical-align: middle;
+}
+
+/* --- Board Kanban (Task) --- */
+.kanban-board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+.kanban-column {
+  flex: 0 0 280px; background: var(--hover-bg); border: 1px solid var(--border-color);
+  border-radius: var(--radius-md); display: flex; flex-direction: column; max-height: 70vh;
+  transition: var(--transition-fast);
+}
+.kanban-column-dragover { border-color: var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 30%, transparent) inset; }
+.kanban-column-header {
+  display: flex; justify-content: space-between; align-items: center; padding: 10px 12px;
+  font-weight: 700; border-bottom: 1px solid var(--border-color); color: var(--text-primary);
+}
+.kanban-count {
+  background: var(--card-bg); border-radius: var(--radius-pill); padding: 1px 9px;
+  font-size: var(--text-2xs); color: var(--text-muted);
+}
+.kanban-column-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.kanban-card {
+  background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+  padding: 10px 12px; cursor: grab; box-shadow: var(--shadow-1); transition: var(--transition-fast);
+}
+.kanban-card:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.kanban-card:active { cursor: grabbing; }
+.kanban-card-title { font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.kanban-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kanban-parent-label { font-size: var(--text-2xs); color: var(--text-muted); margin-bottom: 4px; }
+
+/* --- Cột mốc dự án (Milestones) --- */
+.milestone-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; margin-bottom: 8px; }
+.milestone-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+}
+.milestone-item.milestone-done .milestone-title { text-decoration: line-through; color: var(--text-muted); }
+.milestone-title { color: var(--text-primary); font-weight: 500; }
 
 /* --- SweetAlert2 --- */
 div:where(.swal2-container) { z-index: 99999 !important; }
