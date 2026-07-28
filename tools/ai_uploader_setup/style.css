@@ -6,8 +6,8 @@
     --border-glow: rgba(255, 255, 255, 0.1);
     --text-primary: #ededed;
     --text-secondary: #a1a1aa;
-    --accent: #ffffff;
-    --accent-hover: #e5e5e5;
+    --accent: #C9A84C;
+    --accent-hover: #E8C87A;
     --success: #10b981;
     --success-bg: rgba(16, 185, 129, 0.1);
     --warning: #f59e0b;
@@ -216,7 +216,7 @@ hr {
 .download-btn:hover {
     background: var(--accent-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(255,255,255,0.25);
+    box-shadow: 0 4px 14px rgba(201,168,76,0.35);
 }
 
 /* Step Cards */
