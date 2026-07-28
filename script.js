@@ -43,6 +43,8 @@ let currentCalendarType = 'group';
 let selectedDate = new Date();
 let todayEventList;
 let manageEventBtn, deleteEventBtn, addEventBtn, eventForm;
+let eventModalDefaultTitleHTML = null;
+let eventModalDefaultSubmitHTML = null;
 let selectedEventId = null;
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
@@ -1008,6 +1010,10 @@ function renderEventsForSelectedDate() {
             (event.location ? '<span><i class="fa-solid fa-location-dot"></i> ' + event.location + '</span>' : '') +
             '</div>' +
 
+            '<button class="btn-edit-event-mini" title="Sửa" onclick="openEditEvent(\'' + event.id + '\', event)">' +
+            '<i class="fa-solid fa-pen"></i>' +
+            '</button>' +
+
             '<button class="btn-delete-event-mini" title="Xóa" onclick="quickDeleteEvent(\'' + event.id + '\', \'' + event.title + '\', event)">' +
             '<i class="fa-solid fa-trash"></i>' +
             '</button>';
@@ -1028,6 +1034,48 @@ function renderEventsForSelectedDate() {
         listContainer.appendChild(div);
     });
 }
+
+// hàm khôi phục modal về trạng thái "Tạo mới" (xóa dấu vết lần sửa trước đó)
+function resetEventModalUI() {
+    document.getElementById('event-id').value = '';
+
+    const modalTitle = document.getElementById('event-modal-title');
+    if (modalTitle && eventModalDefaultTitleHTML !== null) modalTitle.innerHTML = eventModalDefaultTitleHTML;
+
+    const submitBtn = eventForm ? eventForm.querySelector('button[type="submit"]') : null;
+    if (submitBtn && eventModalDefaultSubmitHTML !== null) submitBtn.innerHTML = eventModalDefaultSubmitHTML;
+}
+
+// hàm mở modal ở chế độ sửa sự kiện đã có
+window.openEditEvent = function (id, e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    const event = (currentMonthEvents || []).find(ev => ev.id === id);
+    if (!event) return;
+
+    const start = new Date(event.startTime);
+    const end = new Date(event.endTime);
+    const pad = n => String(n).padStart(2, '0');
+    const toDateStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const toTimeStr = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+    document.getElementById('event-id').value = event.id;
+    document.getElementById('event-title').value = event.title || '';
+    document.getElementById('start-date').value = toDateStr(start);
+    document.getElementById('start-time').value = toTimeStr(start);
+    document.getElementById('end-date').value = toDateStr(end);
+    document.getElementById('end-time').value = toTimeStr(end);
+    document.getElementById('location').value = event.location || '';
+    document.getElementById('description').value = event.description || '';
+
+    const modalTitle = document.getElementById('event-modal-title');
+    if (modalTitle) modalTitle.innerHTML = '<i class="fa-solid fa-pen me-2"></i> Sửa Sự Kiện';
+
+    const submitBtn = eventForm ? eventForm.querySelector('button[type="submit"]') : null;
+    if (submitBtn) submitBtn.innerHTML = 'Cập Nhật';
+
+    showModal('add-event-modal');
+};
 
 // hàm xóa sự kiện
 window.quickDeleteEvent = function (id, title, e) {
@@ -1186,6 +1234,10 @@ window.showToast = function (message, type = 'success') {
  */
 
 let currentTaskProjectID = null;
+// Cache toàn bộ dự án đã fetch lần gần nhất — để lọc/sắp xếp ở client mà không cần
+// gọi lại API mỗi khi đổi dropdown filter/sort (trước đây loadProgressList() tự fetch riêng).
+let globalAllProjects = [];
+
 async function loadProjectOverview() {
     const tableBody = document.getElementById('progress-table-body');
     const taskDropdown = document.getElementById('task-project-select');
@@ -1220,36 +1272,22 @@ async function loadProjectOverview() {
         });
 
         if (response.status === 'success') {
-            const projects = response.data; // Dữ liệu nằm trong response.data
+            globalAllProjects = response.data || [];
 
             // Reset UI
-            if (tableBody) tableBody.innerHTML = '';
             if (taskDropdown) taskDropdown.innerHTML = '<option value="">-- Chọn Dự Án để xem Task --</option>';
             if (createDropdown) createDropdown.innerHTML = '<option value="">-- Chọn Dự án đã có hoặc Nhập mới --</option>';
             if (filterProjectDropdown) filterProjectDropdown.innerHTML = '<option value="">-- Tất cả dự án --</option>';
             if (filterOwnerDropdown) filterOwnerDropdown.innerHTML = '<option value="">-- Tất cả người tạo --</option>';
 
-            if (!projects || projects.length === 0) {
+            if (!globalAllProjects.length) {
                 if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center text-muted">Chưa có dự án nào.</td></tr>`;
+                if (typeof loadMemberCheckboxes === 'function') loadMemberCheckboxes();
                 return;
             }
 
-            // --- XỬ LÝ SẮP XẾP (SORTING) ---
-            const sortSelect = document.getElementById('sort-project');
-            const sortVal = sortSelect ? sortSelect.value : 'date_desc';
-            
-            if (sortVal === 'date_desc') {
-                projects.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-            } else if (sortVal === 'date_asc') {
-                projects.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
-            } else if (sortVal === 'percent_desc') {
-                projects.sort((a, b) => (b.percent || 0) - (a.percent || 0));
-            } else if (sortVal === 'percent_asc') {
-                projects.sort((a, b) => (a.percent || 0) - (b.percent || 0));
-            }
-
-            // Lọc theo người tạo
-            const uniqueOwners = [...new Set(projects.map(p => p.owner))].sort();
+            // Nạp option cho dropdown lọc theo người tạo / theo dự án
+            const uniqueOwners = [...new Set(globalAllProjects.map(p => p.owner))].sort();
             if (filterOwnerDropdown) {
                 uniqueOwners.forEach(owner => {
                     const opt = document.createElement('option');
@@ -1257,63 +1295,22 @@ async function loadProjectOverview() {
                     filterOwnerDropdown.appendChild(opt);
                 });
             }
+            const uniqueNames = [...new Set(globalAllProjects.map(p => p.name))].sort();
+            if (filterProjectDropdown) {
+                uniqueNames.forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name; opt.textContent = name;
+                    filterProjectDropdown.appendChild(opt);
+                });
+            }
 
-            // Render Table & Dropdowns
-            projects.forEach(p => {
-                // Render Table Row
-                if (tableBody) {
-                    const row = tableBody.insertRow();
-                    let centerColContent = '';
-
-                    const safeName = escapeHtml(p.name);
-                    const safeNameArg = escapeHtml(escapeJs(p.name));
-                    const safeIdArg = escapeHtml(escapeJs(p.id));
-
-                    if (isGeneralPage) {
-                        // Hiện badge nhóm ở trang chung
-                        let badgeClass = 'bg-secondary';
-                        let groupLabel = 'General';
-                        if (p.originGroup === 'finance') { badgeClass = 'bg-warning text-dark'; groupLabel = 'Finance'; }
-                        else if (p.originGroup === 'science') { badgeClass = 'bg-info text-dark'; groupLabel = 'Science'; }
-                        centerColContent = `<span class="badge ${badgeClass}">${groupLabel}</span>`;
-                    } else {
-                        // Hiện nút chia sẻ ở trang nhóm
-                        if (p.isShared === true || p.isShared === 'true') {
-                            centerColContent = `<button class="btn btn-sm border-0" onclick="shareProjectAction('${safeIdArg}', '${safeNameArg}')" title="Đã chia sẻ. Bấm để share lại."><i class="fa-solid fa-circle-check text-success" style="font-size: 1.2em;"></i></button>`;
-                        } else {
-                            centerColContent = `<button class="btn btn-sm border-0" onclick="shareProjectAction('${safeIdArg}', '${safeNameArg}')" title="Chia sẻ sang Dashboard Chung"><i class="fa-solid fa-share-from-square text-primary" style="font-size: 1.2em;"></i></button>`;
-                        }
-                    }
-
-                    row.innerHTML = `
-                        <td class="fw-bold text-primary">${safeName}</td>
-                        <td>
-                            <div class="progress" style="height: 20px; background-color: var(--hover-bg);">
-                                <div class="progress-bar ${getProgressBarColor(p.percent)}" role="progressbar"
-                                    style="width: ${p.percent}%;" aria-valuenow="${p.percent}" aria-valuemin="0" aria-valuemax="100">
-                                    ${p.percent}%
-                                </div>
-                            </div>
-                        </td>
-                        <td class="small text-muted">${escapeHtml(p.status || '')}</td>
-                        <td class="text-center">${centerColContent}</td>
-                        <td class="small">${escapeHtml(p.lastUpdated)}</td>
-                        <td class="small fw-bold">${escapeHtml(p.owner)}</td>
-                        <td class="text-center">
-                            <button class="btn btn-sm text-danger border-0" onclick="deleteProjectAction('${safeIdArg}', '${safeNameArg}')" title="Xóa Dự Án">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        </td>
-                    `;
-                }
-
-                // Render Dropdowns Options
+            // Nạp option cho dropdown chọn dự án (Task / Tạo mới)
+            globalAllProjects.forEach(p => {
                 if (taskDropdown) { const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; taskDropdown.appendChild(opt); }
                 if (createDropdown) { const opt = document.createElement('option'); opt.value = p.name; opt.textContent = p.name; createDropdown.appendChild(opt); }
-                if (filterProjectDropdown) { const opt = document.createElement('option'); opt.value = p.name; opt.textContent = p.name; filterProjectDropdown.appendChild(opt); }
             });
 
-            // Restore selection 
+            // Restore selection
             if (currentTaskProjectID && taskDropdown) {
                 const exists = Array.from(taskDropdown.options).some(o => o.value === currentTaskProjectID);
                 if (exists) taskDropdown.value = currentTaskProjectID;
@@ -1323,6 +1320,9 @@ async function loadProjectOverview() {
             if (typeof loadMemberCheckboxes === 'function') loadMemberCheckboxes();
             else if (typeof loadGroupMembers === 'function') loadGroupMembers();
 
+            // Vẽ bảng theo filter/sort hiện tại của UI
+            renderProgressTable();
+
         } else {
             if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi Server: ${response.message}</td></tr>`;
         }
@@ -1331,6 +1331,98 @@ async function loadProjectOverview() {
         console.error("Lỗi tải dự án:", err);
         if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi kết nối: ${err.message}</td></tr>`;
     }
+}
+
+// Vẽ lại bảng Tiến độ từ cache (globalAllProjects) theo filter/sort đang chọn trên UI —
+// KHÔNG gọi API, dùng cho các sự kiện đổi filter/sort để tránh fetch lại toàn bộ mỗi lần bấm.
+function renderProgressTable() {
+    const tableBody = document.getElementById('progress-table-body');
+    if (!tableBody) return;
+
+    const isGeneralPage = (typeof activeGroup !== 'undefined' && activeGroup === 'all');
+    const colSpanCount = 7;
+
+    const filterOwnerDropdown = document.getElementById('progress-search-input');
+    const filterProjectDropdown = document.getElementById('progress-project-filter');
+    const sortSelect = document.getElementById('progress-sort-select');
+
+    const filterOwner = filterOwnerDropdown ? filterOwnerDropdown.value : "";
+    const filterProject = filterProjectDropdown ? filterProjectDropdown.value : "";
+    const sortVal = sortSelect ? sortSelect.value : "date_desc";
+
+    let projects = (globalAllProjects || []).filter(p => {
+        const matchOwner = !filterOwner || p.owner === filterOwner;
+        const matchProject = !filterProject || p.name === filterProject;
+        return matchOwner && matchProject;
+    });
+
+    if (sortVal === 'percent_desc') {
+        projects.sort((a, b) => (b.percent || 0) - (a.percent || 0));
+    } else if (sortVal === 'percent_asc') {
+        projects.sort((a, b) => (a.percent || 0) - (b.percent || 0));
+    } else if (sortVal === 'date_asc') {
+        projects.sort((a, b) => new Date(a.created_at || a.lastUpdated || 0) - new Date(b.created_at || b.lastUpdated || 0));
+    } else {
+        projects.sort((a, b) => new Date(b.created_at || b.lastUpdated || 0) - new Date(a.created_at || a.lastUpdated || 0));
+    }
+
+    if (!projects.length) {
+        tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center text-muted">Không tìm thấy kết quả phù hợp.</td></tr>`;
+        return;
+    }
+
+    tableBody.innerHTML = '';
+    projects.forEach(p => {
+        const row = tableBody.insertRow();
+        let centerColContent = '';
+
+        const safeName = escapeHtml(p.name);
+        const safeNameArg = escapeHtml(escapeJs(p.name));
+        const safeIdArg = escapeHtml(escapeJs(p.id));
+
+        if (isGeneralPage) {
+            // Hiện badge nhóm ở trang chung
+            let badgeClass = 'bg-secondary';
+            let groupLabel = 'General';
+            if (p.originGroup === 'finance') { badgeClass = 'bg-warning text-dark'; groupLabel = 'Finance'; }
+            else if (p.originGroup === 'science') { badgeClass = 'bg-info text-dark'; groupLabel = 'Science'; }
+            centerColContent = `<span class="badge ${badgeClass}">${groupLabel}</span>`;
+        } else {
+            // Hiện nút chia sẻ ở trang nhóm
+            if (p.isShared === true || p.isShared === 'true') {
+                centerColContent = `<button class="btn btn-sm border-0" onclick="shareProjectAction('${safeIdArg}', '${safeNameArg}')" title="Đã chia sẻ. Bấm để share lại."><i class="fa-solid fa-circle-check text-success" style="font-size: 1.2em;"></i></button>`;
+            } else {
+                centerColContent = `<button class="btn btn-sm border-0" onclick="shareProjectAction('${safeIdArg}', '${safeNameArg}')" title="Chia sẻ sang Dashboard Chung"><i class="fa-solid fa-share-from-square text-primary" style="font-size: 1.2em;"></i></button>`;
+            }
+        }
+
+        row.innerHTML = `
+            <td class="fw-bold text-primary">${safeName}</td>
+            <td>
+                <div class="progress" style="height: 20px; background-color: var(--hover-bg);">
+                    <div class="progress-bar ${getProgressBarColor(p.percent)}" role="progressbar"
+                        style="width: ${p.percent}%;" aria-valuenow="${p.percent}" aria-valuemin="0" aria-valuemax="100">
+                        ${p.percent}%
+                    </div>
+                </div>
+            </td>
+            <td class="small text-muted">${escapeHtml(p.status || '')}</td>
+            <td class="text-center">${centerColContent}</td>
+            <td class="small">${escapeHtml(p.lastUpdated)}</td>
+            <td class="small fw-bold">${escapeHtml(p.owner)}</td>
+            <td class="text-center">
+                <button class="btn btn-sm text-danger border-0" onclick="deleteProjectAction('${safeIdArg}', '${safeNameArg}')" title="Xóa Dự Án">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </td>
+        `;
+    });
+}
+
+// Alias: dùng sau khi dữ liệu đã đổi ở server (xóa/share/tạo/cập nhật) — fetch lại từ đầu
+// rồi vẽ lại. Giữ tên cũ để không phải sửa mọi nơi đang gọi loadProgressList().
+async function loadProgressList() {
+    return loadProjectOverview();
 }
 // hàm xóa dự án
 function deleteProjectAction(projectId, projectName) {
@@ -1547,188 +1639,6 @@ async function loadDashboardTopProgress() {
     }
 }
 
-
-// hàm lọc và nạp dữ liệu bộ lọc
-async function loadProjectFilter() {
-    const ownerDropdown = document.getElementById('progress-search-input');
-    const projectDropdown = document.getElementById('progress-project-filter');
-
-    try {
-        const response = await callGAS("getProjectList", {
-            filters: {},
-            groupKey: activeGroup
-        });
-
-        if (response.status === 'success') {
-            const projects = response.data;
-            if (!projects || projects.length === 0) return;
-
-            // lọc theo ds người tạo
-            if (ownerDropdown) {
-                ownerDropdown.innerHTML = '<option value="">-- Tất cả người tạo --</option>';
-                const uniqueOwners = [...new Set(projects.map(p => p.owner))].sort();
-                uniqueOwners.forEach(owner => {
-                    const opt = document.createElement('option');
-                    opt.value = owner;
-                    opt.textContent = owner;
-                    ownerDropdown.appendChild(opt);
-                });
-            }
-
-            // lọc theo tên dự án
-            if (projectDropdown) {
-                projectDropdown.innerHTML = '<option value="">-- Tất cả dự án --</option>';
-                const projectNames = projects.map(p => p.name).sort();
-                projectNames.forEach(name => {
-                    const opt = document.createElement('option');
-                    opt.value = name;
-                    opt.textContent = name;
-                    projectDropdown.appendChild(opt);
-                });
-            }
-        } else {
-            console.error("Lỗi tải bộ lọc (Server):", response.message);
-        }
-
-    } catch (err) {
-        console.error("Lỗi tải bộ lọc (Mạng):", err);
-    }
-}
-
-//  hàm tải & lọc danh sách tiến độ dự án
-async function loadProgressList() {
-    const tableBody = document.getElementById('progress-table-body');
-    const ownerDropdown = document.getElementById('progress-search-input'); // Dropdown Owner
-    const projectDropdown = document.getElementById('progress-project-filter'); // Dropdown Project
-    const sortSelect = document.getElementById('progress-sort-select');
-
-    // Kiểm tra xem đang ở trang nào để vẽ cột cho đúng
-    const isGeneralPage = (typeof activeGroup !== 'undefined' && activeGroup === 'all');
-    const colSpanCount = isGeneralPage ? 7 : 6;
-
-    if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</td></tr>`;
-
-    // Lấy giá trị lọc hiện tại từ UI
-    const filterOwner = ownerDropdown ? ownerDropdown.value : "";
-    const filterProject = projectDropdown ? projectDropdown.value : "";
-    const sortBy = sortSelect ? sortSelect.value : "date_desc";
-
-    try {
-        const response = await callGAS("getProjectList", {
-            filters: {},
-            groupKey: activeGroup
-        });
-
-        if (response.status === 'success') {
-            const projects = response.data;
-
-            // Reset bảng
-            if (tableBody) tableBody.innerHTML = '';
-
-            if (!projects || projects.length === 0) {
-                if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center text-muted">Chưa có dữ liệu.</td></tr>`;
-                return;
-            }
-
-            //  lọc dữ liệu 
-            let filteredProjects = projects.filter(p => {
-                // Lọc theo Người tạo
-                const matchOwner = filterOwner === "" || p.owner === filterOwner;
-                // Lọc theo Tên dự án
-                const matchProject = filterProject === "" || p.name === filterProject;
-                return matchOwner && matchProject;
-            });
-
-            // Hàm phụ trợ parse ngày
-            const parseVNDate = (str) => {
-                if (!str) return 0;
-                try {
-                    const parts = str.trim().split(/\s+/);
-                    if (parts.length < 2) return 0;
-                    const timeParts = parts[0].split(':');
-                    const dateParts = parts[1].split('/');
-                    return new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1], timeParts[2] || 0).getTime();
-                } catch (e) { return 0; }
-            };
-
-            filteredProjects.sort((a, b) => {
-                if (sortBy === 'percent_desc') return (parseFloat(b.percent) || 0) - (parseFloat(a.percent) || 0);
-                if (sortBy === 'percent_asc') return (parseFloat(a.percent) || 0) - (parseFloat(b.percent) || 0);
-
-                const dateA = parseVNDate(a.lastUpdated);
-                const dateB = parseVNDate(b.lastUpdated);
-
-                if (sortBy === 'date_asc') return dateA - dateB;
-                return dateB - dateA; // Default: date_desc
-            });
-
-            if (filteredProjects.length === 0) {
-                if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center text-muted">Không tìm thấy kết quả phù hợp.</td></tr>`;
-                return;
-            }
-
-            filteredProjects.forEach(p => {
-                let progressClass = 'bg-primary';
-                if (p.percent == 100) progressClass = 'bg-success';
-                else if (p.percent == 0) progressClass = 'bg-secondary';
-                else if (p.percent < 50) progressClass = 'bg-warning';
-
-                let shareBtnHtml = '';
-                if (!isGeneralPage) {
-                    if (p.isShared === true || p.isShared === 'true') {
-                        shareBtnHtml = `<button class="btn btn-sm border-0 ms-2" onclick="shareProjectAction('${escapeHtml(escapeJs(p.id))}', '${escapeHtml(escapeJs(p.name))}')" title="Đã chia sẻ"><i class="fa-solid fa-circle-check text-success"></i></button>`;
-                    } else {
-                        shareBtnHtml = `<button class="btn btn-sm border-0 ms-2" onclick="shareProjectAction('${escapeHtml(escapeJs(p.id))}', '${escapeHtml(escapeJs(p.name))}')" title="Chia sẻ"><i class="fa-solid fa-share-from-square text-primary"></i></button>`;
-                    }
-                }
-
-                let groupCellHTML = '';
-                if (isGeneralPage) {
-                    let badgeClass = 'bg-secondary';
-                    let groupLabel = 'General';
-
-                    if (p.originGroup === 'finance') {
-                        badgeClass = 'bg-warning text-dark';
-                        groupLabel = 'Finance';
-                    } else if (p.originGroup === 'science') {
-                        badgeClass = 'bg-info text-dark';
-                        groupLabel = 'Science';
-                    }
-                    groupCellHTML = `<td class="text-center"><span class="badge ${badgeClass}">${groupLabel}</span></td>`;
-                }
-
-                const row = tableBody.insertRow();
-                row.innerHTML = `
-                    <td class="fw-bold text-primary">${escapeHtml(p.name)} ${shareBtnHtml}</td>
-                    <td>
-                        <div class="progress" style="height: 20px; background-color: var(--hover-bg);">
-                            <div class="progress-bar ${progressClass}" role="progressbar"
-                                style="width: ${p.percent}%;" aria-valuenow="${p.percent}" aria-valuemin="0" aria-valuemax="100">
-                                ${p.percent}%
-                            </div>
-                        </div>
-                    </td>
-                    <td class="small text-muted">${escapeHtml(p.status || '')}</td>
-
-                    ${groupCellHTML} <td class="small">${escapeHtml(p.lastUpdated)}</td>
-                    <td class="small fw-bold">${escapeHtml(p.owner)}</td>
-                    <td class="text-center">
-                        <button class="btn btn-sm text-danger border-0" onclick="deleteProjectAction('${escapeHtml(escapeJs(p.id))}', '${escapeHtml(escapeJs(p.name))}')" title="Xóa Dự Án">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    </td>
-                `;
-            });
-
-        } else {
-            if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi dữ liệu: ${response.message}</td></tr>`;
-        }
-
-    } catch (err) {
-        console.error("Lỗi tải tiến độ:", err);
-        if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi kết nối server!</td></tr>`;
-    }
-}
 
 //  hàm share dự án
 function shareProjectAction(projectId, projectName) {
@@ -2300,8 +2210,8 @@ function applyTaskFilters() {
         const matchName = t.name.toLowerCase().includes(nameVal);
         const matchStatus = (statusVal === 'all') || (t.status === statusVal);
         const matchPriority = (priorityVal === 'all') || (t.priority === priorityVal);
-        const matchAssignee = (assigneeVal === 'all') ||
-            (t.assignees && t.assignees.toLowerCase().includes(assigneeVal));
+        const assigneeList = t.assignees ? t.assignees.toLowerCase().split(',').map(e => e.trim()) : [];
+        const matchAssignee = (assigneeVal === 'all') || assigneeList.includes(assigneeVal);
 
         return matchName && matchStatus && matchPriority && matchAssignee;
     });
@@ -3482,6 +3392,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const calendarNavItems = document.querySelectorAll('.calendar-nav');
     addEventBtn = document.getElementById('add-event-btn');
     eventForm = document.getElementById('event-form');
+
+    // Ghi nhớ tiêu đề/label mặc định của modal (mỗi shell có icon/chữ riêng) để có thể
+    // khôi phục lại đúng trạng thái "Tạo mới" sau khi dùng modal này để sửa sự kiện.
+    const eventModalTitleEl = document.getElementById('event-modal-title');
+    if (eventModalTitleEl) eventModalDefaultTitleHTML = eventModalTitleEl.innerHTML;
+    const eventSubmitBtnEl = eventForm ? eventForm.querySelector('button[type="submit"]') : null;
+    if (eventSubmitBtnEl) eventModalDefaultSubmitHTML = eventSubmitBtnEl.innerHTML;
+
     manageEventBtn = document.getElementById('manage-event-btn');
     deleteEventBtn = document.getElementById('delete-event-btn');
     todayEventList = document.getElementById('today-event-list');
@@ -3691,22 +3609,23 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // D. Filter/Search trong Progress Tab 
-    if (typeof loadProgressList === 'function') {
+    // D. Filter/Search trong Progress Tab — chỉ vẽ lại từ cache (globalAllProjects),
+    // không gọi lại API mỗi lần đổi dropdown.
+    if (typeof renderProgressTable === 'function') {
 
         // 1. Dropbox người tạo
         if (progressSearchInput) {
-            progressSearchInput.addEventListener('change', () => loadProgressList());
+            progressSearchInput.addEventListener('change', () => renderProgressTable());
         }
 
-        // 2. Dropdown Lọc Dự án 
+        // 2. Dropdown Lọc Dự án
         if (progressProjectFilter) {
-            progressProjectFilter.addEventListener('change', () => loadProgressList());
+            progressProjectFilter.addEventListener('change', () => renderProgressTable());
         }
 
-        // 3. Dropdown Sắp xếp 
+        // 3. Dropdown Sắp xếp
         if (progressSortSelect) {
-            progressSortSelect.addEventListener('change', () => loadProgressList());
+            progressSortSelect.addEventListener('change', () => renderProgressTable());
         }
 
     }
@@ -3984,7 +3903,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (document.getElementById('full-calendar-display')) loadCalendarData();
     selectedEventId = null;
 
-    if (addEventBtn) addEventBtn.addEventListener('click', () => showModal('add-event-modal'));
+    if (addEventBtn) addEventBtn.addEventListener('click', () => {
+        if (eventForm) eventForm.reset();
+        resetEventModalUI();
+        showModal('add-event-modal');
+    });
 
     if (calendarToggle) {
         calendarToggle.addEventListener('change', function () {
@@ -4018,13 +3941,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
+            const editingId = document.getElementById('event-id').value;
+            const isEditing = !!editingId;
+
             formBtn.disabled = true;
             const originalBtnText = formBtn.innerHTML;
-            formBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang tạo...';
+            formBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + (isEditing ? 'Đang cập nhật...' : 'Đang tạo...');
 
             try {
-                const msg = await callGAS('createEvent', {
+                const msg = await callGAS(isEditing ? 'updateEvent' : 'createEvent', {
                     ...eventData,
+                    eventId: editingId,
                     calendarType: currentCalendarType,
                     groupKey: activeGroup,
                     email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
@@ -4034,6 +3961,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 loadNotifications();
                 if (typeof hideModal === 'function') hideModal('add-event-modal');
                 eventForm.reset();
+                resetEventModalUI();
 
                 if (typeof loadCalendarData === 'function') loadCalendarData();
 
@@ -4042,7 +3970,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             } finally {
                 formBtn.disabled = false;
-                formBtn.innerHTML = originalBtnText || 'Tạo Sự Kiện';
+                formBtn.innerHTML = originalBtnText || (isEditing ? 'Cập Nhật' : 'Tạo Sự Kiện');
             }
         });
     }

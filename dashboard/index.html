@@ -534,8 +534,9 @@
 
   <div id="add-event-modal" class="custom-modal">
     <div class="modal-content card">
-      <h3><i class="fa-solid fa-plus me-2"></i> Thêm Sự Kiện Lịch Mới</h3>
+      <h3 id="event-modal-title"><i class="fa-solid fa-plus me-2"></i> Thêm Sự Kiện Lịch Mới</h3>
       <form id="event-form">
+        <input type="hidden" id="event-id" value="">
         <div class="form-group mb-3"><label for="event-title" class="form-label">Tên Sự kiện</label><input type="text"
             id="event-title" name="title" class="text-input w-100" required></div>
         <div class="row">
@@ -779,7 +780,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785061363157"></script>
+  <script src="/api.js?v=1785241355170"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -807,7 +808,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1785061363157"></script>
+  <script src="/script.js?v=1785241355170"></script>
 
   <script>
     function switchTaskView(view) {

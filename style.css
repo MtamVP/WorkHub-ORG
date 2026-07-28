@@ -648,9 +648,9 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .progress-bar { border-radius: var(--radius-pill); transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1); }
 .progress-bar.bg-primary { background-color: var(--gold); }
 .progress-bar.bg-info { background-color: var(--info-color); }
-.progress-bar.bg-success { background-color: var(--sage); }
-.progress-bar.bg-warning { background-color: var(--gold); }
-.progress-bar.bg-danger { background-color: var(--terracotta); }
+.progress-bar.bg-success { background-color: var(--success-color); }
+.progress-bar.bg-warning { background-color: var(--warning-color); }
+.progress-bar.bg-danger { background-color: var(--danger-color); }
 
 #today-calendar-view li, #today-calendar-view > div {
   background: var(--hover-bg);
@@ -736,12 +736,15 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .event-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); line-height: 1.4; margin-bottom: 6px; }
 .event-meta { font-size: var(--text-xs); color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
 
-.btn-delete-event-mini {
-  position: absolute; top: 12px; right: 12px; border: none; background: transparent;
+.btn-delete-event-mini, .btn-edit-event-mini {
+  position: absolute; top: 12px; border: none; background: transparent;
   color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 50%;
   transition: var(--transition-fast); display: flex; align-items: center; justify-content: center;
 }
+.btn-delete-event-mini { right: 12px; }
+.btn-edit-event-mini { right: 42px; }
 .btn-delete-event-mini:hover { color: var(--danger-color); background: color-mix(in srgb, var(--danger-color) 12%, transparent); }
+.btn-edit-event-mini:hover { color: var(--info-color); background: color-mix(in srgb, var(--info-color) 12%, transparent); }
 
 /* ---------------------------------------------------------------------- */
 /* 7. TOAST NOTIFICATIONS                                                  */
@@ -989,18 +992,20 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 .status-badge:hover, .priority-badge:hover { filter: brightness(1.08); }
 
-/* sage/gold/terracotta/text-muted đều là gam sáng-vừa và SÁNG HƠN ở dark mode nên chữ ink cố định
-   (không dùng var thay đổi theo theme) mới luôn đủ tương phản ở cả 2 theme; primary-color giờ = gold
-   (sáng-vừa ở cả 2 theme) nên cần var(--on-gold) cố định thay vì var(--card-bg) đảo theo theme cũ. */
-.bg-done { background: var(--sage); }
-.bg-working { background: var(--gold); }
-.bg-stuck { background: var(--terracotta); }
-.bg-not-started { background: var(--text-muted); }
+/* success/danger/warning/info không được canh sáng-vừa-ở-cả-2-theme như sage/gold/terracotta
+   (chúng được hiệu chỉnh để dùng làm màu CHỮ trên nền sáng, không phải nền đặc), nên badge trạng thái
+   dùng pattern tint-nhẹ + chữ màu bão hòa (giống .pill.green/.pill.red bên web kế toán) thay vì
+   nền đặc + chữ on-gold cố định — vừa đúng ngữ nghĩa (Done=xanh lá, Stuck=đỏ) vừa đảm bảo tương phản
+   ở cả 2 theme mà không cần token riêng cho từng theme. */
+.bg-done { background: color-mix(in srgb, var(--success-color) 20%, var(--card-bg)); color: var(--success-color); }
+.bg-working { background: color-mix(in srgb, var(--warning-color) 20%, var(--card-bg)); color: var(--warning-color); }
+.bg-stuck { background: color-mix(in srgb, var(--danger-color) 20%, var(--card-bg)); color: var(--danger-color); }
+.bg-not-started { background: var(--hover-bg); color: var(--text-muted); }
 
-.bg-critical { background: var(--primary-color); color: var(--on-gold); }
-.bg-high { background: var(--terracotta); }
-.bg-medium { background: var(--gold); }
-.bg-low { background: var(--text-muted); }
+.bg-critical { background: color-mix(in srgb, var(--danger-color) 28%, var(--card-bg)); color: var(--danger-color); font-weight: 800; }
+.bg-high { background: color-mix(in srgb, var(--warning-color) 20%, var(--card-bg)); color: var(--warning-color); }
+.bg-medium { background: color-mix(in srgb, var(--info-color) 18%, var(--card-bg)); color: var(--info-color); }
+.bg-low { background: var(--hover-bg); color: var(--text-muted); }
 
 /* --- SweetAlert2 --- */
 div:where(.swal2-container) { z-index: 99999 !important; }

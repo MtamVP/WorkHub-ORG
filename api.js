@@ -230,6 +230,7 @@ const API = {
         delete: async (taskId, projectId, groupKey) => {
             const { data, error } = await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId).select('name').single();
             if (error) throw error;
+            if (projectId) await API.project.recalculate(projectId, groupKey);
             return `Đã đưa ${data.name} vào thùng rác!`;
         },
         deleteFile: async (taskId, fileId, groupKey) => {
@@ -272,6 +273,7 @@ const API = {
                 assignees: Array.isArray(taskData.assignees) ? taskData.assignees.join(', ') : taskData.assignees
             });
             if (error) throw error;
+            if (taskData.projectId) await API.project.recalculate(taskData.projectId, groupKey);
             return `Đã lưu task "${taskData.name}"!`;
         },
         uploadFile: async (fileData, fileName, mimeType, taskId, groupKey, description, uploaderEmail) => {
@@ -433,6 +435,21 @@ const API = {
             });
             if (error) throw error;
             return `Tạo sự kiện "${eventData.title}" thành công!`;
+        },
+        updateEvent: async (eventId, eventData, calendarType, groupKey, email) => {
+            let query = sbClient.from('events').update({
+                title: eventData.title,
+                start_time: eventData.startDate + ' ' + eventData.startTime,
+                end_time: eventData.endDate + ' ' + eventData.endTime,
+                description: eventData.description,
+                location: eventData.location
+            }).eq('id', eventId);
+            if (calendarType === 'personal' && email) {
+                query = query.eq('created_by', email);
+            }
+            const { data, error } = await query.select('title').single();
+            if (error) throw error;
+            return `Đã cập nhật sự kiện "${data.title}" thành công!`;
         },
         deleteEvent: async (eventId, calendarType, groupKey, email) => {
             let query = sbClient.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', eventId);
@@ -635,24 +652,28 @@ const API = {
         },
         restoreItem: async (tableName, id) => {
             if (!sbClient) return false;
-            
+
             if (tableName === 'projects') {
                 await sbClient.from('tasks').update({ deleted_at: null }).eq('project_id', id);
             }
-            
+
             const { data, error } = await sbClient.from(tableName).update({ deleted_at: null }).eq('id', id).select('*').single();
             if (error) throw error;
-            
+
             if (tableName === 'tasks' && data.project_id) {
                 await sbClient.from('projects').update({ deleted_at: null }).eq('id', data.project_id);
+                await API.project.recalculate(data.project_id, null);
+            } else if (tableName === 'projects') {
+                await API.project.recalculate(id, null);
             }
-            
+
             const itemName = data.name || data.title || "dữ liệu";
             return `Đã khôi phục "${itemName}" thành công!`;
         },
         hardDeleteItem: async (tableName, id) => {
             if (!sbClient) return false;
-            
+            let hardDeleteTaskProjectId = null;
+
             if (tableName === 'files') {
                 const { data: fileData } = await sbClient.from('files').select('storage_path').eq('id', id).single();
                 if (fileData && fileData.storage_path) {
@@ -664,7 +685,7 @@ const API = {
                     }
                 }
             } else if (tableName === 'tasks') {
-                const { data: taskData } = await sbClient.from('tasks').select('attachments').eq('id', id).single();
+                const { data: taskData } = await sbClient.from('tasks').select('attachments, project_id').eq('id', id).single();
                 if (taskData && taskData.attachments) {
                     let attachments = typeof taskData.attachments === 'string' ? JSON.parse(taskData.attachments) : taskData.attachments;
                     for (let file of (attachments || [])) {
@@ -677,6 +698,7 @@ const API = {
                         }
                     }
                 }
+                if (taskData && taskData.project_id) hardDeleteTaskProjectId = taskData.project_id;
             } else if (tableName === 'projects') {
                 const { data: projTasks } = await sbClient.from('tasks').select('id, attachments').eq('project_id', id);
                 if (projTasks && projTasks.length > 0) {
@@ -702,6 +724,7 @@ const API = {
 
             const { error } = await sbClient.from(tableName).delete().eq('id', id);
             if (error) throw error;
+            if (hardDeleteTaskProjectId) await API.project.recalculate(hardDeleteTaskProjectId, null);
             return `Đã xóa vĩnh viễn "${itemName}"!`;
         }
     },
@@ -762,6 +785,7 @@ window.callGAS = async function(action, params = {}) {
 
             case 'getEvents': result = await API.calendar.getEvents(params.startDate, params.endDate, params.calendarType, params.groupKey, params.email); break;
             case 'createEvent': result = await API.calendar.create(params, params.calendarType, params.groupKey, params.email); break;
+            case 'updateEvent': result = await API.calendar.updateEvent(params.eventId, params, params.calendarType, params.groupKey, params.email); break;
             case 'deleteEvent': result = await API.calendar.deleteEvent(params.eventId, params.calendarType, params.groupKey, params.email); break;
             case 'toggleImportant': result = await API.calendar.toggleImportant(params.eventId, params.isImportant, params.calendarType, params.groupKey, params.email); break;
 
