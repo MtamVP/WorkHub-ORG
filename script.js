@@ -11,31 +11,13 @@ function goToLogin() {
     window.location.href = BASE_URL + "/";
 }
 
-// Firebase Configuration
-const firebaseConfig = {
-    apiKey: "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
-    authDomain: "workhub-ai-2d5aa.firebaseapp.com",
-    projectId: "workhub-ai-2d5aa",
-    storageBucket: "workhub-ai-2d5aa.firebasestorage.app",
-    messagingSenderId: "703705936779",
-    appId: "1:703705936779:web:b800246feea1f3e3cf358e",
-    measurementId: "G-BH6MVD3TLV"
-};
-
 //  Global Variables 
 let currentView = 'dashboard';
 
 let activeGroup = (typeof CURRENT_GROUP_KEY !== 'undefined') ? CURRENT_GROUP_KEY : 'all';
 
-// Firebase Init
-let app = null;
 let auth = null;
-let db = null;
 
-if (typeof firebase !== 'undefined') {
-    app = firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-}
 if (sbClient) {
     auth = sbClient.auth;
 }
@@ -4512,29 +4494,24 @@ function timeSince(date) {
 
 //  7.4. Các hàm sự kiện từ HTML 
 
-window.toggleReaction = function (docId, emoji) {
+window.toggleReaction = async function (docId, emoji) {
     if (!chatUser) return;
+    try {
+        const { data, error } = await sbClient.from('messages').select('reactions').eq('id', docId).single();
+        if (error) throw error;
+        
+        let reactions = data.reactions || {};
+        if (reactions[chatUser.id] === emoji) {
+            delete reactions[chatUser.id];
+        } else {
+            reactions[chatUser.id] = emoji;
+        }
+        
+        await sbClient.from('messages').update({ reactions: reactions }).eq('id', docId);
+    } catch (err) {
+        console.error("Lỗi toggleReaction:", err);
+    }
 
-    const msgRef = db.collection('messages').doc(docId);
-
-    // Dùng transaction để đảm bảo dữ liệu không bị lỗi khi nhiều người thả cùng lúc
-    db.runTransaction((transaction) => {
-        return transaction.get(msgRef).then((doc) => {
-            if (!doc.exists) return;
-
-            let reactions = doc.data().reactions || {};
-
-            if (reactions[chatUser.uid] === emoji) {
-                delete reactions[chatUser.uid];
-            } else {
-                reactions[chatUser.uid] = emoji;
-            }
-
-            transaction.update(msgRef, { reactions: reactions });
-        });
-    }).catch(console.error);
-
-    // Ẩn popup sau khi chọn
     const popupId = 'emoji-popup-' + docId;
     const popup = document.getElementById(popupId);
     if (popup) popup.style.display = 'none';
@@ -4542,7 +4519,6 @@ window.toggleReaction = function (docId, emoji) {
 
 window.showEmojiPicker = function (docId) {
     document.querySelectorAll('.emoji-picker-popup').forEach(el => el.style.display = 'none');
-
     const popup = document.getElementById('emoji-popup-' + docId);
     if (popup) {
         popup.style.display = (popup.style.display === 'block') ? 'none' : 'block';
@@ -4551,12 +4527,9 @@ window.showEmojiPicker = function (docId) {
 
 window.startReply = function (docId, name, text) {
     currentReplyData = { id: docId, name: name, text: text };
-
-    // Hiển thị thanh Preview
     replyPreviewBar.style.display = 'flex';
     replyToName.textContent = "Trả lời " + name;
     replyToText.textContent = text;
-
     msgInput.focus();
 };
 
@@ -4565,8 +4538,8 @@ window.cancelReply = function () {
     replyPreviewBar.style.display = 'none';
 };
 
-window.togglePinMessage = function (docId, currentStatus) {
-    db.collection('messages').doc(docId).update({ isPinned: !currentStatus }).catch(console.error);
+window.togglePinMessage = async function (docId, currentStatus) {
+    await sbClient.from('messages').update({ is_pinned: !currentStatus }).eq('id', docId);
 };
 
 //  7.5. các hàm chính xử lý Chat
@@ -4694,20 +4667,19 @@ function renderMessage(docId, data) {
 }
 
 
-function renderMemberSidebar(snapshot) {
+function renderMemberSidebar(dataList) {
     if (!memberListContainer) return;
     memberListContainer.innerHTML = '';
     var now = new Date();
     var ONLINE_THRESHOLD = 2 * 60 * 1000;
 
-    if (snapshot.empty) {
+    if (!dataList || dataList.length === 0) {
         memberListContainer.innerHTML = '<p class="text-center text-muted">Chưa có thành viên nào.</p>';
         return;
     }
 
-    snapshot.forEach(function (doc) {
-        var data = doc.data();
-        var lastSeen = data.last_changed ? data.last_changed.toDate() : new Date(0);
+    dataList.forEach(function (data) {
+        var lastSeen = data.last_changed ? new Date(data.last_changed) : new Date(0);
         var timeDiff = now - lastSeen;
         var isOnline = timeDiff < ONLINE_THRESHOLD;
         var statusText = isOnline ? 'Đang hoạt động' : 'Hoạt động ' + timeSince(lastSeen);
@@ -4718,11 +4690,11 @@ function renderMemberSidebar(snapshot) {
         div.className = 'member-card';
         div.innerHTML =
             '<div class="member-avatar">' +
-            '<img src="' + data.photoURL + '" onerror="this.src=\'https://www.w3schools.com/howto/img_avatar.png\'">' +
+            '<img src="' + escapeHtml(data.photo_url || 'https://www.w3schools.com/howto/img_avatar.png') + '" onerror="this.src=\'https://www.w3schools.com/howto/img_avatar.png\'">' +
             '<div class="status-indicator ' + dotClass + '"></div>' +
             '</div>' +
             '<div class="member-info">' +
-            '<span class="member-name">' + escapeHtml(data.displayName) + '</span>' +
+            '<span class="member-name">' + escapeHtml(data.display_name) + '</span>' +
             '<span class="member-status-text ' + statusClass + '">' + statusText + '</span>' +
             '</div>';
         memberListContainer.appendChild(div);
@@ -4734,95 +4706,133 @@ function renderPinToDashboard(data, docId) {
     var div = document.createElement('div');
     div.className = "alert alert-warning p-2 mb-2 d-flex justify-content-between align-items-center shadow-sm border-0";
     div.style.fontSize = "0.9rem";
-    var contentHtml = '<span><strong>' + escapeHtml(data.displayName) + ':</strong> ' + escapeHtml(data.text) + '</span>';
+    var contentHtml = '<span><strong>' + escapeHtml(data.displayName || data.display_name) + ':</strong> ' + escapeHtml(data.text) + '</span>';
     var btnHtml = '<button onclick="window.togglePinMessage(\'' + docId + '\', true)" class="btn btn-sm text-danger p-0 ms-2" style="background:none; border:none;" title="Gỡ ghim"><i class="fa-solid fa-xmark"></i></button>';
     div.innerHTML = contentHtml + btnHtml;
     pinViewDashboard.appendChild(div);
 }
 
+let chatChannel = null;
+let pinChannel = null;
 
-function loadChatMessages() {
+async function loadChatMessages() {
     if (!msgList) return;
 
-    const q = db.collection('messages')
-        .where('group', '==', activeGroup)
-        .orderBy('createdAt', 'asc')
-        .limitToLast(100);
-    unsubscribeChat = q.onSnapshot((snapshot) => {
-        let hasNewMessage = false;
+    // Lấy tin nhắn hiện tại
+    const { data, error } = await sbClient.from('messages')
+        .select('*')
+        .eq('group_key', activeGroup)
+        .order('created_at', { ascending: false })
+        .limit(100);
 
-        snapshot.docChanges().forEach((change) => {
-            const data = change.doc.data();
+    if (data) {
+        msgList.innerHTML = ''; // Clear old ones
+        data.reverse().forEach(msg => {
+            msg.uid = msg.uid;
+            msg.displayName = msg.display_name;
+            msg.createdAt = msg.created_at;
+            msg.isPinned = msg.is_pinned;
+            msg.replyTo = msg.reply_to;
+            renderMessage(msg.id, msg);
+        });
+        msgList.scrollTop = msgList.scrollHeight;
+    }
 
-            if (change.type === "added") {
-                renderMessage(change.doc.id, data);
+    if (chatChannel) sbClient.removeChannel(chatChannel);
+    chatChannel = sbClient.channel('chat-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: 'group_key=eq.' + activeGroup }, payload => {
+            const msg = payload.new;
+            if (payload.eventType === 'DELETE') {
+                const el = document.getElementById('msg-' + payload.old.id);
+                if (el) el.remove();
+                return;
+            }
+            msg.uid = msg.uid;
+            msg.displayName = msg.display_name;
+            msg.createdAt = msg.created_at;
+            msg.isPinned = msg.is_pinned;
+            msg.replyTo = msg.reply_to;
 
-                if (!isFirstLoad && chatBox.classList.contains('hidden')) {
-                    if (chatUser && data.uid !== chatUser.uid) {
+            const existingEl = document.getElementById('msg-' + msg.id);
+
+            renderMessage(msg.id, msg);
+
+            if (payload.eventType === 'INSERT') {
+                if (chatBox && chatBox.classList.contains('hidden')) {
+                    if (chatUser && msg.uid !== chatUser.id) {
                         unreadCount++;
                         updateUnreadBadge();
-                        hasNewMessage = true;
                     }
+                } else if (!existingEl) {
+                    msgList.scrollTop = msgList.scrollHeight;
                 }
             }
-
-            if (change.type === "modified") {
-                renderMessage(change.doc.id, data);
-            }
-        });
-
-        if (isFirstLoad || (!chatBox.classList.contains('hidden') && hasNewMessage)) {
-            msgList.scrollTop = msgList.scrollHeight;
-        }
-
-        isFirstLoad = false;
-    });
+        })
+        .subscribe();
 }
 
 
-function loadPinnedMessages() {
+async function loadPinnedMessages() {
     if (!pinViewDashboard) return;
 
-    const q = db.collection('messages')
-        .where('isPinned', '==', true)
-        .where('group', '==', activeGroup)
-        .orderBy('createdAt', 'asc');
-    unsubscribePinned = q.onSnapshot((snapshot) => {
-        pinViewDashboard.innerHTML = '';
+    const { data } = await sbClient.from('messages')
+        .select('*')
+        .eq('is_pinned', true)
+        .eq('group_key', activeGroup)
+        .order('created_at', { ascending: true });
 
-        if (snapshot.empty) {
-            pinViewDashboard.innerHTML = '<p class="text-muted small">Không có tin quan trọng.</p>';
-            return;
-        }
+    pinViewDashboard.innerHTML = '';
+    if (!data || data.length === 0) {
+        pinViewDashboard.innerHTML = '<p class="text-muted small">Không có tin quan trọng.</p>';
+    } else {
+        data.forEach(msg => renderPinToDashboard(msg, msg.id));
+    }
 
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            renderPinToDashboard(data, doc.id);
-        });
-    });
+    if (pinChannel) sbClient.removeChannel(pinChannel);
+    pinChannel = sbClient.channel('pin-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: 'group_key=eq.' + activeGroup }, payload => {
+            // Reload cho lẹ
+            loadPinnedMessages();
+        })
+        .subscribe();
+}
+
+async function loadPresence() {
+    const { data } = await sbClient.from('user_status')
+        .select('*')
+        .eq('current_group', activeGroup)
+        .order('last_changed', { ascending: false });
+    renderMemberSidebar(data || []);
 }
 
 function setupPresenceSystem(user) {
-    var userStatusRef = db.collection('status').doc(user.uid);
-    var setOnline = function () {
-        userStatusRef.set({
-            state: 'online',
-            last_changed: firebase.firestore.FieldValue.serverTimestamp(),
-            displayName: user.displayName || user.email,
-            email: user.email,
-            photoURL: user.photoURL || ('https://ui-avatars.com/api/?name=' + (user.displayName || "User") + '&background=random'),
-            currentGroup: activeGroup
-        }, { merge: true });
+    var setOnline = async function () {
+        try {
+            await sbClient.from('user_status').upsert({
+                uid: user.id,
+                state: 'online',
+                last_changed: new Date().toISOString(),
+                display_name: user.user_metadata?.nickname || user.email,
+                email: user.email,
+                photo_url: 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.user_metadata?.nickname || "User") + '&background=random',
+                current_group: activeGroup
+            });
+        } catch (e) {
+            console.error(e);
+        }
     };
     setOnline();
-    onlineInterval = setInterval(setOnline, 60000);
+    if (window.onlineInterval) clearInterval(window.onlineInterval);
+    window.onlineInterval = setInterval(setOnline, 60000);
 
-    unsubscribeMembers = db.collection('status')
-        .where('currentGroup', '==', activeGroup)
-        .orderBy('last_changed', 'desc')
-        .onSnapshot(function (snapshot) {
-            renderMemberSidebar(snapshot);
-        });
+    loadPresence();
+    
+    if (window.presenceChannel) sbClient.removeChannel(window.presenceChannel);
+    window.presenceChannel = sbClient.channel('presence-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'user_status', filter: 'current_group=eq.' + activeGroup }, payload => {
+            loadPresence();
+        })
+        .subscribe();
 }
 
 async function sendChatMessage() {
@@ -4831,22 +4841,21 @@ async function sendChatMessage() {
 
     var messageData = {
         text: text,
-        uid: chatUser.uid,
-        displayName: chatUser.displayName || chatUser.email,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        isPinned: false,
-        group: activeGroup
+        uid: chatUser.id,
+        display_name: chatUser.user_metadata?.nickname || chatUser.email,
+        is_pinned: false,
+        group_key: activeGroup
     };
 
     if (currentReplyData) {
-        messageData.replyTo = {
+        messageData.reply_to = {
             id: currentReplyData.id,
             name: currentReplyData.name,
             text: currentReplyData.text
         };
     }
 
-    db.collection('messages').add(messageData);
+    await sbClient.from('messages').insert([messageData]);
 
     msgInput.value = '';
     cancelReply();
