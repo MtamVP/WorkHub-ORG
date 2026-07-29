@@ -97,7 +97,7 @@
         class="btn btn-sm btn-outline-primary rounded-circle" style="font-weight: bold; font-size: 10px;">Auto
       </button>
       <div class="noti-btn-container">
-        <button type="button" class="btn btn-link position-relative text-decoration-none" 
+        <button type="button" class="btn btn-link position-relative text-decoration-none" aria-label="Thông báo"
           data-bs-toggle="offcanvas" data-bs-target="#notiOffcanvas" aria-controls="notiOffcanvas" style="color: var(--text-color);">
           <i class="fa-solid fa-bell fs-5"></i>
           <span id="noti-badge"
@@ -109,7 +109,7 @@
       </div>
       <div class="dropdown">
         <span id="user-display" class="dropdown-toggle" style="cursor: pointer;" data-bs-toggle="dropdown"
-          aria-expanded="false">
+          role="button" tabindex="0" aria-label="Menu tài khoản" aria-expanded="false">
           <i class="fa-solid fa-user-circle"></i>
         </span>
         <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userDropdown">
@@ -172,7 +172,7 @@
     <aside id="right-sidebar" class="right-sidebar">
       <div class="right-sidebar-header">
         <h5><i class="fa-solid fa-users"></i> Team Khoa Học</h5>
-        <button id="close-right-sidebar" class="btn-icon"><i class="fa-solid fa-times"></i></button>
+        <button id="close-right-sidebar" class="btn-icon" aria-label="Đóng bảng bên"><i class="fa-solid fa-times"></i></button>
       </div>
       <div class="right-sidebar-content">
         <div id="member-list-container">
@@ -513,17 +513,17 @@
               <div class="btn-group w-100" role="group">
                 <input type="radio" class="btn-check" name="viewMode" id="view-table" autocomplete="off" checked
                   onchange="switchTaskView('table')">
-                <label class="btn btn-outline-primary btn-sm px-3" for="view-table"><i
+                <label class="btn btn-outline-primary btn-sm px-3" for="view-table" aria-label="Xem dạng bảng"><i
                     class="fa-solid fa-table"></i></label>
 
                 <input type="radio" class="btn-check" name="viewMode" id="view-card" autocomplete="off"
                   onchange="switchTaskView('card')">
-                <label class="btn btn-outline-primary btn-sm px-3" for="view-card"><i
+                <label class="btn btn-outline-primary btn-sm px-3" for="view-card" aria-label="Xem dạng thẻ"><i
                     class="fa-solid fa-grip"></i></label>
 
                 <input type="radio" class="btn-check" name="viewMode" id="view-kanban" autocomplete="off"
                   onchange="switchTaskView('kanban')">
-                <label class="btn btn-outline-primary btn-sm px-3" for="view-kanban"><i
+                <label class="btn btn-outline-primary btn-sm px-3" for="view-kanban" aria-label="Xem dạng Kanban"><i
                     class="fa-solid fa-columns"></i></label>
               </div>
               <button type="button" id="bulk-select-toggle" class="btn btn-outline-secondary btn-sm px-3 ms-2" onclick="toggleBulkSelectMode()" title="Chọn nhiều">
@@ -866,7 +866,7 @@
         style="display: none;">0</span></button>
     <div id="chat-box" class="chat-box hidden">
       <div class="chat-header" style="background: var(--science-accent); color: #120F0A;"><span><i class="fa-solid fa-comments"></i>
-          Science Chat</span><button id="close-chat" class="close-chat-btn"><i class="fa-solid fa-minus"></i></button>
+          Science Chat</span><button id="close-chat" class="close-chat-btn" aria-label="Thu nhỏ khung chat"><i class="fa-solid fa-minus"></i></button>
       </div>
       <div id="messages-list" class="messages-list">
         <div style="text-align:center; color: var(--text-muted); margin-top: 20px;">Đang tải...</div>
@@ -874,7 +874,7 @@
       <div id="reply-preview-bar">
         <div><span class="fw-bold text-primary" id="reply-to-name">...</span>
           <div class="text-truncate small" id="reply-to-text">...</div>
-        </div><button onclick="cancelReply()" class="btn btn-sm text-danger"><i class="fa-solid fa-xmark"></i></button>
+        </div><button onclick="cancelReply()" class="btn btn-sm text-danger" aria-label="Hủy trả lời"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="chat-input-area"><input type="text" id="msg-input" placeholder="Nhập tin nhắn..." disabled><button
           id="send-btn" disabled style="background: var(--science-accent); color: #120F0A;"><i class="fa-solid fa-paper-plane"></i></button></div>
@@ -1034,8 +1034,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785311786475"></script>
-  <script src="/script.js?v=1785311786475"></script>
+  <script src="/api.js?v=1785312207105"></script>
+  <script src="/script.js?v=1785312207105"></script>
 
   <script>
     function switchTaskView(view) {

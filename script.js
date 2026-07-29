@@ -5792,7 +5792,17 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (key === 'escape') {
             const palette = document.getElementById('search-palette');
-            if (palette && palette.style.display !== 'none') closeSearchPalette();
+            if (palette && palette.style.display !== 'none') {
+                closeSearchPalette();
+                return;
+            }
+            // Đóng modal đang mở gần nhất (.custom-modal dùng class .show-modal riêng của app,
+            // không phải Bootstrap nên không tự có sẵn Escape-to-close).
+            const openModals = document.querySelectorAll('.custom-modal.show-modal');
+            if (openModals.length > 0) {
+                const top = openModals[openModals.length - 1];
+                if (top.id && typeof hideModal === 'function') hideModal(top.id);
+            }
         }
     });
 
