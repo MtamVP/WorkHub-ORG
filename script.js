@@ -31,7 +31,6 @@ let activeGroup = (typeof CURRENT_GROUP_KEY !== 'undefined') ? CURRENT_GROUP_KEY
 let app = null;
 let auth = null;
 let db = null;
-const sbClient = window.supabaseClient;
 
 if (typeof firebase !== 'undefined') {
     app = firebase.initializeApp(firebaseConfig);
