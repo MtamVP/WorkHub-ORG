@@ -32,7 +32,7 @@ function b64toBlob(b64Data, contentType = '', sliceSize = 512) {
 async function getUserId(emailOrUsername) {
     if (!sbClient) return null;
     const { data } = await sbClient.from('users')
-        .select('id').or(`nickname.eq.${emailOrUsername},email.eq.${emailOrUsername}`).single();
+        .select('id').or(`nickname.eq.${emailOrUsername},email.eq.${emailOrUsername}`).maybeSingle();
     return data ? data.id : null;
 }
 
@@ -41,13 +41,13 @@ const API = {
         getRealEmail: async (username) => {
             if (!sbClient) return null;
             const { data, error } = await sbClient.from('users')
-                .select('email').or(`nickname.eq.${username},email.eq.${username}`).single();
+                .select('email').or(`nickname.eq.${username},email.eq.${username}`).maybeSingle();
             if (error || !data) return null;
             return data.email;
         },
         getUserGroup: async (email) => {
             if (!sbClient) return 'guest';
-            const { data, error } = await sbClient.from('users').select('group_key').eq('email', email).single();
+            const { data, error } = await sbClient.from('users').select('group_key').eq('email', email).maybeSingle();
             if (error || !data) return 'guest';
             return data.group_key;
         },
@@ -68,7 +68,7 @@ const API = {
         },
         getUserInfo: async (email) => {
             if (!sbClient) return { group: 'guest', name: '' };
-            const { data, error } = await sbClient.from('users').select('name:nickname, group:group_key').eq('email', email).single();
+            const { data, error } = await sbClient.from('users').select('name:nickname, group:group_key').eq('email', email).maybeSingle();
             if (error || !data) return { group: 'guest', name: '' };
             return data;
         },
@@ -79,7 +79,7 @@ const API = {
         },
         getWallpaper: async (email) => {
             if (!sbClient) return null;
-            const { data } = await sbClient.from('users').select('wallpaper').eq('email', email).single();
+            const { data } = await sbClient.from('users').select('wallpaper').eq('email', email).maybeSingle();
             return data ? data.wallpaper : null;
         },
         updateWallpaper: async (email, wallpaperUrl) => {
@@ -216,12 +216,12 @@ const API = {
             if (payload && payload.status) updates.status = payload.status;
             if (payload && payload.description !== undefined) updates.description = payload.description;
 
-            const { data, error } = await sbClient.from('projects').update(updates).eq('id', projectId).select('name').single();
+            const { data, error } = await sbClient.from('projects').update(updates).eq('id', projectId).select('name').maybeSingle();
             if (error) throw error;
             return `Đã cập nhật dự án "${data.name}" thành công!`;
         },
         share: async (projectId, groupKey) => {
-            const { data, error } = await sbClient.from('projects').update({ is_shared: true }).eq('id', projectId).select('name').single();
+            const { data, error } = await sbClient.from('projects').update({ is_shared: true }).eq('id', projectId).select('name').maybeSingle();
             if (error) throw error;
             return `Đã chia sẻ ${data.name} thành công!`;
         },
@@ -230,7 +230,7 @@ const API = {
         setArchived: async (projectId, archived) => {
             const { data, error } = await sbClient.from('projects')
                 .update({ archived_at: archived ? new Date().toISOString() : null })
-                .eq('id', projectId).select('name').single();
+                .eq('id', projectId).select('name').maybeSingle();
             if (error) throw error;
             return archived ? `Đã lưu trữ "${data.name}".` : `Đã đưa "${data.name}" trở lại danh sách đang chạy.`;
         },
@@ -243,7 +243,7 @@ const API = {
                 .eq('project_id', projectId)
                 .is('deleted_at', null);
 
-            const { data, error } = await sbClient.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', projectId).select('name').single();
+            const { data, error } = await sbClient.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', projectId).select('name').maybeSingle();
             if (error) throw error;
             return `Đã đưa ${data.name} vào thùng rác!`;
         },
@@ -463,7 +463,7 @@ const API = {
                 .update({ deleted_at: new Date().toISOString(), deleted_by_cascade: true })
                 .eq('parent_task_id', taskId)
                 .is('deleted_at', null);
-            const { data, error } = await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId).select('name').single();
+            const { data, error } = await sbClient.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId).select('name').maybeSingle();
             if (error) throw error;
             if (projectId) await API.project.recalculate(projectId, groupKey);
             return `Đã đưa ${data.name} vào thùng rác!`;
@@ -471,7 +471,7 @@ const API = {
         deleteFile: async (taskId, fileId, groupKey) => {
             if (!sbClient) throw new Error("Chưa setup Supabase");
             
-            const { data: task, error: fetchError } = await sbClient.from('tasks').select('attachments').eq('id', taskId).single();
+            const { data: task, error: fetchError } = await sbClient.from('tasks').select('attachments').eq('id', taskId).maybeSingle();
             if (fetchError) throw fetchError;
             
             let attachments = typeof task.attachments === 'string' ? JSON.parse(task.attachments || '[]') : task.attachments;
@@ -580,7 +580,7 @@ const API = {
         // Checklist nằm trong cột jsonb của chính task: [{id, text, done}].
         // Đọc–sửa–ghi cả mảng vì danh sách luôn ngắn; không tách bảng riêng cho nhẹ.
         getChecklist: async (taskId) => {
-            const { data, error } = await sbClient.from('tasks').select('checklist').eq('id', taskId).single();
+            const { data, error } = await sbClient.from('tasks').select('checklist').eq('id', taskId).maybeSingle();
             if (error) throw error;
             return Array.isArray(data.checklist) ? data.checklist : [];
         },
@@ -706,7 +706,7 @@ const API = {
             const { error: uploadError } = await sbClient.storage.from(bucketName).upload(filePath, blob, { contentType: mimeType });
             if (uploadError) throw uploadError;
 
-            const { data: task, error: fetchError } = await sbClient.from('tasks').select('attachments').eq('id', taskId).single();
+            const { data: task, error: fetchError } = await sbClient.from('tasks').select('attachments').eq('id', taskId).maybeSingle();
             if (fetchError) throw fetchError;
 
             let attachments = typeof task.attachments === 'string' ? JSON.parse(task.attachments || '[]') : task.attachments;
@@ -764,12 +764,12 @@ const API = {
             });
         },
         delete: async (fileId, groupKey) => {
-            const { data, error } = await sbClient.from('files').update({ deleted_at: new Date().toISOString() }).eq('id', fileId).select('name').single();
+            const { data, error } = await sbClient.from('files').update({ deleted_at: new Date().toISOString() }).eq('id', fileId).select('name').maybeSingle();
             if (error) throw error;
             return `Đã đưa ${data.name} vào thùng rác!`;
         },
         share: async (fileId, groupKey) => {
-            const { data, error } = await sbClient.from('files').update({ is_shared: true }).eq('id', fileId).select('name').single();
+            const { data, error } = await sbClient.from('files').update({ is_shared: true }).eq('id', fileId).select('name').maybeSingle();
             if (error) throw error;
             return `Đã share ${data.name} thành công!`;
         },
@@ -971,7 +971,7 @@ const API = {
             if (calendarType === 'personal' && email) {
                 query = query.eq('created_by', email);
             }
-            const { data, error } = await query.select('title').single();
+            const { data, error } = await query.select('title').maybeSingle();
             if (error) throw error;
             return `Đã cập nhật sự kiện "${data.title}" thành công!`;
         },
@@ -980,7 +980,7 @@ const API = {
             if (calendarType === 'personal' && email) {
                 query = query.eq('created_by', email);
             }
-            const { data, error } = await query.select('title').single();
+            const { data, error } = await query.select('title').maybeSingle();
             if (error) throw error;
             return `Đã đưa sự kiện "${data.title}" vào thùng rác!`;
         },
@@ -989,7 +989,7 @@ const API = {
             if (calendarType === 'personal' && email) {
                 query = query.eq('created_by', email);
             }
-            const { data, error } = await query.select('title').single();
+            const { data, error } = await query.select('title').maybeSingle();
             if (error) throw error;
             return `Đã cập nhật trạng thái quan trọng của sự kiện "${data.title}" thành công!`;
         }
@@ -998,7 +998,7 @@ const API = {
         getAssetData: async (email) => {
             if (!sbClient) return { status: 'success', cash: 0, debt: 0, data: [] };
             const userId = await getUserId(email);
-            const { data, error } = await sbClient.from('finance_assets').select('*').eq('user_id', userId).single();
+            const { data, error } = await sbClient.from('finance_assets').select('*').eq('user_id', userId).maybeSingle();
             if (error || !data) return { status: 'success', cash: 0, debt: 0, data: [] };
             return { status: 'success', cash: data.cash, debt: data.debt, data: data.data };
         },
@@ -1044,12 +1044,12 @@ const API = {
             return result;
         },
         getMemberList: async () => {
-            const { data } = await sbClient.from('users').select('email').eq('group_key', 'finance');
+            const { data } = await sbClient.from('users').select('email').in('group_key', ['finance', 'all']);
             return data ? data.map(d => d.email) : [];
         },
         getMemberDetail: async (email) => {
             const userId = await getUserId(email);
-            const { data, error } = await sbClient.from('finance_assets').select('*').eq('user_id', userId).single();
+            const { data, error } = await sbClient.from('finance_assets').select('*').eq('user_id', userId).maybeSingle();
             if (error || !data) return [];
 
             let table = [];
@@ -1104,7 +1104,7 @@ const API = {
             return data ? data.map(d => d.symbol) : [];
         },
         getStockDetail: async (symbol) => {
-            const { data } = await sbClient.from('finance_stocks').select('data').eq('symbol', symbol).single();
+            const { data } = await sbClient.from('finance_stocks').select('data').eq('symbol', symbol).maybeSingle();
             return data ? data.data : {};
         },
         saveStockValuation: async (payload) => {
@@ -1119,7 +1119,7 @@ const API = {
     settings: {
         getSetting: async (key) => {
             if (!sbClient) return null;
-            const { data } = await sbClient.from('app_settings').select('value').eq('key', key).single();
+            const { data } = await sbClient.from('app_settings').select('value').eq('key', key).maybeSingle();
             return data ? data.value : null;
         },
         updateSetting: async (key, value, userEmail) => {
@@ -1188,7 +1188,7 @@ const API = {
                     .eq('deleted_by_cascade', true);
             }
 
-            const { data, error } = await sbClient.from(tableName).update({ deleted_at: null }).eq('id', id).select('*').single();
+            const { data, error } = await sbClient.from(tableName).update({ deleted_at: null }).eq('id', id).select('*').maybeSingle();
             if (error) throw error;
 
             if (tableName === 'tasks') {
@@ -1212,7 +1212,7 @@ const API = {
             let hardDeleteTaskProjectId = null;
 
             if (tableName === 'files') {
-                const { data: fileData } = await sbClient.from('files').select('storage_path').eq('id', id).single();
+                const { data: fileData } = await sbClient.from('files').select('storage_path').eq('id', id).maybeSingle();
                 if (fileData && fileData.storage_path) {
                     const parts = fileData.storage_path.split('/');
                     const bucketName = parts[0];
@@ -1222,7 +1222,7 @@ const API = {
                     }
                 }
             } else if (tableName === 'tasks') {
-                const { data: taskData } = await sbClient.from('tasks').select('attachments, project_id').eq('id', id).single();
+                const { data: taskData } = await sbClient.from('tasks').select('attachments, project_id').eq('id', id).maybeSingle();
                 if (taskData && taskData.attachments) {
                     let attachments = typeof taskData.attachments === 'string' ? JSON.parse(taskData.attachments) : taskData.attachments;
                     for (let file of (attachments || [])) {
@@ -1256,7 +1256,7 @@ const API = {
             }
 
             let itemName = "dữ liệu";
-            const { data: itemData } = await sbClient.from(tableName).select('*').eq('id', id).single();
+            const { data: itemData } = await sbClient.from(tableName).select('*').eq('id', id).maybeSingle();
             if (itemData) itemName = itemData.name || itemData.title || "dữ liệu";
 
             const { error } = await sbClient.from(tableName).delete().eq('id', id);
@@ -1670,3 +1670,4 @@ if ('serviceWorker' in navigator) {
             .catch(err => console.error('Lỗi kích hoạt:', err));
     });
 }
+

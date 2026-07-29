@@ -17,10 +17,18 @@ async function loadFinanceUsers() {
         const response = await callGAS('getFinanceUsers');
         if (response.status === 'success') {
             let html = '<option value="">-- Chọn tên bạn --</option>';
+            let checkboxHtml = '';
             response.data.forEach(user => {
                 html += `<option value="${user.name}">${user.name} (${user.email})</option>`;
+                checkboxHtml += `
+                    <label style="display:block; margin-bottom:5px; cursor:pointer;">
+                        <input type="checkbox" name="email-recipient" value="${user.email}" style="margin-right:8px;">
+                        ${user.name} (${user.email})
+                    </label>
+                `;
             });
             select.innerHTML = html;
+            document.getElementById('email-recipients-container').innerHTML = checkboxHtml;
             
             // Auto-select nếu đã lưu trong localStorage từ các màn hình khác
             const savedEmail = localStorage.getItem('userEmail');
@@ -94,6 +102,7 @@ async function submitNote() {
     const btn = document.getElementById('btn-submit-note');
 
     const author = authorSelect.options[authorSelect.selectedIndex].text.split(' (')[0]; // Lấy Tên, bỏ Email
+    const authorEmail = authorSelect.options[authorSelect.selectedIndex].text.split('(')[1]?.replace(')','');
     const content = contentInput.value.trim();
 
     if (!authorSelect.value) return showToast("Vui lòng chọn tên người dán note!", "error");
@@ -112,8 +121,29 @@ async function submitNote() {
         const response = await callGAS('addFinanceNote', payload);
         if (response.status === 'success') {
             showToast("Đã dán note lên bảng!", "success");
+            
+            // Gửi email bằng EmailJS
+            const checkboxes = document.querySelectorAll('input[name="email-recipient"]:checked');
+            if (checkboxes.length > 0) {
+                const recipients = Array.from(checkboxes).map(cb => cb.value).join(',');
+                try {
+                    await emailjs.send("service_6a3y0jj", "template_6ou2xre", {
+                        to_email: recipients,
+                        from_name: author,
+                        reply_to: authorEmail || "",
+                        message: content,
+                        date: new Date().toLocaleDateString('vi-VN')
+                    });
+                    showToast("Đã gửi email thông báo!", "success");
+                } catch (emailErr) {
+                    console.error("Lỗi gửi email:", emailErr);
+                    showToast("Gửi email thất bại. Vui lòng kiểm tra lại cấu hình EmailJS.", "error");
+                }
+            }
+
             closeNoteModal();
             contentInput.value = ""; // Clear form
+            document.querySelectorAll('input[name="email-recipient"]').forEach(cb => cb.checked = false); // Clear checkbox
             loadNotes(); // Reload bảng
         } else {
             showToast("Lỗi: " + response.message, "error");
@@ -129,6 +159,13 @@ async function submitNote() {
 // --- MODAL CONTROL ---
 function openNoteModal() { document.getElementById('note-modal').style.display = 'flex'; }
 function closeNoteModal() { document.getElementById('note-modal').style.display = 'none'; }
+
+function selectAllEmails(el) {
+    const checkboxes = document.querySelectorAll('input[name="email-recipient"]');
+    const isAllChecked = Array.from(checkboxes).every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !isAllChecked);
+    el.innerText = isAllChecked ? "Chọn tất cả" : "Bỏ chọn tất cả";
+}
 
 // --- TOAST ---
 function showToast(message, type = 'success') {
