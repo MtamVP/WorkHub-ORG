@@ -1272,7 +1272,7 @@ div:where(.swal2-container) { z-index: 99999 !important; }
 }
 
 @media (max-width: 576px) {
-  /* Header must fit 6 controls at 375px: compact everything, never scroll sideways */
+  /* Header must fit 8 controls at 375px: compact everything, never scroll sideways */
   body { overflow-x: clip; }
   #app-header { padding: 0 10px; gap: 6px; }
   .logo { font-size: 16px; letter-spacing: 0; }
@@ -1280,7 +1280,8 @@ div:where(.swal2-container) { z-index: 99999 !important; }
   .user-info > .btn-link, .user-info .dropdown > .btn-link { padding: 4px 5px; }
   .user-info .fs-5 { font-size: 1.05rem !important; }
   #user-display { padding: 4px 5px; }
-  #logout-btn { padding: 6px 9px; font-size: 12px; }
+  #logout-btn { padding: 6px; width: 32px; height: 32px; font-size: 13px; gap: 0; }
+  #logout-btn .logout-btn-label { display: none; }
   #theme-toggle-btn { width: 32px; height: 32px; font-size: 13px; }
   #auto-theme-btn { padding: 4px 6px !important; font-size: 8.5px !important; }
 
