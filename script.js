@@ -353,7 +353,7 @@ function handleUploadSuccess(message) {
     if (fileInput) fileInput.value = '';
     if (fileNameDisplay) fileNameDisplay.textContent = ' (Chưa có file nào)';
 
-    loadFileList(false);
+    loadFileList(false, { quiet: true });
 }
 
 function handleUploadFailure(error) {
@@ -398,7 +398,10 @@ function populateUploaderFilter(fileData) {
     if (prevUploader && uploaderEmails.has(prevUploader)) filterUploader.value = prevUploader;
 }
 
-async function loadFileList(isFiltering = false) {
+// quiet = true: tải lại sau khi upload/xóa/khôi phục một file, không xóa trắng bảng
+// ra placeholder — cùng mẫu đã dùng cho Task và Progress.
+async function loadFileList(isFiltering = false, options) {
+    const quiet = !!(options && options.quiet);
     const fileTableBody = document.querySelector('#file-table tbody');
     if (!fileTableBody) return;
 
@@ -418,7 +421,9 @@ async function loadFileList(isFiltering = false) {
 
     console.log("Đang gửi bộ lọc:", filters);
 
-    fileTableBody.innerHTML = '<tr><td class="text-center" colspan="7"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</td></tr>';
+    if (!quiet) {
+        fileTableBody.innerHTML = '<tr><td class="text-center" colspan="7"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</td></tr>';
+    }
 
     try {
         const response = await callGAS("getFileList", {
@@ -442,16 +447,22 @@ async function loadFileList(isFiltering = false) {
                 renderFileStats(fileData);
             }
 
-        } else {
+        } else if (!quiet) {
             if (typeof handleFileLoadFailure === 'function') {
                 handleFileLoadFailure(response.message);
             } else {
                 fileTableBody.innerHTML = `<tr><td colspan="7" class="text-danger text-center">Lỗi: ${response.message}</td></tr>`;
             }
+        } else if (typeof showToast === 'function') {
+            showToast("Lỗi tải file: " + response.message, "error");
         }
     } catch (error) {
         console.error("Lỗi tải file:", error);
-        fileTableBody.innerHTML = `<tr><td colspan="7" class="text-danger text-center">Lỗi kết nối server!</td></tr>`;
+        if (!quiet) {
+            fileTableBody.innerHTML = `<tr><td colspan="7" class="text-danger text-center">Lỗi kết nối server!</td></tr>`;
+        } else if (typeof showToast === 'function') {
+            showToast("Lỗi kết nối: " + error.message, "error");
+        }
     }
 }
 
@@ -584,7 +595,7 @@ function handleFileLoadFailure(error) {
 
 function handleDeleteSuccess(message) {
     console.log(message);
-    if (typeof loadFileList === 'function') loadFileList(false);
+    if (typeof loadFileList === 'function') loadFileList(false, { quiet: true });
     showToast(message);
 }
 
@@ -796,7 +807,7 @@ function shareFileAction(fileId, fileName) {
 
                 if (response.status === "success") {
                     Swal.fire('Thành công!', response.data, 'success');
-                    loadFileList(false);
+                    loadFileList(false, { quiet: true });
                 } else {
                     Swal.fire('Lỗi!', response.message || "Lỗi không xác định", 'error');
                 }
@@ -1316,7 +1327,12 @@ let showArchivedProjects = false;
 // gọi lại API mỗi khi đổi dropdown filter/sort (trước đây loadProgressList() tự fetch riêng).
 let globalAllProjects = [];
 
-async function loadProjectOverview() {
+// quiet = true: tải lại dữ liệu Progress sau một thao tác (lưu/xóa task, sửa project...)
+// mà KHÔNG xóa trắng bảng + 4 dropdown ra placeholder "Đang tải" — cùng lý do như
+// loadTasksForProject: người dùng đang đứng ở tab Progress không nên thấy màn hình
+// nháy trắng chỉ vì ai đó vừa lưu một task ở tab khác.
+async function loadProjectOverview(options) {
+    const quiet = !!(options && options.quiet);
     const tableBody = document.getElementById('progress-table-body');
     const taskDropdown = document.getElementById('task-project-select');
     const createDropdown = document.getElementById('project-select');
@@ -1333,15 +1349,22 @@ async function loadProjectOverview() {
         tableHead.cells[3].innerHTML = isGeneralPage ? 'Nhóm' : 'Chia sẻ';
     }
 
-    // 2. UI Loading
-    if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center" style="padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Đang cập nhật dữ liệu...</td></tr>`;
+    // Giữ lại lựa chọn hiện tại của 3 dropdown lọc để khôi phục sau khi dựng lại option
+    const prevProjectFilter = filterProjectDropdown ? filterProjectDropdown.value : '';
+    const prevOwnerFilter = filterOwnerDropdown ? filterOwnerDropdown.value : '';
+    const prevTaskDropdownVal = taskDropdown ? taskDropdown.value : '';
 
-    // Reset Dropdowns tạm thời
-    const loadingOpt = '<option value="">-- Đang tải... --</option>';
-    if (taskDropdown) taskDropdown.innerHTML = loadingOpt;
-    if (createDropdown) createDropdown.innerHTML = loadingOpt;
-    if (filterProjectDropdown) filterProjectDropdown.innerHTML = loadingOpt;
-    if (filterOwnerDropdown) filterOwnerDropdown.innerHTML = loadingOpt;
+    if (!quiet) {
+        // 2. UI Loading
+        if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center" style="padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Đang cập nhật dữ liệu...</td></tr>`;
+
+        // Reset Dropdowns tạm thời
+        const loadingOpt = '<option value="">-- Đang tải... --</option>';
+        if (taskDropdown) taskDropdown.innerHTML = loadingOpt;
+        if (createDropdown) createDropdown.innerHTML = loadingOpt;
+        if (filterProjectDropdown) filterProjectDropdown.innerHTML = loadingOpt;
+        if (filterOwnerDropdown) filterOwnerDropdown.innerHTML = loadingOpt;
+    }
 
     try {
         const response = await callGAS("getProjectList", {
@@ -1373,6 +1396,7 @@ async function loadProjectOverview() {
                     opt.value = owner; opt.textContent = owner;
                     filterOwnerDropdown.appendChild(opt);
                 });
+                if (prevOwnerFilter && uniqueOwners.includes(prevOwnerFilter)) filterOwnerDropdown.value = prevOwnerFilter;
             }
             const uniqueNames = [...new Set(globalAllProjects.map(p => p.name))].sort();
             if (filterProjectDropdown) {
@@ -1381,6 +1405,7 @@ async function loadProjectOverview() {
                     opt.value = name; opt.textContent = name;
                     filterProjectDropdown.appendChild(opt);
                 });
+                if (prevProjectFilter && uniqueNames.includes(prevProjectFilter)) filterProjectDropdown.value = prevProjectFilter;
             }
 
             // Nạp option cho dropdown chọn dự án (Task / Tạo mới)
@@ -1393,6 +1418,10 @@ async function loadProjectOverview() {
             if (currentTaskProjectID && taskDropdown) {
                 const exists = Array.from(taskDropdown.options).some(o => o.value === currentTaskProjectID);
                 if (exists) taskDropdown.value = currentTaskProjectID;
+            } else if (quiet && prevTaskDropdownVal && taskDropdown &&
+                Array.from(taskDropdown.options).some(o => o.value === prevTaskDropdownVal)) {
+                // Tải im lặng: giữ lựa chọn đang có trên dropdown thay vì gọi khôi phục từ đầu
+                taskDropdown.value = prevTaskDropdownVal;
             } else if (typeof restoreSavedTaskProject === 'function') {
                 // Chưa mở dự án nào trong phiên này -> lấy lại dự án đang mở lần trước
                 restoreSavedTaskProject(taskDropdown);
@@ -1405,13 +1434,19 @@ async function loadProjectOverview() {
             // Vẽ bảng theo filter/sort hiện tại của UI
             renderProgressTable();
 
-        } else {
+        } else if (!quiet) {
             if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi Server: ${response.message}</td></tr>`;
+        } else {
+            if (typeof showToast === 'function') showToast("Lỗi tải dự án: " + response.message, "error");
         }
 
     } catch (err) {
         console.error("Lỗi tải dự án:", err);
-        if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi kết nối: ${err.message}</td></tr>`;
+        if (!quiet) {
+            if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi kết nối: ${err.message}</td></tr>`;
+        } else if (typeof showToast === 'function') {
+            showToast("Lỗi kết nối: " + err.message, "error");
+        }
     }
 }
 
@@ -1523,8 +1558,8 @@ function renderProgressTable() {
 
 // Alias: dùng sau khi dữ liệu đã đổi ở server (xóa/share/tạo/cập nhật) — fetch lại từ đầu
 // rồi vẽ lại. Giữ tên cũ để không phải sửa mọi nơi đang gọi loadProgressList().
-async function loadProgressList() {
-    return loadProjectOverview();
+async function loadProgressList(options) {
+    return loadProjectOverview(options);
 }
 
 //  XUẤT CSV
@@ -1601,7 +1636,7 @@ async function toggleProjectArchive(projectId, projectName, archive) {
         const response = await callGAS('setProjectArchived', { projectId, archived: archive, groupKey: activeGroup });
         if (response.status !== 'success') throw new Error(response.message);
         showToast(response.data || response.message, 'success');
-        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
     } catch (err) {
         showToast('Lỗi: ' + err.message, 'error');
     }
@@ -1784,9 +1819,9 @@ function deleteProjectAction(projectId, projectName) {
                     }
 
                     if (typeof loadProgressList === 'function') {
-                        loadProgressList();
+                        loadProgressList({ quiet: true });
                     } else if (typeof loadProjectOverview === 'function') {
-                        loadProjectOverview();
+                        loadProjectOverview({ quiet: true });
                     }
                 } else {
                     Swal.fire('Lỗi!', "Không thể xóa dự án: " + response.message, 'error');
@@ -1832,7 +1867,7 @@ async function handleProjectCreationOrUpdate() {
                 nameInput.value = '';
                 noteInput.value = '';
                 if (statusInput) statusInput.value = 'Planning';
-                loadProjectOverview();
+                loadProjectOverview({ quiet: true });
             } else {
                 showToast("Lỗi: " + response.message, "error");
             }
@@ -1847,7 +1882,7 @@ async function handleProjectCreationOrUpdate() {
 
             if (response.status === 'success') {
                 showToast(response.data || response.message, "success");
-                loadProjectOverview();
+                loadProjectOverview({ quiet: true });
             } else {
                 showToast("Lỗi cập nhật: " + response.message, "error");
             }
@@ -1989,7 +2024,7 @@ function shareProjectAction(projectId, projectName) {
                 if (response.status === 'success') {
                     Swal.fire('Thành công!', response.data || response.message, 'success');
                     // Tải lại danh sách để cập nhật icon share
-                    if (typeof loadProjectOverview === 'function') loadProjectOverview();
+                    if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
                 } else {
                     Swal.fire('Lỗi!', "Không thể share: " + response.message, 'error');
                 }
@@ -2438,7 +2473,7 @@ async function handleKanbanDrop(newStatus) {
         });
         if (response.status !== 'success') throw new Error(response.message);
         showToast(response.data || response.message, 'success');
-        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
     } catch (err) {
         task.status = oldStatus; // revert nếu lỗi (vd bị chặn bởi task chưa Done)
         if (typeof applyTaskFilters === 'function') applyTaskFilters();
@@ -2505,7 +2540,7 @@ async function runBulkTaskAction(action, extraParams) {
         // Gắn nhãn là gộp phía server (mỗi dòng một kết quả khác nhau) nên phải hỏi lại
         // server mới có dữ liệu đúng — nhưng tải im lặng để không nháy trắng danh sách.
         if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID, { quiet: true });
-        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
         return response;
     } catch (err) {
         showToast('Lỗi: ' + err.message, 'error');
@@ -2594,7 +2629,7 @@ async function applyBulkStatusChange() {
         (globalAllTasks || []).forEach(t => { if (changed.has(t.id)) t.status = status; });
         if (typeof applyTaskFilters === 'function') applyTaskFilters();
 
-        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
     } catch (err) {
         showToast('Lỗi: ' + err.message, 'error');
     }
@@ -2623,7 +2658,7 @@ async function applyBulkDelete() {
             // Xóa có lan xuống việc con nên không tự suy ra được ở máy — hỏi lại server,
             // nhưng tải im lặng để danh sách không biến mất rồi hiện lại.
             if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID, { quiet: true });
-            if (typeof loadProjectOverview === 'function') loadProjectOverview();
+            if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
         } catch (err) {
             showToast('Lỗi: ' + err.message, 'error');
         }
@@ -2845,7 +2880,7 @@ function flushRealtimeChanges() {
     } else if (section === 'mytasks' && (touchedTasks || touchedProjects)) {
         if (typeof loadMyTasks === 'function') loadMyTasks();
     } else if (section === 'progress' && (touchedTasks || touchedProjects)) {
-        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
     } else if (section === 'calendar' && (touchedEvents || touchedTasks)) {
         if (typeof loadCalendarData === 'function') loadCalendarData();
     } else if (section === 'dashboard') {
@@ -3501,7 +3536,7 @@ async function handleTaskFormSubmit(e) {
 
             // Tải im lặng: danh sách cũ vẫn hiển thị cho tới khi dữ liệu mới về
             if (typeof loadTasksForProject === 'function') loadTasksForProject(taskData.projectId, { quiet: true });
-            if (typeof loadProjectOverview === 'function') loadProjectOverview();
+            if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
         } else {
             showToast("Lỗi: " + response.message, "error");
         }
@@ -3555,7 +3590,7 @@ function deleteTaskAction(taskId, taskName) {
                     if (typeof currentTaskProjectID !== 'undefined' && currentTaskProjectID) {
                         // Xóa có lan xuống việc con nên phải hỏi lại server, nhưng tải im lặng
                         if (typeof loadTasksForProject === 'function') loadTasksForProject(currentTaskProjectID, { quiet: true });
-                        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+                        if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
                     }
                 } else {
                     Swal.fire('Lỗi!', "Không thể xóa: " + response.message, 'error');
@@ -5583,7 +5618,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 showToast(`Tải lên thành công ${successCount} file!`, "success");
                 loadNotifications();
                 uploadForm.reset();
-                if (typeof loadFileList === 'function') loadFileList(false);
+                if (typeof loadFileList === 'function') loadFileList(false, { quiet: true });
                 
                 // Kích hoạt sự kiện change để UI label đồng bộ lại với trạng thái mặc định của radio button
                 const checkedRadio = document.querySelector('input[name="uploadType"]:checked');
@@ -6225,7 +6260,7 @@ async function restoreItemClick(category, id) {
             
             // Reload lại giao diện nếu đang ở tab đó
             if (category === 'files') {
-                if (typeof loadFileList === 'function') loadFileList();
+                if (typeof loadFileList === 'function') loadFileList(false, { quiet: true });
             } else if (category === 'projects' || category === 'tasks') {
                 if (typeof loadProgressList === 'function') loadProgressList();
             } else if (category === 'events') {
