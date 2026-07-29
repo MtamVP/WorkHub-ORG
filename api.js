@@ -1321,7 +1321,48 @@ const API = {
             return [...logItems, ...mentionItems].sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
         }
     },
-    lounge: { sync: async () => "Synced" },
+    lounge: { 
+        sync: async (payload) => {
+            if (!sbClient) return [];
+            
+            // Upsert current player (nếu có email hợp lệ)
+            if (payload && payload.email) {
+                const { error } = await sbClient.from('lounge_players').upsert({
+                    email: payload.email,
+                    name: payload.name || 'Unknown',
+                    group_key: payload.group || 'guest',
+                    status: payload.status || 'in-lounge',
+                    color: payload.color || '#3498db',
+                    x: payload.x || 0,
+                    y: payload.y || 0,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'email' });
+                
+                if (error) console.error("Lỗi upsert lounge_players:", error);
+            }
+
+            // Lấy những người online trong 1 phút qua
+            const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
+            const { data, error: selectError } = await sbClient.from('lounge_players')
+                .select('*')
+                .gte('updated_at', oneMinuteAgo);
+                
+            if (selectError) {
+                console.error("Lỗi lấy danh sách lounge:", selectError);
+                return [];
+            }
+
+            return data.map(p => ({
+                email: p.email,
+                name: p.name,
+                group: p.group_key,
+                status: p.status,
+                color: p.color,
+                x: p.x,
+                y: p.y
+            }));
+        } 
+    },
     // Tìm kiếm toàn cục: gom dự án + công việc + tệp trong cùng một lượt, để người dùng
     // không phải nhớ thứ mình cần đang nằm ở mục nào.
     search: {

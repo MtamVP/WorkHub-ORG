@@ -65,7 +65,7 @@
         function handleLoginBgUpload(input) {
             if (input.files && input.files[0]) {
                 var file = input.files[0];
-                if (file.size > 700 * 1024) { Swal.fire("Ảnh nặng quá!", "Ảnh lưu vào Firestore (giới hạn 1MB/document) nên cần dưới 700KB.", "warning"); return; }
+                if (file.size > 700 * 1024) { Swal.fire("Ảnh nặng quá!", "Ảnh lưu vào Supabase (giới hạn 1MB/document) nên cần dưới 700KB.", "warning"); return; }
 
                 const btnIcon = document.querySelector('.auth-btn-control i.fa-camera');
                 const oldClass = btnIcon.className;
@@ -191,4 +191,5 @@
     </script>
 </body>
 </html>
+
 

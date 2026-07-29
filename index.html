@@ -38,7 +38,7 @@
             <h2>WorkHub AI</h2>
             <p class="auth-subtitle">Login Portal</p>
 
-            <form id="firebase-login-form">
+            <form id="login-form-main">
                 <div class="auth-input-group">
                     <span class="auth-input-icon"><i class="fa-solid fa-user-astronaut"></i></span>
                     <input type="text" id="username" class="form-control" placeholder="Tên đăng nhập / Email" required>
@@ -58,7 +58,7 @@
                 </div>
             </form>
 
-            <div id="firebase-error" class="auth-error-message"></div>
+            <div id="login-error-msg" class="auth-error-message"></div>
             <div id="loading-status" class="text-center text-muted mt-3" style="display:none;">
                 <i class="fa-solid fa-satellite fa-spin"></i> Đang kết nối...
             </div>
@@ -86,8 +86,8 @@
     // 2. DOM ELEMENTS
     const loginView = document.getElementById('login-view');
     const successView = document.getElementById('success-view');
-    const form = document.getElementById('firebase-login-form');
-    const errorDiv = document.getElementById('firebase-error');
+    const form = document.getElementById('login-form-main');
+    const errorDiv = document.getElementById('login-error-msg');
     const loadingStatus = document.getElementById('loading-status');
     const welcomeText = document.getElementById('welcome-text');
     const btnGoDashboard = document.getElementById('btn-go-dashboard');
@@ -305,5 +305,6 @@
 </script>
 </body>
 </html>
+
 
 
