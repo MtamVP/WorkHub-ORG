@@ -1070,8 +1070,8 @@ const API = {
     },
     note: {
         getFinanceUsers: async () => {
-            const { data } = await sbClient.from('users').select('email').eq('group_key', 'finance');
-            return data ? data.map(d => d.email) : [];
+            const { data } = await sbClient.from('users').select('email, nickname').in('group_key', ['finance', 'all']);
+            return data ? data.map(d => ({ name: d.nickname || d.email, email: d.email })) : [];
         },
         addFinanceNote: async (payload) => {
             const authorId = await getUserId(payload.author);
