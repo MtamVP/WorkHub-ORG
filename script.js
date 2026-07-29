@@ -5749,6 +5749,25 @@ document.addEventListener('DOMContentLoaded', function () {
                     groupKey: groupSelect ? groupSelect.value : 'guest'
                 });
                 if (response.status !== 'success') throw new Error(response.message);
+
+                // Tự động tạo user bên Supabase Auth với mật khẩu mặc định 123456
+                // Dùng client phụ để không làm văng phiên đăng nhập của Admin hiện tại
+                if (window.supabase) {
+                    const tempClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+                        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+                    });
+                    const signUpRes = await tempClient.auth.signUp({
+                        email: email,
+                        password: '123456',
+                        options: {
+                            data: { nickname: nicknameInput ? nicknameInput.value.trim() : '' }
+                        }
+                    });
+                    if (signUpRes.error && signUpRes.error.message !== 'User already registered') {
+                        console.warn('Cảnh báo Auth:', signUpRes.error.message);
+                    }
+                }
+
                 showToast(response.data || response.message, 'success');
                 provisionUserForm.reset();
                 if (typeof loadAdminUsersTable === 'function') loadAdminUsersTable();
