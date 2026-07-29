@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
@@ -51,17 +51,12 @@
             </div>
             
             <div class="right-section">
-                <button onclick="saveToSheet()" class="btn-save" id="btn-save-sheet">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Lưu vào Sheet
-                </button>
+                <button onclick="saveToSheet()" class="btn-save" id="btn-save-sheet" style="background: var(--success-color); color: white; padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; box-shadow: 0 4px 10px rgba(0,255,0,0.2);"><i class="fa-solid fa-cloud-arrow-up"></i> Lưu vào Supabase</button>
                 
                 <button onclick="resetData()" class="btn-refresh" style="margin-left: 10px;">
                     <i class="fa-solid fa-rotate-right"></i> Nhập lại
                 </button>
-                <a href="https://docs.google.com/spreadsheets/d/123XHDgf5pm4n9xNemtohNXRvNJQ7pEcJPwThRo-89X8/edit?gid=0#gid=0" class="back-link">
-                    <i class="fa-solid fa-chevron-right"></i> <span>Mở Excel</span></a>
-
-            </div>
+                </div>
         </div>
 
         <div class="calc-wrapper">
@@ -176,4 +171,5 @@
 
 </body>
 </html>
+
 

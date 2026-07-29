@@ -187,7 +187,7 @@ async function loadData(email, columns) {
             ondeleterow: function() { updateSTT(); calculateFooterValues(); }
         });
 
-        applyHighlightColors(idxTotal, idxCash, idxDebt, idxNav);
+        applyHighlightColors(totalRowIdx, totalRowIdx + 1, totalRowIdx + 2, totalRowIdx + 3);
         calculateFooterValues();
 
     } catch (e) {
