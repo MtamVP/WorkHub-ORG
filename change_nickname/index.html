@@ -12,9 +12,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/style.css?v=3.1.0">
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="manifest" href="/manifest.json">
@@ -59,17 +57,8 @@
     </div>
 
     <script>
-        const firebaseConfig = {
-            apiKey : "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
-            authDomain : "workhub-ai-2d5aa.firebaseapp.com",
-            projectId : "workhub-ai-2d5aa",
-            storageBucket : "workhub-ai-2d5aa.firebasestorage.app",
-            messagingSenderId : "703705936779",
-            appId : "1:703705936779:web:b800246feea1f3e3cf358e"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        const sbClient = window.supabaseClient;
+        const auth = sbClient.auth;
 
         function goToDashboard() { window.location.href = "/dashboard/"; }
         function goToLogin() { window.location.href = "/"; }
@@ -84,17 +73,16 @@
                 btnIcon.className = "fa-solid fa-spinner fa-spin";
 
                 var reader = new FileReader();
-                reader.onload = function(e) {
-                    db.collection("settings").doc("login_theme").set({
-                        backgroundImage: e.target.result,
-                        updatedBy: auth.currentUser ? auth.currentUser.email : 'Unknown',
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }).then(() => {
+                reader.onload = async function(e) {
+                    try {
+                        const { data: { user } } = await auth.getUser();
+                        const userEmail = user ? user.email : 'Unknown';
+                        await API.settings.updateSetting('login_theme', e.target.result, userEmail);
                         btnIcon.className = oldClass;
                         Swal.fire({ icon: 'success', title: 'Đã đổi nền!', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
-                    }).catch(err => {
+                    } catch (err) {
                         btnIcon.className = oldClass; Swal.fire("Lỗi", err.message, "error");
-                    });
+                    }
                 }
                 reader.readAsDataURL(file);
             }
@@ -106,26 +94,46 @@
                 showCancelButton: true, confirmButtonColor: '#d33', cancelButtonText: 'Khoan...', confirmButtonText: 'Ok, xóa đi ní!'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    db.collection("settings").doc("login_theme").update({
-                        backgroundImage: firebase.firestore.FieldValue.delete()
-                    }).then(() => {
+                    try {
+                        const { data: { user } } = await auth.getUser();
+                        const userEmail = user ? user.email : 'Unknown';
+                        await API.settings.updateSetting('login_theme', '', userEmail);
                         Swal.fire({ icon: 'success', title: 'Đã Reset!', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
-                    });
+                    } catch (err) {
+                        Swal.fire("Lỗi", err.message, "error");
+                    }
                 }
             });
         }
 
-        db.collection("settings").doc("login_theme").onSnapshot((doc) => {
-            if (doc.exists && doc.data().backgroundImage) {
-                var imageUrl = doc.data().backgroundImage;
-                var finalValue = imageUrl.startsWith('url') ? imageUrl : "url('" + imageUrl + "')";
+        async function initLoginThemeListener() {
+            // Fetch lần đầu
+            const val = await API.settings.getSetting('login_theme');
+            if (val) {
+                var finalValue = val.startsWith('url') ? val : "url('" + val + "')";
                 document.documentElement.style.setProperty('--login-bg-image', finalValue);
                 document.body.classList.add('has-custom-bg');
             } else {
                 document.documentElement.style.removeProperty('--login-bg-image');
                 document.body.classList.remove('has-custom-bg');
             }
-        });
+
+            // Lắng nghe realtime Supabase
+            sbClient.channel('custom-nickname-theme-channel')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings', filter: 'key=eq.login_theme' }, (payload) => {
+                    if (payload.new && payload.new.value) {
+                        var imageUrl = payload.new.value;
+                        var finalValue = imageUrl.startsWith('url') ? imageUrl : "url('" + imageUrl + "')";
+                        document.documentElement.style.setProperty('--login-bg-image', finalValue);
+                        document.body.classList.add('has-custom-bg');
+                    } else {
+                        document.documentElement.style.removeProperty('--login-bg-image');
+                        document.body.classList.remove('has-custom-bg');
+                    }
+                })
+                .subscribe();
+        }
+        initLoginThemeListener();
 
         const newNicknameInput = document.getElementById('newNickname');
         const previewAvatar = document.getElementById('preview-avatar');
@@ -135,32 +143,28 @@
             previewAvatar.src = 'https://ui-avatars.com/api/?name=' + name + '&background=random&size=128&bold=true';
         });
 
-        auth.onAuthStateChanged(user => {
+        auth.onAuthStateChange((event, session) => {
+            const user = session?.user;
             if (!user) { goToLogin(); return; }
-            newNicknameInput.value = user.displayName || "";
+            newNicknameInput.value = user.user_metadata?.display_name || "";
             newNicknameInput.dispatchEvent(new Event('input')); // Kích hoạt preview
         });
 
         document.getElementById('change-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const newName = newNicknameInput.value.trim();
-            const user = auth.currentUser;
-            if(!newName || !user) return;
-
-            Swal.fire({
-                title: 'Đang cập nhật...',
-                text: 'Đang đồng bộ dữ liệu với Google Sheet & Firebase',
-                allowOutsideClick: false,
-                didOpen: () => { Swal.showLoading(); }
-            });
-
             try {
+                const { data: { user } } = await auth.getUser();
+                if(!newName || !user) return;
+
                 const res = await API.auth.updateNickname(user.email, newName);
 
                 if(res === "Success") {
-                    await user.updateProfile({
-                        displayName: newName,
-                        photoURL: 'https://ui-avatars.com/api/?name=' + newName + '&background=random&size=128&bold=true'
+                    await auth.updateUser({
+                        data: {
+                            display_name: newName,
+                            photo_url: 'https://ui-avatars.com/api/?name=' + newName + '&background=random&size=128&bold=true'
+                        }
                     });
 
                     if (window.API && API.system) {

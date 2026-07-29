@@ -14,8 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/api.js?v=1785293620060"></script>
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#120F0A">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -74,17 +73,8 @@
     // 1. CẤU HÌNH HỆ THỐNG
     const DASHBOARD_URL = "https://script.google.com/macros/s/AKfycbyNqJLYAetEOUG2Jp7sGgfBy54CKB50Ng_w_PkQGvfQa4b8Fcr8-8NiL0Er21SusDL4/exec";
 
-    const firebaseConfig = {
-        apiKey : "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
-        authDomain : "workhub-ai-2d5aa.firebaseapp.com",
-        projectId : "workhub-ai-2d5aa",
-        storageBucket : "workhub-ai-2d5aa.firebasestorage.app",
-        messagingSenderId : "703705936779",
-        appId : "1:703705936779:web:b800246feea1f3e3cf358e"
-    };
-
-    const app = firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
+    const sbClient = window.supabaseClient;
+    const auth = sbClient.auth;
 
     // 2. KHAI BÁO BIẾN DOM
     const loginView = document.getElementById('login-view');
@@ -95,35 +85,36 @@
     const welcomeText = document.getElementById('welcome-text');
     const btnGoDashboard = document.getElementById('btn-go-dashboard');
 
-    // 3. HÀM ĐĂNG NHẬP FIREBASE
-    function performLogin(email, password) {
-        loadingStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xác thực với Firebase...';
+    // 3. HÀM ĐĂNG NHẬP SUPABASE
+    async function performLogin(email, password) {
+        loadingStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xác thực với Supabase...';
 
-        auth.signInWithEmailAndPassword(email, password)
-            .then((userCredential) => {
-                showSuccessUI(userCredential.user);
-            })
-            .catch((error) => {
-                loadingStatus.style.display = 'none';
-                form.style.display = 'block';
+        const { data, error } = await auth.signInWithPassword({
+            email: email,
+            password: password
+        });
 
-                let msg = error.message;
-                if(error.code === 'auth/wrong-password') msg = "Mật khẩu không chính xác.";
-                if(error.code === 'auth/user-not-found') msg = "Tài khoản chưa được tạo trên hệ thống.";
-                if(error.code === 'auth/invalid-email') msg = "Email không hợp lệ.";
+        if (error) {
+            loadingStatus.style.display = 'none';
+            form.style.display = 'block';
 
-                errorDiv.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + msg;
-            });
+            let msg = error.message;
+            if(msg.includes('Invalid login credentials')) msg = "Sai email hoặc mật khẩu!";
+
+            errorDiv.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + msg;
+        } else {
+            showSuccessUI(data.user);
+        }
     }
 
     function showSuccessUI(user) {
         loginView.style.display = 'none';
         successView.style.display = 'block';
-        welcomeText.textContent = `Xin chào, ${user.displayName || "Thành viên"}!`;
+        welcomeText.textContent = `Xin chào, ${user.user_metadata?.display_name || "Thành viên"}!`;
 
         btnGoDashboard.onclick = function() {
             this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang truy cập...';
-            if (!user.displayName) window.top.location.href = "/nickname/";
+            if (!user.user_metadata?.display_name) window.top.location.href = "/nickname/";
             else window.top.location.href = "/dashboard/";
         };
     }
@@ -164,9 +155,9 @@
     }
 
     // KIỂM TRA TRẠNG THÁI ĐĂNG NHẬP CŨ
-    auth.onAuthStateChanged(function(user) {
+    auth.onAuthStateChange(function(event, session) {
         if (loadingStatus) loadingStatus.style.display = 'none';
-        if (user) showSuccessUI(user);
+        if (session?.user) showSuccessUI(session.user);
         else loginView.style.display = 'block';
     });
 </script>

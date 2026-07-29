@@ -12,8 +12,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/style.css?v=3.1.0">
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="manifest" href="/manifest.json">
@@ -62,17 +61,9 @@
 </div>
 
 <script>
-    // 1. CẤU HÌNH FIREBASE
-    var firebaseConfig = {
-        apiKey : "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
-        authDomain : "workhub-ai-2d5aa.firebaseapp.com",
-        projectId : "workhub-ai-2d5aa",
-        storageBucket : "workhub-ai-2d5aa.firebasestorage.app",
-        messagingSenderId : "703705936779",
-        appId : "1:703705936779:web:b800246feea1f3e3cf358e"
-    };
-    firebase.initializeApp(firebaseConfig);
-    var auth = firebase.auth();
+    // Khởi tạo Supabase Client từ api.js
+    const sbClient = window.supabaseClient;
+    const auth = sbClient.auth;
 
     // 2. DOM Elements
     var forgotForm = document.getElementById('forgot-form');
@@ -101,7 +92,9 @@
                 }
 
                 btnSubmit.innerHTML = '<i class="fa-solid fa-paper-plane fa-spin"></i> Đang gửi mail...';
-                await auth.sendPasswordResetEmail(realEmail);
+                
+                const { error } = await auth.resetPasswordForEmail(realEmail);
+                if (error) throw error;
 
                 btnSubmit.innerHTML = '<i class="fa-solid fa-check"></i> Đã gửi!';
                 btnSubmit.classList.remove('auth-btn-submit');

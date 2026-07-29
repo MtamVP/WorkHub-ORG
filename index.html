@@ -18,9 +18,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/logo.png">
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -82,20 +80,9 @@
     </div>
 
 <script>
-    // 1. CONFIG FIREBASE
-    const firebaseConfig = {
-        apiKey : "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
-        authDomain : "workhub-ai-2d5aa.firebaseapp.com",
-        projectId : "workhub-ai-2d5aa",
-        storageBucket : "workhub-ai-2d5aa.firebasestorage.app",
-        messagingSenderId : "703705936779",
-        appId : "1:703705936779:web:b800246feea1f3e3cf358e"
-    };
-
-    // Khởi tạo Firebase
-    const app = firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+    // Khởi tạo Supabase Client từ api.js
+    const sbClient = window.supabaseClient;
+    const auth = sbClient.auth;
 
     // 2. DOM ELEMENTS
     const loginView = document.getElementById('login-view');
@@ -128,14 +115,19 @@
     }
 
     // THEME BACKGROUND LOGIC (Dùng Supabase app_settings)
-    function initLoginThemeListener() {
-        db.collection("settings").doc("login_theme").onSnapshot((doc) => {
-            if (doc.exists && doc.data().backgroundImage) {
-                applyCustomBackground(doc.data().backgroundImage);
-            } else {
-                removeCustomBackground();
-            }
-        });
+    async function initLoginThemeListener() {
+        // Fetch lần đầu
+        const val = await API.settings.getSetting('login_theme');
+        if (val) applyCustomBackground(val);
+        else removeCustomBackground();
+
+        // Lắng nghe thay đổi realtime
+        sbClient.channel('custom-login-theme-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings', filter: 'key=eq.login_theme' }, (payload) => {
+                if (payload.new && payload.new.value) applyCustomBackground(payload.new.value);
+                else removeCustomBackground();
+            })
+            .subscribe();
     }
 
     function applyCustomBackground(imageUrl) {
@@ -150,7 +142,7 @@
     }
 
     async function checkAuthAndUpload() {
-        const user = auth.currentUser;
+        const { data: { user } } = await auth.getUser();
         if (!user) {
             showToast("Vui lòng đăng nhập thành công trước khi đổi nền!", "warning");
             return;
@@ -159,7 +151,7 @@
     }
 
     async function checkAuthAndReset() {
-        const user = auth.currentUser;
+        const { data: { user } } = await auth.getUser();
         if (!user) {
             Swal.fire({ icon: 'warning', title: 'Chưa đăng nhập!', text: 'Bạn cần đăng nhập mới có quyền Reset giao diện.', confirmButtonColor: '#1A1A1A' });
             return;
@@ -189,7 +181,8 @@
             var reader = new FileReader();
             reader.onload = async function(e) {
                 try {
-                    const userEmail = (auth.currentUser) ? auth.currentUser.email : "admin@workhub.com";
+                    const { data: { user } } = await auth.getUser();
+                    const userEmail = user ? user.email : "admin@workhub.com";
                     await API.settings.updateSetting('login_theme', e.target.result, userEmail);
                     applyCustomBackground(e.target.result);
                     btnIcon.className = oldClass;
@@ -222,13 +215,18 @@
                 // Sử dụng API lấy Real Email từ Supabase
                 const realEmail = await API.auth.getRealEmail(inputVal) || inputVal;
 
-                loadingStatus.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Đang xác thực Firebase...';
+                loadingStatus.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Đang xác thực Supabase...';
                 
                 // Đánh dấu là người dùng vừa chủ động đăng nhập
                 sessionStorage.setItem('just_logged_in', 'true');
 
-                // Đăng nhập Firebase
-                await auth.signInWithEmailAndPassword(realEmail, password);
+                // Đăng nhập Supabase
+                const { error } = await auth.signInWithPassword({
+                    email: realEmail,
+                    password: password
+                });
+
+                if (error) throw error;
 
             } catch (err) {
                 console.error(err);
@@ -236,16 +234,15 @@
                 form.style.display = 'block';
 
                 let msg = err.message;
-                if(msg.includes('auth/wrong-password')) msg = "Sai mật khẩu!";
-                if(msg.includes('auth/user-not-found')) msg = "Tài khoản không tồn tại.";
-                if(msg.includes('auth/invalid-email')) msg = "Email không hợp lệ.";
+                if(msg.includes('Invalid login credentials')) msg = "Sai email hoặc mật khẩu!";
 
                 errorDiv.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + msg;
             }
         });
     }
 
-    auth.onAuthStateChanged(async function(user) {
+    auth.onAuthStateChange(async function(event, session) {
+        const user = session?.user;
         if (user) {
             loginView.style.display = 'none';
             successView.style.display = 'block';
@@ -258,7 +255,7 @@
                 const userInfoRes = await API.auth.getUserInfo(user.email);
                 const group = await API.auth.getUserGroup(user.email);
                 
-                let displayName = user.displayName || user.email.split('@')[0];
+                let displayName = user.user_metadata?.display_name || user.email.split('@')[0];
 
                 if (userInfoRes) {
                     if (userInfoRes.data) {
@@ -282,7 +279,7 @@
                 btnGoDashboard.disabled = false;
 
                 setTimeout(() => {
-                    if(!user.displayName && displayName === user.email.split('@')[0]) {
+                    if(!user.user_metadata?.display_name && displayName === user.email.split('@')[0]) {
                         window.location.href = "/nickname/";
                     } else {
                         window.location.href = "/dashboard/";

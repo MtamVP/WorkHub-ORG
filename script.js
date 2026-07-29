@@ -31,11 +31,14 @@ let activeGroup = (typeof CURRENT_GROUP_KEY !== 'undefined') ? CURRENT_GROUP_KEY
 let app = null;
 let auth = null;
 let db = null;
+const sbClient = window.supabaseClient;
 
 if (typeof firebase !== 'undefined') {
     app = firebase.initializeApp(firebaseConfig);
-    auth = firebase.auth();
     db = firebase.firestore();
+}
+if (sbClient) {
+    auth = sbClient.auth;
 }
 
 //  Calendar Global Variables 
@@ -5150,21 +5153,23 @@ document.addEventListener('DOMContentLoaded', function () {
             markAllRead();
         });
     }
-    //  8.2 LOGIC FIREBASE AUTH 
-    auth.onAuthStateChanged(function (user) {
-        const userDisplay = document.getElementById('user-display');
-        const userEmailDisplay = document.getElementById('user-email-display');
-        const chatWidgetEl = document.getElementById('workhub-chat-widget');
-        const chatBoxEl = document.getElementById('chat-box');
-        const msgInput = document.getElementById('msg-input');
-        const sendBtn = document.getElementById('send-btn');
-        const navItems = document.querySelectorAll('.nav-item');
+    //  8.2 LOGIC SUPABASE AUTH 
+    if (auth) {
+        auth.onAuthStateChange(function (event, session) {
+            const user = session?.user;
+            const userDisplay = document.getElementById('user-display');
+            const userEmailDisplay = document.getElementById('user-email-display');
+            const chatWidgetEl = document.getElementById('workhub-chat-widget');
+            const chatBoxEl = document.getElementById('chat-box');
+            const msgInput = document.getElementById('msg-input');
+            const sendBtn = document.getElementById('send-btn');
+            const navItems = document.querySelectorAll('.nav-item');
 
-        if (user) {
-            // case1: đã đăng nhập
-            chatUser = user;
-            const displayName = user.displayName || user.email;
-            const shortName = displayName.split('@')[0];
+            if (user) {
+                // case1: đã đăng nhập
+                chatUser = user;
+                const displayName = user.user_metadata?.display_name || user.email;
+                const shortName = displayName.split('@')[0];
 
             // 1. Cập nhật Tên
             if (userDisplay) userDisplay.innerHTML = `<i class="fa-solid fa-user-circle"></i> ${shortName}`;
@@ -5239,8 +5244,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (typeof unsubscribeChat === 'function') unsubscribeChat();
             if (typeof unsubscribeMembers === 'function') unsubscribeMembers();
             if (window.onlineInterval) clearInterval(window.onlineInterval);
-        }
-    });
+            }
+        });
+    }
     //  LOGIC LOGOUT & RESET PASS 
     if (logoutBtn) {
         logoutBtn.addEventListener('click', function () {
@@ -5264,11 +5270,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     API.system.logAction(Date.now().toString(), 'logout', `Người dùng đã đăng xuất hệ thống`, 'success', localStorage.getItem('userEmail'), localStorage.getItem('userGroup'));
                 }
                 auth.signOut()
-                    .then(() => {
-                        performRedirect();
-                    })
-                    .catch((error) => {
-                        console.error("Lỗi đăng xuất:", error);
+                    .then(({ error }) => {
+                        if (error) console.error("Lỗi đăng xuất:", error);
                         performRedirect();
                     });
             } else {

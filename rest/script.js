@@ -5,42 +5,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const myBody = document.getElementById('my-body-color');
     const myBackpack = document.querySelector('.backpack');
     
-    // Lấy thông tin từ HTML
     const nameText = document.querySelector('.player-name');
     const statusDot = document.querySelector('.status-dot');
     const radarList = document.getElementById('radar-list');
     const playerCount = document.getElementById('player-count');
 
-    // Nút và các thành phần UI để làm hiệu ứng Warp Speed
     const btnBackToWork = document.getElementById('btn-back-to-work');
     const warpFlash = document.getElementById('warp-flash');
     const topBar = document.querySelector('.hud-top-bar');
     const uiPanel = document.getElementById('ui-panel');
     const multiplayerPanel = document.getElementById('multiplayer-panel');
 
-    // ==========================================
-    // KHỞI TẠO THÔNG TIN CÁ NHÂN (TỪ LOCALSTORAGE)
-    // ==========================================
     const myEmail = localStorage.getItem('userEmail') || 'guest@workhub.com';
     let myName = localStorage.getItem('userName');
     if (!myName) {
-        myName = myEmail.split('@')[0]; // Cắt bỏ phần @gmail.com nếu không có tên
+        myName = myEmail.split('@')[0];
     }
     const myGroup = localStorage.getItem('userGroup') || 'all'; 
     
-    // Tọa độ hiện tại (Khởi tạo ở giữa màn hình)
     let currentX = window.innerWidth / 2;
     let currentY = window.innerHeight * 0.7; 
 
-    // 1. KIỂM TRA LÝ DO VÀO PHÒNG LOUNGE (TỪ BỘ NHỚ)
     const currentStatus = localStorage.getItem('my_status') || 'in-lounge';
     
     if (currentStatus === 'idle') {
-        // --- NẾU LÀ NGỦ ĐÔNG (IDLE) ---
         nameText.innerText = `${myName} (Zzz...)`;
         statusDot.className = "status-dot idle";
         
-        // Cài bẫy: Cựa quậy chuột hoặc phím là THỨC DẬY
         const wakeUp = () => {
             const returnUrl = localStorage.getItem('return_url') || '/dashboard/';
             localStorage.setItem('my_status', 'active');
@@ -54,11 +45,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
 
     } else {
-        // --- NẾU LÀ CHỦ ĐỘNG VÀO (IN-LOUNGE) ---
         nameText.innerText = `${myName} (In Lounge)`;
         statusDot.className = "status-dot in-lounge";
 
-        // Click đi bộ vòng vòng
         room.addEventListener('click', (e) => {
             currentX = e.clientX;
             currentY = e.clientY;
@@ -75,7 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Đổi màu áo bằng Color Picker
     colorPicker.addEventListener('input', (e) => {
         const newColor = e.target.value;
         myBody.style.backgroundColor = newColor;
@@ -83,9 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('my_color', newColor); 
     });
 
-    // ==========================================
-    // KHỞI TẠO TỦ ĐỒ (RANDOM MÀU CHO NGƯỜI MỚI)
-    // ==========================================
     let savedColor = localStorage.getItem('my_color');
     
     if (!savedColor) {
@@ -98,9 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
     myBody.style.backgroundColor = savedColor;
     myBackpack.style.backgroundColor = savedColor;
 
-    // =====================================
-    // ĐỘNG CƠ ĐỒNG BỘ MULTIPLAYER (Cứ 5s chạy 1 lần)
-    // =====================================
     async function syncMultiplayer() {
         const color = colorPicker.value;
         const status = localStorage.getItem('my_status') || 'in-lounge';
@@ -129,12 +111,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Hàm vẽ người chơi khác & Cập nhật Radar
     function renderOtherPlayers(players) {
-        // 1. Cập nhật số lượng người Online
         if (playerCount) playerCount.innerText = players.length + " Online";
 
-        // 2. Khởi tạo danh sách Radar (Luôn có mình ở trên cùng)
         let radarHTML = `
             <div class="d-flex align-items-center mb-2 text-light p-2 rounded" style="background: rgba(255,255,255,0.1); border-left: 3px solid ${colorPicker.value};">
                 <span class="status-dot in-lounge me-2" style="box-shadow: 0 0 5px #9b59b6; background-color: #9b59b6;"></span> 
@@ -144,9 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         players.forEach(p => {
-            if (p.email === myEmail) return; // Bỏ qua chính mình
+            if (p.email === myEmail) return;
 
-            // --- VẼ NHÂN VẬT LÊN MÀN HÌNH ---
             const safeId = "player-" + p.email.replace(/[@.]/g, '-');
             let playerEl = document.getElementById(safeId);
 
@@ -168,7 +146,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 room.appendChild(playerEl);
             }
 
-            // Cập nhật vị trí
             const oldLeft = parseInt(playerEl.style.left) || p.x;
             playerEl.style.left = p.x + 'px';
             playerEl.style.top = p.y + 'px';
@@ -179,7 +156,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 playerEl.style.transform = "translate(-50%, -100%) scaleX(1)";  
             }
 
-            // Cập nhật màu & tên
             playerEl.querySelector('.body').style.backgroundColor = p.color;
             playerEl.querySelector('.backpack').style.backgroundColor = p.color;
 
@@ -189,7 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const dot = playerEl.querySelector('.status-dot');
             dot.className = `status-dot ${p.status}`;
             
-            // Xử lý làm mờ khi AFK/Offline
             if (p.status === 'idle') {
                 playerEl.classList.add('idle-mode');
                 playerEl.classList.remove('offline-mode');
@@ -200,7 +175,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 playerEl.classList.remove('idle-mode', 'offline-mode');
             }
 
-            // --- THÊM VÀO DANH SÁCH RADAR ---
             radarHTML += `
                 <div class="d-flex align-items-center mb-2 text-light p-1 rounded" style="background: rgba(255,255,255,0.05); border-left: 2px solid ${p.color}; border-bottom: 1px solid rgba(255,255,255,0.1);">
                     <span class="status-dot ${p.status} me-2"></span> 
@@ -211,41 +185,15 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         });
 
-        // Bơm data vào HTML
         if (radarList) radarList.innerHTML = radarHTML;
     }
 
-    // ==========================================
-    // HIỆU ỨNG WARP SPEED KHI BẤM NÚT QUAY LẠI
-    // ==========================================
     if (btnBackToWork) {
         btnBackToWork.addEventListener('click', function() {
-            // 1. Khóa nút để không bị bấm 2 lần
-            this.style.pointerEvents = 'none';
-
-            // 2. Ẩn mờ từ từ các bảng UI (Radar, Top bar, Cá nhân) để tạo cảm giác điện ảnh
-            if (topBar) topBar.style.opacity = '0';
-            if (uiPanel) uiPanel.style.opacity = '0';
-            if (multiplayerPanel) multiplayerPanel.style.opacity = '0';
-
-            // 3. Kích hoạt hiệu ứng hút căn phòng vào Tâm Trái Đất
-            if (room) room.classList.add('sucked-into-earth');
-
-            // 4. Canh đúng 0.9s (Khi quả cầu vọt lên che hết màn hình) thì bật chớp sáng trắng
-            if (warpFlash) {
-                setTimeout(() => {
-                    warpFlash.classList.add('flash-active');
-                }, 900);
-            }
-
-            // 5. Canh đúng 1.2s (Đỉnh điểm lúc màn hình đang trắng xóa) thì chuyển trang!
-            setTimeout(() => {
-                window.location.href = '/dashboard/';
-            }, 1200);
+            window.location.href = '/dashboard/';
         });
     }
 
-    // Khởi động Multiplayer Sync
     setInterval(syncMultiplayer, 5000);
     syncMultiplayer();
 });

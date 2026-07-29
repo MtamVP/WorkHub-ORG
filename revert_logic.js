@@ -1,5 +1,6 @@
 const fs = require('fs');
 const newLogic = `
+LOGIC HÌNH NỀN LOGIN
 window.handleLoginBgUpload = function(input) {
     if (input.files && input.files[0]) {
         var file = input.files[0];
@@ -39,7 +40,7 @@ window.confirmResetTheme = function() {
 
 const content = fs.readFileSync('script.js', 'utf8');
 const lines = content.split('\n');
-const startIndex = lines.findIndex(l => l.includes('// --- LOGIC HÌNH NỀN LOGIN ---'));
+const startIndex = lines.findIndex(l => l.includes('LOGIC HÌNH NỀN LOGIN'));
 if (startIndex !== -1) {
     lines.splice(startIndex, lines.length - startIndex);
     fs.writeFileSync('script.js', lines.join('\n') + newLogic, 'utf8');

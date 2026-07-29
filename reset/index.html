@@ -12,9 +12,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/style.css?v=3.1.0">
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="manifest" href="/manifest.json">
@@ -67,19 +65,9 @@
     </div>
 
     <script>
-        // 1. CẤU HÌNH FIREBASE
-        const firebaseConfig = {
-            apiKey : "AIzaSyCCCIzKdnvslSrvknrl0eQH1cL8_upv1PI",
-            authDomain : "workhub-ai-2d5aa.firebaseapp.com",
-            projectId : "workhub-ai-2d5aa",
-            storageBucket : "workhub-ai-2d5aa.firebasestorage.app",
-            messagingSenderId : "703705936779",
-            appId : "1:703705936779:web:b800246feea1f3e3cf358e"
-        };
-
-        const app = firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        // Khởi tạo Supabase Client từ api.js
+        const sbClient = window.supabaseClient;
+        const auth = sbClient.auth;
 
         // 2. ĐIỀU HƯỚNG
         function goToDashboard() { window.location.href = "/dashboard/"; }
@@ -96,17 +84,16 @@
                 btnIcon.className = "fa-solid fa-spinner fa-spin";
 
                 var reader = new FileReader();
-                reader.onload = function(e) {
-                    db.collection("settings").doc("login_theme").set({
-                        backgroundImage: e.target.result,
-                        updatedBy: auth.currentUser ? auth.currentUser.email : 'Unknown',
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }).then(() => {
+                reader.onload = async function(e) {
+                    try {
+                        const { data: { user } } = await auth.getUser();
+                        const userEmail = user ? user.email : 'Unknown';
+                        await API.settings.updateSetting('login_theme', e.target.result, userEmail);
                         btnIcon.className = oldClass;
                         Swal.fire({ icon: 'success', title: 'Thành công!', text: 'Đã cập nhật hình nền Login.', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
-                    }).catch(err => {
+                    } catch (err) {
                         btnIcon.className = oldClass; Swal.fire("Lỗi", err.message, "error");
-                    });
+                    }
                 }
                 reader.readAsDataURL(file);
             }
@@ -118,27 +105,44 @@
                 showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Ok, xóa đi ní!', cancelButtonText: 'Khoan...'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    db.collection("settings").doc("login_theme").update({
-                        backgroundImage: firebase.firestore.FieldValue.delete()
-                    }).then(() => {
+                    try {
+                        const { data: { user } } = await auth.getUser();
+                        const userEmail = user ? user.email : 'Unknown';
+                        await API.settings.updateSetting('login_theme', '', userEmail);
                         Swal.fire({ icon: 'success', title: 'Đã Reset!', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
-                    });
+                    } catch (err) {
+                        Swal.fire("Lỗi", err.message, "error");
+                    }
                 }
             });
         }
 
-        function initLoginThemeListener() {
-            db.collection("settings").doc("login_theme").onSnapshot((doc) => {
-                if (doc.exists && doc.data().backgroundImage) {
-                    var imageUrl = doc.data().backgroundImage;
-                    var finalValue = imageUrl.startsWith('url') ? imageUrl : "url('" + imageUrl + "')";
-                    document.documentElement.style.setProperty('--login-bg-image', finalValue);
-                    document.body.classList.add('has-custom-bg');
-                } else {
-                    document.documentElement.style.removeProperty('--login-bg-image');
-                    document.body.classList.remove('has-custom-bg');
-                }
-            });
+        async function initLoginThemeListener() {
+            // Fetch lần đầu
+            const val = await API.settings.getSetting('login_theme');
+            if (val) {
+                var finalValue = val.startsWith('url') ? val : "url('" + val + "')";
+                document.documentElement.style.setProperty('--login-bg-image', finalValue);
+                document.body.classList.add('has-custom-bg');
+            } else {
+                document.documentElement.style.removeProperty('--login-bg-image');
+                document.body.classList.remove('has-custom-bg');
+            }
+
+            // Lắng nghe realtime Supabase
+            sbClient.channel('custom-reset-theme-channel')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings', filter: 'key=eq.login_theme' }, (payload) => {
+                    if (payload.new && payload.new.value) {
+                        var imageUrl = payload.new.value;
+                        var finalValue = imageUrl.startsWith('url') ? imageUrl : "url('" + imageUrl + "')";
+                        document.documentElement.style.setProperty('--login-bg-image', finalValue);
+                        document.body.classList.add('has-custom-bg');
+                    } else {
+                        document.documentElement.style.removeProperty('--login-bg-image');
+                        document.body.classList.remove('has-custom-bg');
+                    }
+                })
+                .subscribe();
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -155,18 +159,18 @@
             }
 
             // Kiểm tra đăng nhập
-            auth.onAuthStateChanged(function(user) {
-                if (!user) goToLogin();
+            auth.onAuthStateChange(function(event, session) {
+                if (!session?.user) goToLogin();
             });
 
             // Xử lý Submit
-            resetForm.addEventListener('submit', function(e) {
+            resetForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 alertMessage.classList.add('d-none');
 
                 const newPass = document.getElementById('newPassword').value;
                 const confirmPass = document.getElementById('confirmPassword').value;
-                const user = auth.currentUser;
+                const { data: { user } } = await auth.getUser();
 
                 if (newPass !== confirmPass) { showAlert('Mật khẩu xác nhận không khớp.'); return; }
                 if (!user) { showAlert('Vui lòng đăng nhập lại.'); setTimeout(goToLogin, 2000); return; }
@@ -176,8 +180,13 @@
                 btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
                 btnSubmit.disabled = true;
 
-                // Gọi Firebase Update Password
-                user.updatePassword(newPass).then(() => {
+                // Gọi Supabase Update Password
+                const { error } = await auth.updateUser({ password: newPass });
+                
+                if (error) {
+                    btnSubmit.innerHTML = oldText; btnSubmit.disabled = false;
+                    showAlert('Lỗi: ' + error.message);
+                } else {
                     if (window.API && API.system) {
                         API.system.logAction(Date.now().toString(), 'auth', `Đã đổi mật khẩu thành công`, 'success', user.email, 'all');
                     }
@@ -189,15 +198,7 @@
                     }).then(() => {
                         auth.signOut().then(() => goToLogin());
                     });
-                }).catch(err => {
-                    btnSubmit.innerHTML = oldText; btnSubmit.disabled = false;
-
-                    let msg = err.message;
-                    if(err.code === 'auth/requires-recent-login') {
-                        msg = "Để bảo mật, bạn cần đăng xuất và đăng nhập lại trước khi đổi mật khẩu.";
-                    }
-                    showAlert('Lỗi: ' + msg);
-                });
+                }
             });
 
             backToDashboardBtn.addEventListener('click', goToDashboard);
