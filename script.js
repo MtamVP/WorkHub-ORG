@@ -4458,7 +4458,12 @@ function escapeHtml(text) {
 
 function formatSmartTime(timestamp) {
     if (!timestamp) return "";
-    const date = timestamp.toDate();
+    let date;
+    if (typeof timestamp.toDate === 'function') {
+        date = timestamp.toDate();
+    } else {
+        date = new Date(timestamp);
+    }
     const now = new Date();
 
     // Lấy giờ phút
