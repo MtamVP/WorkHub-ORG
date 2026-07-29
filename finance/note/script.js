@@ -78,8 +78,13 @@ async function loadNotes() {
                     <div class="sticky-note" style="background-color: ${note.color}; --rot: ${rotation}deg; animation-delay: ${delay}s;">
                         <div class="pin"></div>
                         <div class="note-header">
-                            <span><i class="fa-solid fa-user-pen"></i> ${note.author}</span>
-                            <span>${note.time}</span>
+                            <div>
+                                <i class="fa-solid fa-user-pen"></i> ${note.author}
+                            </div>
+                            <div>
+                                <span>${note.time}</span>
+                                <i class="fa-solid fa-trash" style="cursor:pointer; margin-left:10px; color:#c0392b;" onclick="deleteNote('${note.id}')" title="Xóa note này"></i>
+                            </div>
                         </div>
                         <div class="note-body">${note.content}</div>
                     </div>
@@ -165,6 +170,22 @@ function selectAllEmails(el) {
     const isAllChecked = Array.from(checkboxes).every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !isAllChecked);
     el.innerText = isAllChecked ? "Chọn tất cả" : "Bỏ chọn tất cả";
+}
+
+// --- XÓA NOTE ---
+async function deleteNote(id) {
+    if (!confirm("Bạn có chắc chắn muốn xóa note này?")) return;
+    try {
+        const response = await callGAS('deleteFinanceNote', { id: id });
+        if (response.status === 'success') {
+            showToast("Đã xóa note!", "success");
+            loadNotes(); // Tải lại bảng
+        } else {
+            showToast("Lỗi: " + response.message, "error");
+        }
+    } catch (e) {
+        showToast("Lỗi kết nối", "error");
+    }
 }
 
 // --- TOAST ---

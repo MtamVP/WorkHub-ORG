@@ -1086,7 +1086,12 @@ const API = {
             return "Thêm ghi chú thành công!";
         },
         getFinanceNotes: async () => {
-            const { data, error } = await sbClient.from('finance_notes').select('*, users!inner(email, nickname)').order('created_at', { ascending: false });
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
+            const { data, error } = await sbClient.from('finance_notes')
+                .select('*, users!inner(email, nickname)')
+                .gte('created_at', startOfDay.toISOString())
+                .order('created_at', { ascending: false });
             if (error) throw error;
             return data.map(n => ({
                 id: n.id,
@@ -1096,6 +1101,11 @@ const API = {
                 color: n.color,
                 time: new Date(n.created_at).toLocaleString('vi-VN', {hour: '2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'})
             }));
+        },
+        deleteFinanceNote: async (id) => {
+            const { error } = await sbClient.from('finance_notes').delete().eq('id', id);
+            if (error) throw error;
+            return "Đã xóa note thành công!";
         }
     },
     stock: {
@@ -1623,6 +1633,7 @@ window.callGAS = async function(action, params = {}) {
             case 'getFinanceUsers': result = await API.note.getFinanceUsers(); break;
             case 'getFinanceNotes': result = await API.note.getFinanceNotes(); break;
             case 'addFinanceNote': result = await API.note.addFinanceNote(params); break;
+            case 'deleteFinanceNote': result = await API.note.deleteFinanceNote(params.id); break;
 
             case 'getStockList': result = await API.stock.getStockList(); break;
             case 'getStockDetail': result = await API.stock.getStockDetail(params.symbol); break;
