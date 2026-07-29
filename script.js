@@ -115,6 +115,50 @@ function clearDashboardData() {
 }
 
 
+// Khung xương (skeleton) nhấp nháy khi đang tải — thay cho spinner giữa bảng/danh sách
+// trắng xoá, giúp người dùng hình dung trước layout sắp hiện ra thay vì màn hình trống.
+function skeletonTableRows(colCount, rowCount) {
+    rowCount = rowCount || 5;
+    let rows = '';
+    for (let i = 0; i < rowCount; i++) {
+        let cells = '';
+        for (let c = 0; c < colCount; c++) {
+            const widthClass = c === 0 ? '' : (c % 3 === 1 ? 'short' : (c % 3 === 2 ? 'tiny' : ''));
+            cells += `<td><div class="skeleton-block skeleton-bar ${widthClass}"></div></td>`;
+        }
+        rows += `<tr class="skeleton-table-row">${cells}</tr>`;
+    }
+    return rows;
+}
+
+function skeletonListItems(count) {
+    count = count || 4;
+    let html = '';
+    for (let i = 0; i < count; i++) {
+        html += `<div class="skeleton-list-item">
+            <div class="skeleton-block skeleton-avatar"></div>
+            <div class="skeleton-lines">
+                <div class="skeleton-block skeleton-bar"></div>
+                <div class="skeleton-block skeleton-bar short"></div>
+            </div>
+        </div>`;
+    }
+    return html;
+}
+
+function skeletonCards(count) {
+    count = count || 4;
+    let html = '';
+    for (let i = 0; i < count; i++) {
+        html += `<div class="skeleton-card">
+            <div class="skeleton-block skeleton-bar"></div>
+            <div class="skeleton-block skeleton-bar short"></div>
+            <div class="skeleton-block skeleton-bar tiny"></div>
+        </div>`;
+    }
+    return html;
+}
+
 function showToast(message, type = 'success') {
     alert(message);
     if (type === 'error') {
@@ -422,7 +466,7 @@ async function loadFileList(isFiltering = false, options) {
     console.log("Đang gửi bộ lọc:", filters);
 
     if (!quiet) {
-        fileTableBody.innerHTML = '<tr><td class="text-center" colspan="7"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</td></tr>';
+        fileTableBody.innerHTML = skeletonTableRows(7, 6);
     }
 
     try {
@@ -840,7 +884,7 @@ async function loadCalendarData(options) {
 
     // 3. Hiển thị loading bên sidebar
     const listContainer = document.getElementById('today-event-list');
-    if (!quiet && listContainer) listContainer.innerHTML = '<div class="text-center text-muted mt-4"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</div>';
+    if (!quiet && listContainer) listContainer.innerHTML = skeletonListItems(3);
 
     // 4. Tính toán khoảng thời gian tới thời điểm hiện tại
     const year = currentCalendarDate.getFullYear();
@@ -1359,7 +1403,7 @@ async function loadProjectOverview(options) {
 
     if (!quiet) {
         // 2. UI Loading
-        if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center" style="padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Đang cập nhật dữ liệu...</td></tr>`;
+        if (tableBody) tableBody.innerHTML = skeletonTableRows(colSpanCount, 5);
 
         // Reset Dropdowns tạm thời
         const loadingOpt = '<option value="">-- Đang tải... --</option>';
@@ -1913,7 +1957,7 @@ async function loadDashboardTopProgress(options) {
     const container = document.getElementById('project-progress-view');
     if (!container) return;
 
-    if (!quiet) container.innerHTML = `<div class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</div>`;
+    if (!quiet) container.innerHTML = skeletonListItems(3);
 
     try {
         // GỌI HÀM MỚI Ở GAS
@@ -2073,8 +2117,8 @@ async function loadTasksForProject(projectId, options) {
     }
 
     if (!quiet) {
-        if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="text-center py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải công việc...</td></tr>';
-        if (cardContainer) cardContainer.innerHTML = '<div class="text-center w-100 mt-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>';
+        if (tableBody) tableBody.innerHTML = skeletonTableRows(8, 6);
+        if (cardContainer) cardContainer.innerHTML = skeletonCards(4);
     }
 
     try {
@@ -2923,7 +2967,7 @@ function setRealtimeIndicator(isLive) {
 async function loadMyTasks() {
     const container = document.getElementById('mytasks-list');
     if (!container) return;
-    container.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>';
+    container.innerHTML = skeletonListItems(4);
 
     const email = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
     if (!email) {
@@ -3072,7 +3116,7 @@ async function loadAdminUsers() {
 async function loadAdminUsersTable() {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</td></tr>';
+    tbody.innerHTML = skeletonTableRows(5, 5);
 
     try {
         const response = await callGAS('listAllUsers', {});
@@ -6184,7 +6228,7 @@ async function loadTrashItems(options) {
     const category = document.getElementById('trash-category').value;
     if (!tbody) return;
 
-    if (!quiet) tbody.innerHTML = '<tr><td colspan="3" class="text-center py-5 text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</td></tr>';
+    if (!quiet) tbody.innerHTML = skeletonTableRows(3, 5);
 
     try {
         const response = await callGAS('getDeletedItems', { tableName: category, groupKey: activeGroup });
