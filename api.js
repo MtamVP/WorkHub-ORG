@@ -587,6 +587,47 @@ const API = {
             if (projectId) await API.project.recalculate(projectId, groupKey);
             return `Đã cập nhật trạng thái cho ${taskIds.length} công việc!`;
         },
+        // Gán lại người thực hiện cho nhiều task cùng lúc — GHI ĐÈ, không cộng dồn (khác bulkAddLabel).
+        bulkAssign: async (taskIds, assignees, projectId, groupKey) => {
+            if (!Array.isArray(taskIds) || taskIds.length === 0) return "Không có công việc nào được chọn.";
+            const { error } = await sbClient.from('tasks')
+                .update({ assignees: assignees || null, updated_at: new Date().toISOString() })
+                .in('id', taskIds);
+            if (error) throw error;
+            if (projectId) await API.project.recalculate(projectId, groupKey);
+            return `Đã gán người thực hiện cho ${taskIds.length} công việc!`;
+        },
+        bulkSetDueDate: async (taskIds, dueDate, projectId, groupKey) => {
+            if (!Array.isArray(taskIds) || taskIds.length === 0) return "Không có công việc nào được chọn.";
+            const { error } = await sbClient.from('tasks')
+                .update({ due_date: dueDate || null, updated_at: new Date().toISOString() })
+                .in('id', taskIds);
+            if (error) throw error;
+            if (projectId) await API.project.recalculate(projectId, groupKey);
+            return dueDate
+                ? `Đã đặt hạn chót cho ${taskIds.length} công việc!`
+                : `Đã xóa hạn chót của ${taskIds.length} công việc!`;
+        },
+        // Gắn nhãn: CỘNG DỒN vào nhãn sẵn có của từng task chứ không ghi đè — mỗi task có
+        // danh sách nhãn khác nhau nên phải đọc-sửa-ghi riêng từng dòng, không update() 1 lượt được.
+        bulkAddLabel: async (taskIds, label, projectId, groupKey) => {
+            if (!Array.isArray(taskIds) || taskIds.length === 0) return "Không có công việc nào được chọn.";
+            const cleanLabel = String(label || '').trim();
+            if (!cleanLabel) throw new Error("Chưa nhập nhãn cần gắn.");
+
+            const { data: rows, error: fetchError } = await sbClient.from('tasks').select('id, labels').in('id', taskIds);
+            if (fetchError) throw fetchError;
+
+            await Promise.all((rows || []).map(row => {
+                const existing = String(row.labels || '').split(',').map(x => x.trim()).filter(Boolean);
+                const alreadyHas = existing.some(l => l.toLowerCase() === cleanLabel.toLowerCase());
+                const merged = alreadyHas ? existing : [...existing, cleanLabel];
+                return sbClient.from('tasks').update({ labels: merged.join(', '), updated_at: new Date().toISOString() }).eq('id', row.id);
+            }));
+
+            if (projectId) await API.project.recalculate(projectId, groupKey);
+            return `Đã gắn nhãn "${cleanLabel}" cho ${taskIds.length} công việc!`;
+        },
         bulkDelete: async (taskIds, projectId, groupKey) => {
             if (!Array.isArray(taskIds) || taskIds.length === 0) return "Không có công việc nào được chọn.";
             await sbClient.from('tasks')
@@ -1252,13 +1293,14 @@ const API = {
     // không phải nhớ thứ mình cần đang nằm ở mục nào.
     search: {
         global: async (query, groupKey) => {
-            if (!sbClient) return { projects: [], tasks: [], files: [] };
+            const EMPTY = { projects: [], tasks: [], files: [], events: [], comments: [], milestones: [] };
+            if (!sbClient) return EMPTY;
             const q = String(query || '').trim();
-            if (q.length < 2) return { projects: [], tasks: [], files: [] };
+            if (q.length < 2) return EMPTY;
 
             // Thoát ký tự có nghĩa đặc biệt trong toán tử ilike của PostgREST
             const safe = q.replace(/[%_,()]/g, ' ').trim();
-            if (!safe) return { projects: [], tasks: [], files: [] };
+            if (!safe) return EMPTY;
             const pattern = `%${safe}%`;
 
             let projQuery = sbClient.from('projects').select('id, name, description, group_key').is('deleted_at', null);
@@ -1309,7 +1351,68 @@ const API = {
                 type: 'file'
             }));
 
-            return { projects, tasks, files };
+            // Lịch: cùng cách lọc group_key mà API.calendar.getEvents đang dùng (không có
+            // biến thể "all"/is_shared cho events, khác với project/file).
+            let eventQuery = sbClient.from('events').select('id, title, description, location, start_time').is('deleted_at', null);
+            if (groupKey) eventQuery = eventQuery.eq('group_key', groupKey);
+            const { data: eventRows } = await eventQuery
+                .or(`title.ilike.${pattern},description.ilike.${pattern},location.ilike.${pattern}`)
+                .limit(8);
+            const events = (eventRows || []).map(e => ({
+                id: e.id,
+                title: e.title,
+                subtitle: e.start_time ? new Date(e.start_time).toLocaleDateString('vi-VN') : (e.location || ''),
+                startTime: e.start_time,
+                type: 'event'
+            }));
+
+            // Tra tên task + dự án trước để gắn cho bình luận/cột mốc — tra 1 lần dùng chung
+            // thay vì mỗi bình luận/mốc lại query riêng.
+            let taskLookup = {};
+            if (projectIds.length > 0) {
+                const { data: allTaskRows } = await sbClient.from('tasks')
+                    .select('id, name, project_id').is('deleted_at', null).in('project_id', projectIds);
+                (allTaskRows || []).forEach(t => { taskLookup[t.id] = { name: t.name, projectId: t.project_id }; });
+            }
+            const taskIdsInScope = Object.keys(taskLookup);
+
+            let comments = [];
+            if (taskIdsInScope.length > 0) {
+                const { data: commentRows } = await sbClient.from('task_comments')
+                    .select('id, task_id, content')
+                    .in('task_id', taskIdsInScope)
+                    .ilike('content', pattern)
+                    .limit(8);
+                comments = (commentRows || []).map(c => {
+                    const taskInfo = taskLookup[c.task_id] || {};
+                    const content = c.content || '';
+                    return {
+                        id: c.id,
+                        title: content.length > 80 ? content.slice(0, 80) + '…' : content,
+                        subtitle: taskInfo.name ? `Bình luận trong: ${taskInfo.name}` : '',
+                        taskId: c.task_id,
+                        type: 'comment'
+                    };
+                });
+            }
+
+            let milestones = [];
+            if (projectIds.length > 0) {
+                const { data: msRows } = await sbClient.from('project_milestones')
+                    .select('id, title, project_id')
+                    .in('project_id', projectIds)
+                    .ilike('title', pattern)
+                    .limit(8);
+                milestones = (msRows || []).map(m => ({
+                    id: m.id,
+                    title: m.title,
+                    subtitle: projectMap[m.project_id] || '',
+                    projectId: m.project_id,
+                    type: 'milestone'
+                }));
+            }
+
+            return { projects, tasks, files, events, comments, milestones };
         }
     },
     // Realtime: một kênh duy nhất nghe thay đổi trên các bảng lõi. Không tự vẽ lại gì —
@@ -1356,6 +1459,7 @@ const API = {
 // thay đổi của chính mình với thay đổi của người khác (tránh tải chồng + báo thừa).
 const MUTATING_ACTIONS = new Set([
     'saveTask', 'deleteTask', 'reorderTasks', 'bulkUpdateTaskStatus', 'bulkDeleteTasks',
+    'bulkAssignTasks', 'bulkSetTaskDueDate', 'bulkAddTaskLabel',
     'uploadFileToTask', 'deleteFileFromTask', 'addTaskComment',
     'addChecklistItem', 'toggleChecklistItem', 'deleteChecklistItem',
     'createProject', 'updateProject', 'shareProject', 'deleteProject', 'setProjectArchived',
@@ -1429,6 +1533,9 @@ window.callGAS = async function(action, params = {}) {
             case 'getTaskComments': result = await API.task.getComments(params.taskId); break;
             case 'addTaskComment': result = await API.task.addComment(params.taskId, params.content, params.email, params.mentionedEmails); break;
             case 'bulkUpdateTaskStatus': result = await API.task.bulkUpdateStatus(params.taskIds, params.status, params.projectId, params.groupKey); break;
+            case 'bulkAssignTasks': result = await API.task.bulkAssign(params.taskIds, params.assignees, params.projectId, params.groupKey); break;
+            case 'bulkSetTaskDueDate': result = await API.task.bulkSetDueDate(params.taskIds, params.dueDate, params.projectId, params.groupKey); break;
+            case 'bulkAddTaskLabel': result = await API.task.bulkAddLabel(params.taskIds, params.label, params.projectId, params.groupKey); break;
             case 'bulkDeleteTasks': result = await API.task.bulkDelete(params.taskIds, params.projectId, params.groupKey); break;
             case 'getTaskHistory': result = await API.task.getHistory(params.taskId); break;
 

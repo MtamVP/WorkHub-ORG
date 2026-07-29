@@ -535,6 +535,13 @@
               </select>
             </div>
 
+            <div class="col-4 col-md-2 col-xl-1">
+              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Nhãn</label>
+              <select id="filter-label" class="form-select form-select-sm" onchange="applyTaskFilters()">
+                <option value="all">Tất cả nhãn</option>
+              </select>
+            </div>
+
             <div class="col-12 col-md-auto ms-auto">
               <div class="btn-group w-100" role="group">
                 <input type="radio" class="btn-check" name="viewMode" id="view-table" autocomplete="off" checked
@@ -564,6 +571,7 @@
 
         <div id="bulk-action-bar" class="bulk-action-bar" style="display:none;">
           <span id="bulk-selected-count" class="fw-bold">0 đã chọn</span>
+
           <select id="bulk-status-select" class="form-select form-select-sm" style="width:auto;">
             <option value="Not Started">Not Started</option>
             <option value="Working on it">Working on it</option>
@@ -571,6 +579,23 @@
             <option value="Done">Done</option>
           </select>
           <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkStatusChange()">Đổi trạng thái</button>
+
+          <div class="multiselect-container bulk-assignee-picker">
+            <div class="selectBox" onclick="showBulkAssigneeCheckboxes()">
+              <select class="form-select form-select-sm" style="width:auto;"><option>Chọn người...</option></select>
+              <div class="overSelect"></div>
+            </div>
+            <div id="bulk-assignee-checkboxes"></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkAssign()">Gán người</button>
+
+          <input type="date" id="bulk-duedate-input" class="form-control form-control-sm" style="width:auto;">
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkDueDate()">Đặt hạn</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="applyBulkClearDueDate()">Xóa hạn</button>
+
+          <input type="text" id="bulk-label-input" class="form-control form-control-sm" style="width:120px;" placeholder="Nhãn...">
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkAddLabel()">Gắn nhãn</button>
+
           <button type="button" class="btn btn-sm btn-outline-danger" onclick="applyBulkDelete()">Xóa đã chọn</button>
         </div>
 
@@ -1034,7 +1059,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1785263529615"></script>
+  <script src="/api.js?v=1785289803951"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -1062,7 +1087,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1785263529615"></script>
+  <script src="/script.js?v=1785289803951"></script>
 
   <script>
     function switchTaskView(view) {

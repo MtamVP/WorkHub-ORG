@@ -2060,6 +2060,7 @@ async function loadTasksForProject(projectId) {
                 });
             }
 
+            populateLabelFilter();
             applyTaskFilters();
 
         } else {
@@ -2480,6 +2481,90 @@ function refreshBulkSelectionUI() {
     if (bar) bar.style.display = (bulkSelectMode && bulkSelectedIds.size > 0) ? 'flex' : 'none';
 }
 
+// Hàm dùng chung cho các thao tác hàng loạt mới (gán người/đặt hạn/gắn nhãn):
+// gọi API, báo kết quả, tải lại danh sách, bỏ chọn. applyBulkStatusChange/applyBulkDelete
+// ở dưới giữ nguyên cách viết cũ, không đổi để tránh phá vỡ hành vi đã chạy ổn.
+async function runBulkTaskAction(action, extraParams) {
+    const ids = Array.from(bulkSelectedIds);
+    if (ids.length === 0) return null;
+
+    try {
+        const response = await callGAS(action, { taskIds: ids, projectId: currentTaskProjectID, groupKey: activeGroup, ...extraParams });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+        bulkSelectedIds.clear();
+        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+        if (typeof loadProjectOverview === 'function') loadProjectOverview();
+        return response;
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        return null;
+    }
+}
+
+// Danh sách checkbox thành viên để chọn khi gán hàng loạt
+let bulkAssigneeExpanded = false;
+function showBulkAssigneeCheckboxes() {
+    const box = document.getElementById('bulk-assignee-checkboxes');
+    if (!box) return;
+    bulkAssigneeExpanded = !bulkAssigneeExpanded;
+    box.style.display = bulkAssigneeExpanded ? 'block' : 'none';
+    if (bulkAssigneeExpanded && !box.dataset.loaded) {
+        box.dataset.loaded = '1';
+        loadBulkAssigneeCheckboxes();
+    }
+}
+
+async function loadBulkAssigneeCheckboxes() {
+    const container = document.getElementById('bulk-assignee-checkboxes');
+    if (!container) return;
+    container.innerHTML = '<div class="p-2 small text-muted">Đang tải...</div>';
+
+    try {
+        const response = await callGAS('getAllUsers', { groupKey: activeGroup });
+        if (response.status !== 'success') throw new Error(response.message);
+        const users = response.data || [];
+        if (users.length === 0) {
+            container.innerHTML = '<div class="p-2 small text-muted">Chưa có thành viên.</div>';
+            return;
+        }
+        container.innerHTML = users.map(u =>
+            `<label>
+                <input type="checkbox" name="bulk-assignees" value="${escapeHtml(u.email)}"> ${escapeHtml(u.name || u.email)}
+            </label>`
+        ).join('');
+    } catch (err) {
+        container.innerHTML = `<div class="p-2 small text-danger">Lỗi: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+async function applyBulkAssign() {
+    const checked = document.querySelectorAll('input[name="bulk-assignees"]:checked');
+    const emails = Array.from(checked).map(cb => cb.value).join(', ');
+    if (!emails) { showToast('Chưa chọn người thực hiện.', 'error'); return; }
+    await runBulkTaskAction('bulkAssignTasks', { assignees: emails });
+    document.querySelectorAll('input[name="bulk-assignees"]:checked').forEach(cb => cb.checked = false);
+}
+
+async function applyBulkDueDate() {
+    const input = document.getElementById('bulk-duedate-input');
+    const dueDate = input ? input.value : '';
+    if (!dueDate) { showToast('Chưa chọn ngày.', 'error'); return; }
+    await runBulkTaskAction('bulkSetTaskDueDate', { dueDate });
+}
+
+async function applyBulkClearDueDate() {
+    await runBulkTaskAction('bulkSetTaskDueDate', { dueDate: null });
+}
+
+async function applyBulkAddLabel() {
+    const input = document.getElementById('bulk-label-input');
+    const label = input ? input.value.trim() : '';
+    if (!label) { showToast('Chưa nhập nhãn.', 'error'); return; }
+    const result = await runBulkTaskAction('bulkAddTaskLabel', { label });
+    if (result && input) input.value = '';
+}
+
 async function applyBulkStatusChange() {
     const statusSel = document.getElementById('bulk-status-select');
     const status = statusSel ? statusSel.value : null;
@@ -2591,6 +2676,9 @@ function renderSearchResults(data) {
     searchPaletteResults = [
         ...(data.projects || []).map(x => ({ ...x, type: 'project' })),
         ...(data.tasks || []).map(x => ({ ...x, type: 'task' })),
+        ...(data.milestones || []).map(x => ({ ...x, type: 'milestone' })),
+        ...(data.events || []).map(x => ({ ...x, type: 'event' })),
+        ...(data.comments || []).map(x => ({ ...x, type: 'comment' })),
         ...(data.files || []).map(x => ({ ...x, type: 'file' }))
     ];
     searchPaletteIndex = searchPaletteResults.length > 0 ? 0 : -1;
@@ -2603,12 +2691,15 @@ function renderSearchResults(data) {
     const GROUP_META = {
         project: { label: 'Dự án', icon: 'fa-diagram-project' },
         task: { label: 'Công việc', icon: 'fa-list-check' },
+        milestone: { label: 'Cột mốc', icon: 'fa-flag-checkered' },
+        event: { label: 'Sự kiện', icon: 'fa-calendar-check' },
+        comment: { label: 'Bình luận', icon: 'fa-comment-dots' },
         file: { label: 'Tệp', icon: 'fa-file' }
     };
 
     let html = '';
     let flatIndex = 0;
-    ['project', 'task', 'file'].forEach(type => {
+    ['project', 'task', 'milestone', 'event', 'comment', 'file'].forEach(type => {
         const items = searchPaletteResults.filter(r => r.type === type);
         if (items.length === 0) return;
         html += `<div class="search-palette-group">${GROUP_META[type].label}</div>`;
@@ -2660,9 +2751,26 @@ function activateSearchResult(idx) {
         if (typeof goToTaskInProject === 'function') goToTaskInProject(item.projectId);
         return;
     }
-    if (item.type === 'project') {
+    if (item.type === 'comment') {
+        // Bình luận thuộc về 1 task cụ thể — mở thẳng modal Bình luận & Lịch sử của task đó
+        if (typeof openTaskActivity === 'function') openTaskActivity(item.taskId, '');
+        return;
+    }
+    if (item.type === 'milestone' || item.type === 'project') {
         const progressNav = document.querySelector('.nav-item[data-section="progress"]');
         if (progressNav) progressNav.click();
+        if (item.type === 'milestone' && typeof openMilestonesModal === 'function') {
+            setTimeout(() => openMilestonesModal(item.projectId, ''), 250);
+        }
+        return;
+    }
+    if (item.type === 'event') {
+        const calendarNav = document.querySelector('.nav-item[data-section="calendar"]');
+        if (calendarNav) calendarNav.click();
+        if (item.startTime && typeof window.selectDate === 'function') {
+            const d = new Date(item.startTime);
+            setTimeout(() => window.selectDate(d.getFullYear(), d.getMonth(), d.getDate()), 250);
+        }
     }
 }
 
@@ -3510,6 +3618,29 @@ function labelHue(label) {
     return hash;
 }
 
+// Đổ danh sách nhãn có thật trong dự án đang xem vào dropdown lọc, giữ lại lựa chọn hiện
+// tại nếu nhãn đó vẫn còn tồn tại (tránh nhảy về "Tất cả" mỗi lần tải lại task).
+function populateLabelFilter() {
+    const select = document.getElementById('filter-label');
+    if (!select) return;
+
+    const prevVal = select.value;
+    const seen = new Set();
+    const labels = [];
+    (globalAllTasks || []).forEach(t => {
+        parseLabels(t.labels).forEach(l => {
+            const key = l.toLowerCase();
+            if (!seen.has(key)) { seen.add(key); labels.push(l); }
+        });
+    });
+    labels.sort((a, b) => a.localeCompare(b, 'vi'));
+
+    select.innerHTML = '<option value="all">Tất cả nhãn</option>' +
+        labels.map(l => `<option value="${escapeHtml(l.toLowerCase())}">${escapeHtml(l)}</option>`).join('');
+
+    if (labels.some(l => l.toLowerCase() === prevVal)) select.value = prevVal;
+}
+
 function renderLabelChips(labelsValue) {
     const labels = parseLabels(labelsValue);
     if (labels.length === 0) return '';
@@ -3637,11 +3768,13 @@ function applyTaskFilters() {
     const statusInput = document.getElementById('filter-status');
     const priorityInput = document.getElementById('filter-priority');
     const assigneeInput = document.getElementById('filter-assignee');
+    const labelInput = document.getElementById('filter-label');
 
     const nameVal = nameInput ? nameInput.value.toLowerCase() : '';
     const statusVal = statusInput ? statusInput.value : 'all';
     const priorityVal = priorityInput ? priorityInput.value : 'all';
     const assigneeVal = assigneeInput ? assigneeInput.value.toLowerCase() : 'all';
+    const labelVal = labelInput ? labelInput.value.toLowerCase() : 'all';
 
     if (!globalAllTasks) globalAllTasks = [];
 
@@ -3651,8 +3784,10 @@ function applyTaskFilters() {
         const matchPriority = (priorityVal === 'all') || (t.priority === priorityVal);
         const assigneeList = t.assignees ? t.assignees.toLowerCase().split(',').map(e => e.trim()) : [];
         const matchAssignee = (assigneeVal === 'all') || assigneeList.includes(assigneeVal);
+        const taskLabels = parseLabels(t.labels).map(l => l.toLowerCase());
+        const matchLabel = (labelVal === 'all') || taskLabels.includes(labelVal);
 
-        return matchName && matchStatus && matchPriority && matchAssignee;
+        return matchName && matchStatus && matchPriority && matchAssignee && matchLabel;
     });
 
     if (typeof renderTasks === 'function') {

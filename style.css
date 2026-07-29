@@ -974,7 +974,12 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 .selectBox:hover select { border-color: var(--text-secondary); }
 .overSelect { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
 
-#checkboxes, #event-attendee-checkboxes, #blocker-checkboxes, #comment-mention-checkboxes {
+/* Picker "Gán người" trong thanh chọn nhiều — không kế thừa width:100% của .multiselect-container
+   gốc (được thiết kế cho form dọc), vì thanh này là hàng ngang. */
+.bulk-assignee-picker { width: 160px; }
+.bulk-assignee-picker .selectBox select { width: 100%; }
+
+#checkboxes, #event-attendee-checkboxes, #blocker-checkboxes, #comment-mention-checkboxes, #bulk-assignee-checkboxes {
   display: none; position: absolute; width: 100%; margin-top: 6px; padding: 6px;
   background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md);
   box-shadow: var(--shadow-modal); max-height: 240px; overflow-y: auto; z-index: 1050;
@@ -982,9 +987,9 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 }
 @keyframes dropdownPop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
-#checkboxes label, #event-attendee-checkboxes label, #blocker-checkboxes label, #comment-mention-checkboxes label { display: flex; align-items: center; padding: 9px 12px; cursor: pointer; border-radius: var(--radius-sm); color: var(--text-primary); font-weight: 500; transition: var(--transition-fast); }
-#checkboxes label:hover, #event-attendee-checkboxes label:hover, #blocker-checkboxes label:hover, #comment-mention-checkboxes label:hover { background-color: var(--hover-bg); }
-#checkboxes input[type="checkbox"], #event-attendee-checkboxes input[type="checkbox"], #blocker-checkboxes input[type="checkbox"], #comment-mention-checkboxes input[type="checkbox"] { margin-right: 12px; width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary-color); }
+#checkboxes label, #event-attendee-checkboxes label, #blocker-checkboxes label, #comment-mention-checkboxes label, #bulk-assignee-checkboxes label { display: flex; align-items: center; padding: 9px 12px; cursor: pointer; border-radius: var(--radius-sm); color: var(--text-primary); font-weight: 500; transition: var(--transition-fast); }
+#checkboxes label:hover, #event-attendee-checkboxes label:hover, #blocker-checkboxes label:hover, #comment-mention-checkboxes label:hover, #bulk-assignee-checkboxes label:hover { background-color: var(--hover-bg); }
+#checkboxes input[type="checkbox"], #event-attendee-checkboxes input[type="checkbox"], #blocker-checkboxes input[type="checkbox"], #comment-mention-checkboxes input[type="checkbox"], #bulk-assignee-checkboxes input[type="checkbox"] { margin-right: 12px; width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary-color); }
 
 /* --- Badges --- */
 .status-badge, .priority-badge {
