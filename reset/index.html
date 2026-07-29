@@ -102,7 +102,7 @@
             Swal.fire({
                 title: 'Reset giao diện?', text: "Xóa ảnh nền và quay về mặc định?", icon: 'question',
                 showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Ok, xóa đi ní!', cancelButtonText: 'Khoan...'
-            }).then((result) => {
+            }).then(async (result) => {
                 if (result.isConfirmed) {
                     try {
                         const { data: { user } } = await auth.getUser();
