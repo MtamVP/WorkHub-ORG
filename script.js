@@ -276,8 +276,8 @@ function resetBackground() {
         text: "Hành động này sẽ xóa hình nền của tất cả thành viên!",
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Xóa đi!',
         cancelButtonText: 'Hủy bỏ',
         background: popupBg,
@@ -615,8 +615,8 @@ function deleteFileAction(fileId, fileName) {
         text: `Bạn có chắc muốn xóa file "${fileName}"?`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Xóa đi người ae',
         cancelButtonText: 'Nghĩ lại òi!'
     }).then(async (result) => {
@@ -787,8 +787,8 @@ function shareFileAction(fileId, fileName) {
                 <small class="text-muted">Tất cả thành viên sẽ nhìn thấy file này.</small>`,
         icon: 'question',
         showCancelButton: true,
-        confirmButtonColor: '#3085d6', // Màu xanh
-        cancelButtonColor: '#d33',
+        confirmButtonColor: 'var(--gold)', // Màu xanh
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Chia sẻ cho thầyy đi!',
         cancelButtonText: 'Nghĩ lại òi!'
     }).then(async (result) => {
@@ -1096,7 +1096,7 @@ async function loadEventAttendeeCheckboxes() {
                 label.style.display = 'block';
                 label.style.padding = '5px 10px';
                 label.style.cursor = 'pointer';
-                label.onmouseover = function () { this.style.backgroundColor = '#f1f1f1'; };
+                label.onmouseover = function () { this.style.backgroundColor = 'var(--hover-bg)'; };
                 label.onmouseout = function () { this.style.backgroundColor = 'transparent'; };
 
                 label.innerHTML = `<input type="checkbox" name="event-attendees" value="${escapeHtml(u.email)}" style="margin-right:8px;" /> ${escapeHtml(u.name)}`;
@@ -1176,8 +1176,8 @@ window.quickDeleteEvent = function (id, title, e) {
         text: `Bạn muốn xóa sự kiện "${title}" ngay lập tức?`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Xóa đi người ae',
         cancelButtonText: 'Nghĩ lại òi'
     }).then(async (result) => {
@@ -1300,7 +1300,7 @@ window.showToast = function (message, type = 'success') {
     toast.className = `custom-toast ${type}`;
 
     const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark';
-    const iconColor = type === 'success' ? '#2ecc71' : '#dc3545';
+    const iconColor = type === 'success' ? 'var(--success-color)' : 'var(--danger-color)';
 
     toast.innerHTML = `
         <div style="display:flex; align-items:center;">
@@ -1768,8 +1768,8 @@ async function openBurndownModal(projectId, projectName) {
             data: {
                 labels,
                 datasets: [
-                    { label: 'Tổng công việc', data: totalSeries, borderColor: '#9A6B0D', backgroundColor: 'transparent', stepped: true },
-                    { label: 'Đã hoàn thành', data: doneSeries, borderColor: '#1C8F5A', backgroundColor: 'transparent', stepped: true }
+                    { label: 'Tổng công việc', data: totalSeries, borderColor: getComputedStyle(document.documentElement).getPropertyValue('--warning-color').trim(), backgroundColor: 'transparent', stepped: true },
+                    { label: 'Đã hoàn thành', data: doneSeries, borderColor: getComputedStyle(document.documentElement).getPropertyValue('--success-color').trim(), backgroundColor: 'transparent', stepped: true }
                 ]
             },
             options: {
@@ -1793,8 +1793,8 @@ function deleteProjectAction(projectId, projectName) {
                 Không thể khôi phục được!`,
         icon: 'error',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'XÓA LÀ MẤT HẾT ĐÓ NHA!',
         cancelButtonText: 'Nghĩ kỹ lại đi ae!'
     }).then(async (result) => {
@@ -2008,8 +2008,8 @@ function shareProjectAction(projectId, projectName) {
         html: `Bạn có muốn sao chép dự án <b>"${projectName}"</b> và toàn bộ công việc sang Dashboard Chung không?<br><small class="text-muted">(Sẽ tạo một bản sao mới)</small>`,
         icon: 'question',
         showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
+        confirmButtonColor: 'var(--gold)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Chia sẻ cho thầyy đi!',
         cancelButtonText: 'Thồi'
     }).then(async (result) => {
@@ -2650,8 +2650,8 @@ async function applyBulkDelete() {
         text: 'Hành động này sẽ đưa các công việc đã chọn vào thùng rác.',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Xóa liền đi người ae!',
         cancelButtonText: 'Nghĩ lại òi!'
     }).then(async (result) => {
@@ -3140,7 +3140,7 @@ function removeUserAction(email, isSelf) {
             : 'Người này sẽ không truy cập được app nữa. Tài khoản đăng nhập của họ (nếu có) vẫn còn tồn tại, chỉ mất hồ sơ quyền.',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
+        confirmButtonColor: 'var(--danger-color)',
         confirmButtonText: 'Thu hồi',
         cancelButtonText: 'Hủy'
     }).then(async (result) => {
@@ -3182,7 +3182,7 @@ function loadBlockerCheckboxes(excludeTaskId) {
         label.style.display = 'block';
         label.style.padding = '5px 10px';
         label.style.cursor = 'pointer';
-        label.onmouseover = function () { this.style.backgroundColor = '#f1f1f1'; };
+        label.onmouseover = function () { this.style.backgroundColor = 'var(--hover-bg)'; };
         label.onmouseout = function () { this.style.backgroundColor = 'transparent'; };
         label.innerHTML = `<input type="checkbox" name="task-blockers" value="${escapeHtml(t.id)}" style="margin-right:8px;" /> ${escapeHtml(t.name)}`;
         container.appendChild(label);
@@ -3223,7 +3223,7 @@ async function openTaskActivity(taskId, taskName) {
                     label.style.display = 'block';
                     label.style.padding = '5px 10px';
                     label.style.cursor = 'pointer';
-                    label.onmouseover = function () { this.style.backgroundColor = '#f1f1f1'; };
+                    label.onmouseover = function () { this.style.backgroundColor = 'var(--hover-bg)'; };
                     label.onmouseout = function () { this.style.backgroundColor = 'transparent'; };
                     label.innerHTML = `<input type="checkbox" name="comment-mentions" value="${escapeHtml(u.email)}" style="margin-right:8px;" /> ${escapeHtml(u.name)}`;
                     mentionContainer.appendChild(label);
@@ -3564,8 +3564,8 @@ function deleteTaskAction(taskId, taskName) {
         text: `Bạn có chắc chắn muốn xóa công việc: "${taskName}"?`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Xóa liền đi người ae!',
         cancelButtonText: 'Nghĩ lại òi!'
     }).then(async (result) => {
@@ -3770,7 +3770,7 @@ async function loadMemberCheckboxes() {
                 label.style.display = 'block';
                 label.style.padding = '5px 10px';
                 label.style.cursor = 'pointer';
-                label.onmouseover = function () { this.style.backgroundColor = '#f1f1f1'; };
+                label.onmouseover = function () { this.style.backgroundColor = 'var(--hover-bg)'; };
                 label.onmouseout = function () { this.style.backgroundColor = 'transparent'; };
 
                 label.innerHTML = `<input type="checkbox" name="task-assignees" value="${escapeHtml(u.email)}" style="margin-right:8px;" /> ${escapeHtml(u.name)}`;
@@ -4185,8 +4185,8 @@ function deleteTaskFile(fileId, fileName) {
         text: `Bạn muốn xóa file "${fileName}" khỏi công việc này?`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Xóa',
         cancelButtonText: 'Hủy'
     }).then(async (result) => {
@@ -4411,8 +4411,8 @@ function deleteTaskFile(fileId, fileName) {
         text: `Bạn có muốn xóa file "${fileName}" không? Hành động này không thể hoàn tác!`,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)',
         confirmButtonText: 'Xóa đi người ae!',
         cancelButtonText: 'Nghĩ lại òi!'
     }).then(async (result) => {
@@ -6031,8 +6031,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 text: `Bạn có chắc chắn muốn xóa sự kiện: "${title}"?`,
                 icon: 'warning',
                 showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
+                confirmButtonColor: 'var(--danger-color)',
+                cancelButtonColor: 'var(--text-muted)',
                 confirmButtonText: 'Xóa liền đi người ae!',
                 cancelButtonText: 'Nghĩ lại òi!'
             }).then(async (result) => {
@@ -6248,7 +6248,7 @@ async function purgeOldTrash(category, idsJoined) {
         input: 'text',
         inputPlaceholder: 'XOA',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
+        confirmButtonColor: 'var(--danger-color)',
         confirmButtonText: 'Xóa vĩnh viễn',
         cancelButtonText: 'Hủy',
         inputValidator: (value) => (value || '').trim().toUpperCase() !== 'XOA' ? 'Gõ đúng chữ XOA để xác nhận.' : null
@@ -6275,8 +6275,8 @@ async function restoreItemClick(category, id) {
         showCancelButton: true,
         confirmButtonText: 'Khôi phục đi bruh',
         cancelButtonText: 'Nghĩ lại ồi',
-        confirmButtonColor: '#28a745',
-        cancelButtonColor: '#6c757d'
+        confirmButtonColor: 'var(--success-color)',
+        cancelButtonColor: 'var(--text-muted)'
     });
     
     if (!result.isConfirmed) return;        
@@ -6311,8 +6311,8 @@ async function hardDeleteItemClick(category, id) {
         showCancelButton: true,
         confirmButtonText: 'Xóa vĩnh viễn',
         cancelButtonText: 'Nghĩ lại ồi',
-        confirmButtonColor: '#d9534f',
-        cancelButtonColor: '#6c757d'
+        confirmButtonColor: 'var(--danger-color)',
+        cancelButtonColor: 'var(--text-muted)'
     });
     
     if (!result.isConfirmed) return;
