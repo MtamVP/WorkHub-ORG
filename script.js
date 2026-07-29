@@ -824,12 +824,15 @@ function shareFileAction(fileId, fileName) {
 let currentCalendarDate = new Date(); // Tháng đang hiển thị
 let currentMonthEvents = []; // Cache sự kiện của cả tháng để vẽ chấm
 
-// hàm load data cho lịch
-async function loadCalendarData() {
+// quiet = true: tải lại sau khi lưu/xóa sự kiện hoặc nhận thay đổi từ người khác qua
+// realtime — không xóa trắng danh sách sự kiện trong ngày ra placeholder. Cùng mẫu
+// đã dùng cho Task/Progress/File.
+async function loadCalendarData(options) {
+    const quiet = !!(options && options.quiet);
     const calendarToggle = document.getElementById('calendar-toggle');
     if (calendarToggle) currentCalendarType = calendarToggle.value;
 
-    // 1. Vẽ khung lịch 
+    // 1. Vẽ khung lịch
     renderCalendarGrid(currentCalendarDate);
 
     // 2. Cập nhật tiêu đề ngày đang chọn bên sidebar
@@ -837,7 +840,7 @@ async function loadCalendarData() {
 
     // 3. Hiển thị loading bên sidebar
     const listContainer = document.getElementById('today-event-list');
-    if (listContainer) listContainer.innerHTML = '<div class="text-center text-muted mt-4"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</div>';
+    if (!quiet && listContainer) listContainer.innerHTML = '<div class="text-center text-muted mt-4"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</div>';
 
     // 4. Tính toán khoảng thời gian tới thời điểm hiện tại
     const year = currentCalendarDate.getFullYear();
@@ -1205,7 +1208,7 @@ window.quickDeleteEvent = function (id, title, e) {
                     timer: 1000
                 });
 
-                loadCalendarData();
+                loadCalendarData({ quiet: true });
 
                 if (typeof selectedEventId !== 'undefined' && selectedEventId === id) {
                     selectedEventId = null;
@@ -1901,13 +1904,16 @@ async function handleProjectCreationOrUpdate() {
 }
 
 
-// hàm load progress trên dashboard 
-async function loadDashboardTopProgress() {
+// hàm load progress trên dashboard
+// quiet = true: tải lại sau khi realtime báo có thay đổi task/project, không xóa
+// trắng widget ra placeholder.
+async function loadDashboardTopProgress(options) {
+    const quiet = !!(options && options.quiet);
     if (!chatUser) return;
     const container = document.getElementById('project-progress-view');
     if (!container) return;
 
-    container.innerHTML = `<div class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</div>`;
+    if (!quiet) container.innerHTML = `<div class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu...</div>`;
 
     try {
         // GỌI HÀM MỚI Ở GAS
@@ -2882,13 +2888,13 @@ function flushRealtimeChanges() {
     } else if (section === 'progress' && (touchedTasks || touchedProjects)) {
         if (typeof loadProjectOverview === 'function') loadProjectOverview({ quiet: true });
     } else if (section === 'calendar' && (touchedEvents || touchedTasks)) {
-        if (typeof loadCalendarData === 'function') loadCalendarData();
+        if (typeof loadCalendarData === 'function') loadCalendarData({ quiet: true });
     } else if (section === 'dashboard') {
         if (touchedEvents || touchedTasks) {
-            if (typeof loadCalendarData === 'function') loadCalendarData();
+            if (typeof loadCalendarData === 'function') loadCalendarData({ quiet: true });
         }
         if (touchedProjects || touchedTasks) {
-            if (typeof loadDashboardTopProgress === 'function') loadDashboardTopProgress();
+            if (typeof loadDashboardTopProgress === 'function') loadDashboardTopProgress({ quiet: true });
         }
     } else {
         return; // phần đang xem không liên quan tới bảng vừa đổi
@@ -4931,15 +4937,22 @@ async function loadNotifications() {
     const notiContent = document.getElementById('noti-content-offcanvas');
 
     try {
-        const response = await callGAS('getNotifications', { groupKey: activeGroup, limit: 100 });
+        // Phải truyền email người xem — API.notification.get chỉ tra @mention khi có viewerEmail,
+        // thiếu tham số này thì toàn bộ khối tra mention bị bỏ qua âm thầm (đã xác nhận bằng test DB thật).
+        const viewerEmail = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+        const response = await callGAS('getNotifications', { groupKey: activeGroup, limit: 100, email: viewerEmail });
 
         if (response.status === 'success' || Array.isArray(response)) {
             allNotifications = Array.isArray(response) ? response : response.data;
             
-            // Tính số lượng chưa đọc (Toàn bộ)
+            // Tính số lượng chưa đọc — bỏ qua hành động của chính mình, vì thấy việc mình
+            // vừa làm xong bị báo "chưa đọc" là vô lý. Hoạt động của người khác trong nhóm
+            // vẫn tính, vì chuông này là nhật ký hoạt động chung chứ không phải hộp thư riêng.
+            const viewerEmailLower = viewerEmail ? viewerEmail.toLowerCase() : null;
             let unreadCount = 0;
             allNotifications.forEach(item => {
-                if (item.timestamp > lastReadTime) unreadCount++;
+                const isOwnAction = viewerEmailLower && item.creator && item.creator.toLowerCase() === viewerEmailLower;
+                if (!isOwnAction && item.timestamp > lastReadTime) unreadCount++;
             });
 
             if (unreadCount > 0) {
@@ -4986,9 +4999,12 @@ function renderNotifications() {
     }
 
     let html = '<div class="list-group list-group-flush border-top-0">';
-    
+    const rendererViewerEmail = (typeof chatUser !== 'undefined' && chatUser && chatUser.email) ? chatUser.email.toLowerCase() : null;
+
     filtered.forEach(item => {
-        const isUnread = item.timestamp > lastReadTime;
+        // Cùng logic với đếm badge: hành động của chính mình không tô "chưa đọc"
+        const isOwnAction = rendererViewerEmail && item.creator && item.creator.toLowerCase() === rendererViewerEmail;
+        const isUnread = !isOwnAction && item.timestamp > lastReadTime;
         const dateStr = new Date(item.timestamp).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
         
         let iconHtml = '<i class="fa-solid fa-circle-info text-primary"></i>';
@@ -5939,7 +5955,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 eventForm.reset();
                 resetEventModalUI();
 
-                if (typeof loadCalendarData === 'function') loadCalendarData();
+                if (typeof loadCalendarData === 'function') loadCalendarData({ quiet: true });
 
             } catch (error) {
                 showToast("Lỗi: " + error.message, "error");
@@ -5977,7 +5993,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 showToast(msg, "success");
                 loadNotifications();
-                if (typeof loadCalendarData === 'function') loadCalendarData();
+                if (typeof loadCalendarData === 'function') loadCalendarData({ quiet: true });
 
             } catch (err) {
                 showToast("Lỗi: " + err.message, "error");
@@ -6034,7 +6050,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 showConfirmButton: false
                             });
                             loadNotifications();
-                            if (typeof loadCalendarData === 'function') loadCalendarData();
+                            if (typeof loadCalendarData === 'function') loadCalendarData({ quiet: true });
 
                             selectedEventId = null;
                             deleteEventBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Xóa Sự Kiện';
@@ -6150,13 +6166,16 @@ function getTrashAgeInfo(deletedAt) {
     return '';
 }
 
-async function loadTrashItems() {
+// quiet = true: tải lại sau khôi phục/xóa vĩnh viễn/dọn rác quá hạn, không xóa trắng
+// bảng ra placeholder.
+async function loadTrashItems(options) {
+    const quiet = !!(options && options.quiet);
     const tbody = document.getElementById('trash-list-body');
     const category = document.getElementById('trash-category').value;
     if (!tbody) return;
-    
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center py-5 text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</td></tr>';
-    
+
+    if (!quiet) tbody.innerHTML = '<tr><td colspan="3" class="text-center py-5 text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</td></tr>';
+
     try {
         const response = await callGAS('getDeletedItems', { tableName: category, groupKey: activeGroup });
         if (response.status === 'success' && response.data && response.data.length > 0) {
@@ -6235,7 +6254,7 @@ async function purgeOldTrash(category, idsJoined) {
     }
 
     showToast(fail === 0 ? `Đã dọn ${ok} mục.` : `Đã dọn ${ok} mục, ${fail} mục lỗi.`, fail === 0 ? 'success' : 'error');
-    loadTrashItems();
+    loadTrashItems({ quiet: true });
 }
 
 async function restoreItemClick(category, id) {
@@ -6256,15 +6275,15 @@ async function restoreItemClick(category, id) {
         const response = await callGAS('restoreItem', { tableName: category, id: id, groupKey: activeGroup });
         if (response.status === 'success') {
             showToast('Khôi phục thành công!', 'success');
-            loadTrashItems();
+            loadTrashItems({ quiet: true });
             
             // Reload lại giao diện nếu đang ở tab đó
             if (category === 'files') {
                 if (typeof loadFileList === 'function') loadFileList(false, { quiet: true });
             } else if (category === 'projects' || category === 'tasks') {
-                if (typeof loadProgressList === 'function') loadProgressList();
+                if (typeof loadProgressList === 'function') loadProgressList({ quiet: true });
             } else if (category === 'events') {
-                if (typeof loadCalendarData === 'function') loadCalendarData();
+                if (typeof loadCalendarData === 'function') loadCalendarData({ quiet: true });
             }
         } else {
             showToast('Khôi phục thất bại: ' + response.message, 'error');
@@ -6292,7 +6311,7 @@ async function hardDeleteItemClick(category, id) {
         const response = await callGAS('hardDeleteItem', { tableName: category, id: id, groupKey: activeGroup });
         if (response.status === 'success') {
             showToast('Đã xóa vĩnh viễn!', 'success');
-            loadTrashItems();
+            loadTrashItems({ quiet: true });
         } else {
             showToast('Xóa thất bại: ' + response.message, 'error');
         }
