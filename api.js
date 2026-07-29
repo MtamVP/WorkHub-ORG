@@ -1086,15 +1086,15 @@ const API = {
             return "Thêm ghi chú thành công!";
         },
         getFinanceNotes: async () => {
-            const { data, error } = await sbClient.from('finance_notes').select('*, users!inner(email)').order('created_at', { ascending: false });
+            const { data, error } = await sbClient.from('finance_notes').select('*, users!inner(email, nickname)').order('created_at', { ascending: false });
             if (error) throw error;
             return data.map(n => ({
                 id: n.id,
-                author: n.users.email,
+                author: n.users.nickname || n.users.email,
                 title: n.title,
                 content: n.content,
                 color: n.color,
-                date: new Date(n.created_at).toLocaleDateString('vi-VN')
+                time: new Date(n.created_at).toLocaleString('vi-VN', {hour: '2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'})
             }));
         }
     },
