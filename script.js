@@ -400,6 +400,8 @@ function populateUploaderFilter(fileData) {
         });
     }
 
+    const prevUploader = filterUploader.value;
+
     filterUploader.innerHTML = '<option value="">Tất cả Người Tải</option>';
     uploaderEmails.forEach(email => {
         const option = document.createElement('option');
@@ -407,6 +409,9 @@ function populateUploaderFilter(fileData) {
         option.textContent = email.split('@')[0];
         filterUploader.appendChild(option);
     });
+
+    // Giữ lại lựa chọn cũ để bộ lọc không tự reset sau mỗi lần tải lại
+    if (prevUploader && uploaderEmails.has(prevUploader)) filterUploader.value = prevUploader;
 }
 
 async function loadFileList(isFiltering = false) {
@@ -1404,6 +1409,9 @@ async function loadProjectOverview() {
             if (currentTaskProjectID && taskDropdown) {
                 const exists = Array.from(taskDropdown.options).some(o => o.value === currentTaskProjectID);
                 if (exists) taskDropdown.value = currentTaskProjectID;
+            } else if (typeof restoreSavedTaskProject === 'function') {
+                // Chưa mở dự án nào trong phiên này -> lấy lại dự án đang mở lần trước
+                restoreSavedTaskProject(taskDropdown);
             }
 
             // Load danh sách thành viên
@@ -2018,7 +2026,11 @@ function shareProjectAction(projectId, projectName) {
  * 6.Task Management Functions
  */
 // HÀM TẢI TASK CỦA DỰ ÁN ĐANG CHỌN 
-async function loadTasksForProject(projectId) {
+// quiet = true: tải lại dữ liệu nhưng KHÔNG xóa trắng danh sách để hiện spinner.
+// Dùng cho các lần tải sau khi vừa sửa gì đó — người dùng vẫn thấy nội dung cũ trong
+// vài trăm mili giây rồi nó tự đổi, thay vì cả bảng nháy trắng sau mỗi thao tác.
+async function loadTasksForProject(projectId, options) {
+    const quiet = !!(options && options.quiet);
     const tableBody = document.getElementById('task-table-body');
     const cardContainer = document.getElementById('task-card-container');
     const modalProjectId = document.getElementById('new-task-project-id');
@@ -2035,8 +2047,10 @@ async function loadTasksForProject(projectId) {
         return;
     }
 
-    if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="text-center py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải công việc...</td></tr>';
-    if (cardContainer) cardContainer.innerHTML = '<div class="text-center w-100 mt-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>';
+    if (!quiet) {
+        if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="text-center py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải công việc...</td></tr>';
+        if (cardContainer) cardContainer.innerHTML = '<div class="text-center w-100 mt-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>';
+    }
 
     try {
         const response = await callGAS("getTaskList", {
@@ -2050,6 +2064,7 @@ async function loadTasksForProject(projectId) {
 
             const taskNameSelect = document.getElementById('filter-task-name');
             if (taskNameSelect) {
+                const prevName = taskNameSelect.value;
                 taskNameSelect.innerHTML = '<option value="">-- Tất cả công việc --</option>';
                 const uniqueNames = [...new Set(globalAllTasks.map(t => t.name))];
                 uniqueNames.forEach(name => {
@@ -2058,23 +2073,33 @@ async function loadTasksForProject(projectId) {
                     opt.textContent = name;
                     taskNameSelect.appendChild(opt);
                 });
+                // Giữ lại lựa chọn cũ để bộ lọc không tự reset sau mỗi lần tải lại
+                if (prevName && uniqueNames.includes(prevName)) taskNameSelect.value = prevName;
             }
 
             populateLabelFilter();
+            // Phải chạy sau khi các dropdown đã có option, trước khi lọc
+            applyPendingTaskFilterRestore();
             applyTaskFilters();
 
         } else {
-            const errMsg = `<tr><td colspan="8" class="text-center text-danger py-4">Lỗi: ${response.message}</td></tr>`;
-            if (tableBody) tableBody.innerHTML = errMsg;
-            if (cardContainer) cardContainer.innerHTML = `<div class="text-center text-danger mt-5">${response.message}</div>`;
+            // Ở chế độ quiet thì giữ nguyên nội dung đang hiển thị, chỉ báo lỗi bằng toast —
+            // xóa mất danh sách đang xem chỉ vì một lần tải lại nền là quá đắt.
+            if (!quiet) {
+                const errMsg = `<tr><td colspan="8" class="text-center text-danger py-4">Lỗi: ${response.message}</td></tr>`;
+                if (tableBody) tableBody.innerHTML = errMsg;
+                if (cardContainer) cardContainer.innerHTML = `<div class="text-center text-danger mt-5">${response.message}</div>`;
+            }
 
             if (typeof showToast === 'function') showToast("Lỗi tải task: " + response.message, "error");
         }
 
     } catch (err) {
         console.error("Lỗi tải task:", err);
-        const errMsg = `<tr><td colspan="8" class="text-center text-danger py-4">Lỗi kết nối server!</td></tr>`;
-        if (tableBody) tableBody.innerHTML = errMsg;
+        if (!quiet) {
+            const errMsg = `<tr><td colspan="8" class="text-center text-danger py-4">Lỗi kết nối server!</td></tr>`;
+            if (tableBody) tableBody.innerHTML = errMsg;
+        }
 
         if (typeof showToast === 'function') showToast("Lỗi kết nối: " + err.message, "error");
         else alert("Lỗi: " + err.message);
@@ -2333,7 +2358,7 @@ async function handleTaskDrop(e, targetTaskId) {
     } catch (err) {
         console.error('Lỗi lưu thứ tự task:', err);
         showToast('Lỗi lưu thứ tự, đang tải lại...', 'error');
-        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID, { quiet: true });
     }
 }
 
@@ -2493,7 +2518,9 @@ async function runBulkTaskAction(action, extraParams) {
         if (response.status !== 'success') throw new Error(response.message);
         showToast(response.data || response.message, 'success');
         bulkSelectedIds.clear();
-        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+        // Gắn nhãn là gộp phía server (mỗi dòng một kết quả khác nhau) nên phải hỏi lại
+        // server mới có dữ liệu đúng — nhưng tải im lặng để không nháy trắng danh sách.
+        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID, { quiet: true });
         if (typeof loadProjectOverview === 'function') loadProjectOverview();
         return response;
     } catch (err) {
@@ -2576,7 +2603,13 @@ async function applyBulkStatusChange() {
         if (response.status !== 'success') throw new Error(response.message);
         showToast(response.data || response.message, 'success');
         bulkSelectedIds.clear();
-        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+
+        // Server đã xác nhận và trạng thái mới đúng bằng cái vừa gửi đi, nên vá thẳng
+        // vào dữ liệu đang giữ rồi vẽ lại — không cần hỏi lại server cả danh sách.
+        const changed = new Set(ids);
+        (globalAllTasks || []).forEach(t => { if (changed.has(t.id)) t.status = status; });
+        if (typeof applyTaskFilters === 'function') applyTaskFilters();
+
         if (typeof loadProjectOverview === 'function') loadProjectOverview();
     } catch (err) {
         showToast('Lỗi: ' + err.message, 'error');
@@ -2603,7 +2636,9 @@ async function applyBulkDelete() {
             if (response.status !== 'success') throw new Error(response.message);
             showToast(response.data || response.message, 'success');
             bulkSelectedIds.clear();
-            if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+            // Xóa có lan xuống việc con nên không tự suy ra được ở máy — hỏi lại server,
+            // nhưng tải im lặng để danh sách không biến mất rồi hiện lại.
+            if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID, { quiet: true });
             if (typeof loadProjectOverview === 'function') loadProjectOverview();
         } catch (err) {
             showToast('Lỗi: ' + err.message, 'error');
@@ -2821,7 +2856,8 @@ function flushRealtimeChanges() {
     const touchedEvents = tables.has('events');
 
     if (section === 'task' && touchedTasks) {
-        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID);
+        // Người khác sửa cũng không được làm nháy màn hình của mình
+        if (typeof loadTasksForProject === 'function' && currentTaskProjectID) loadTasksForProject(currentTaskProjectID, { quiet: true });
     } else if (section === 'mytasks' && (touchedTasks || touchedProjects)) {
         if (typeof loadMyTasks === 'function') loadMyTasks();
     } else if (section === 'progress' && (touchedTasks || touchedProjects)) {
@@ -3240,7 +3276,7 @@ async function toggleChecklistItemAction(itemId, done) {
         const response = await callGAS('toggleChecklistItem', { taskId: currentActivityTaskId, itemId, done });
         if (response.status !== 'success') throw new Error(response.message);
         renderTaskChecklist(response.data || []);
-        refreshTaskListAfterChecklistChange();
+        refreshTaskListAfterChecklistChange(response.data || []);
     } catch (err) {
         showToast('Lỗi: ' + err.message, 'error');
         loadTaskChecklist(currentActivityTaskId);
@@ -3253,16 +3289,25 @@ async function deleteChecklistItemAction(itemId) {
         const response = await callGAS('deleteChecklistItem', { taskId: currentActivityTaskId, itemId });
         if (response.status !== 'success') throw new Error(response.message);
         renderTaskChecklist(response.data || []);
-        refreshTaskListAfterChecklistChange();
+        refreshTaskListAfterChecklistChange(response.data || []);
     } catch (err) {
         showToast('Lỗi: ' + err.message, 'error');
     }
 }
 
-// Cập nhật badge "x/y" trên danh sách task mà không phải tải lại cả trang
-function refreshTaskListAfterChecklistChange() {
+// Cập nhật badge "x/y" trên danh sách task mà không phải tải lại cả trang.
+// Server đã trả về checklist mới rồi nên chỉ cần vá thẳng vào dữ liệu đang giữ
+// và vẽ lại — không cần hỏi lại server lần nữa.
+function refreshTaskListAfterChecklistChange(newChecklist) {
+    const task = (globalAllTasks || []).find(t => t.id === currentActivityTaskId);
+    if (task && Array.isArray(newChecklist)) {
+        task.checklist = newChecklist;
+        if (typeof applyTaskFilters === 'function') applyTaskFilters();
+        return;
+    }
+    // Không tìm thấy task trong bộ nhớ (vd đang lọc ẩn nó đi) thì mới tải lại, và tải im lặng
     if (typeof loadTasksForProject === 'function' && currentTaskProjectID) {
-        loadTasksForProject(currentTaskProjectID);
+        loadTasksForProject(currentTaskProjectID, { quiet: true });
     }
 }
 
@@ -3470,7 +3515,8 @@ async function handleTaskFormSubmit(e) {
 
             resetTaskModalUI();
 
-            if (typeof loadTasksForProject === 'function') loadTasksForProject(taskData.projectId);
+            // Tải im lặng: danh sách cũ vẫn hiển thị cho tới khi dữ liệu mới về
+            if (typeof loadTasksForProject === 'function') loadTasksForProject(taskData.projectId, { quiet: true });
             if (typeof loadProjectOverview === 'function') loadProjectOverview();
         } else {
             showToast("Lỗi: " + response.message, "error");
@@ -3523,7 +3569,8 @@ function deleteTaskAction(taskId, taskName) {
 
                     // Tải lại dữ liệu
                     if (typeof currentTaskProjectID !== 'undefined' && currentTaskProjectID) {
-                        if (typeof loadTasksForProject === 'function') loadTasksForProject(currentTaskProjectID);
+                        // Xóa có lan xuống việc con nên phải hỏi lại server, nhưng tải im lặng
+                        if (typeof loadTasksForProject === 'function') loadTasksForProject(currentTaskProjectID, { quiet: true });
                         if (typeof loadProjectOverview === 'function') loadProjectOverview();
                     }
                 } else {
@@ -3742,6 +3789,7 @@ async function loadAssigneeDropdown() {
 
         if (response.status === 'success') {
             const members = response.data;
+            const prevAssignee = assigneeSelect.value;
 
             assigneeSelect.innerHTML = '<option value="all">Tất cả thành viên</option>';
 
@@ -3754,6 +3802,11 @@ async function loadAssigneeDropdown() {
                     assigneeSelect.appendChild(opt);
                 });
             }
+
+            // Giữ lại lựa chọn cũ để bộ lọc không tự reset sau mỗi lần tải lại
+            if (prevAssignee && [...assigneeSelect.options].some(o => o.value === prevAssignee)) {
+                assigneeSelect.value = prevAssignee;
+            }
         } else {
             console.error("Lỗi tải assignee filter:", response.message);
         }
@@ -3761,6 +3814,80 @@ async function loadAssigneeDropdown() {
     } catch (err) {
         console.error("Lỗi kết nối assignee filter:", err);
     }
+}
+
+// ===== GHI NHỚ NGỮ CẢNH LÀM VIỆC CỦA MỤC CÔNG VIỆC =====
+// Lưu chế độ xem + bộ lọc + dự án đang mở ở máy người dùng để vào lại là làm được ngay,
+// không phải dựng lại môi trường từ đầu. Khóa gắn theo email + nhóm để hai người dùng
+// chung một máy không thấy bộ lọc của nhau.
+function taskViewStateKey() {
+    const email = (localStorage.getItem('userEmail') || 'anon').toLowerCase();
+    const group = (typeof activeGroup !== 'undefined' && activeGroup) ? activeGroup : 'all';
+    return `wh_task_view_${group}_${email}`;
+}
+
+function saveTaskViewState() {
+    try {
+        const checked = document.querySelector('input[name="viewMode"]:checked');
+        const val = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+        localStorage.setItem(taskViewStateKey(), JSON.stringify({
+            view: checked ? checked.id.replace('view-', '') : 'table',
+            projectId: currentTaskProjectID || '',
+            name: val('filter-task-name'),
+            status: val('filter-status'),
+            priority: val('filter-priority'),
+            assignee: val('filter-assignee'),
+            label: val('filter-label')
+        }));
+    } catch (e) {
+        // localStorage đầy hoặc bị chặn: bỏ qua, đây chỉ là tiện ích chứ không phải chức năng lõi
+    }
+}
+
+// Bộ lọc phải đợi task tải xong mới gán được, vì danh sách nhãn và tên việc được dựng
+// từ chính dữ liệu vừa tải. Nên giữ lại ở đây rồi áp sau.
+let pendingTaskFilterRestore = null;
+
+function restoreSavedTaskProject(taskDropdown) {
+    let state = null;
+    try {
+        const raw = localStorage.getItem(taskViewStateKey());
+        state = raw ? JSON.parse(raw) : null;
+    } catch (e) { return; }
+    if (!state) return;
+
+    // Chế độ xem khôi phục được ngay vì không phụ thuộc dữ liệu
+    const radio = document.getElementById('view-' + state.view);
+    if (radio && !radio.checked) {
+        radio.checked = true;
+        if (typeof switchTaskView === 'function') switchTaskView(state.view);
+    }
+
+    pendingTaskFilterRestore = state;
+
+    if (taskDropdown && state.projectId &&
+        Array.from(taskDropdown.options).some(o => o.value === state.projectId)) {
+        taskDropdown.value = state.projectId;
+        if (typeof loadTasksForProject === 'function') loadTasksForProject(state.projectId);
+    }
+}
+
+function applyPendingTaskFilterRestore() {
+    if (!pendingTaskFilterRestore) return;
+    const state = pendingTaskFilterRestore;
+    pendingTaskFilterRestore = null;
+
+    const set = (id, saved) => {
+        const el = document.getElementById(id);
+        if (!el || !saved) return;
+        // Chỉ gán khi giá trị cũ vẫn còn tồn tại, tránh đặt bộ lọc vào một mục đã bị xóa
+        if (Array.from(el.options).some(o => o.value === saved)) el.value = saved;
+    };
+    set('filter-task-name', state.name);
+    set('filter-status', state.status);
+    set('filter-priority', state.priority);
+    set('filter-assignee', state.assignee);
+    set('filter-label', state.label);
 }
 
 function applyTaskFilters() {
@@ -3799,6 +3926,10 @@ function applyTaskFilters() {
     if (typeof refreshBulkSelectionUI === 'function') {
         refreshBulkSelectionUI();
     }
+
+    // Hàm này chạy sau mọi lần đổi bộ lọc và đổi chế độ xem, nên là chỗ hợp lý nhất
+    // để ghi lại ngữ cảnh mà không phải gắn thêm sự kiện ở ba file HTML.
+    saveTaskViewState();
 }
 
 function onProjectChange() {
@@ -5639,7 +5770,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (response.status !== 'success') throw new Error(response.message);
                 if (input) input.value = '';
                 renderTaskChecklist(response.data || []);
-                refreshTaskListAfterChecklistChange();
+                refreshTaskListAfterChecklistChange(response.data || []);
             } catch (err) {
                 showToast('Lỗi: ' + err.message, 'error');
             }

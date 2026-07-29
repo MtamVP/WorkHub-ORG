@@ -515,6 +515,39 @@ const API = {
                 }
             }
 
+            // Chống phụ thuộc vòng: nếu A chặn B mà B lại chặn A thì không bên nào Done được nữa.
+            // Đi ngược đồ thị blocked_by từ các task vừa chọn; chạm lại chính task đang lưu là có vòng.
+            // Task mới thì bỏ qua: id vừa sinh ra, chưa có ai trỏ tới nên không thể tạo vòng.
+            if (!isNew && taskData.blockedBy) {
+                const directIds = String(taskData.blockedBy).split(',').map(x => x.trim()).filter(Boolean);
+                if (directIds.includes(taskData.id)) {
+                    throw new Error("Một công việc không thể tự chặn chính nó.");
+                }
+
+                const visited = new Set(directIds);
+                let frontier = directIds;
+                // Chặn trên số vòng lặp để dữ liệu hỏng cũng không làm hàm chạy mãi
+                for (let depth = 0; depth < 50 && frontier.length > 0; depth++) {
+                    const { data: rows } = await sbClient.from('tasks')
+                        .select('id, name, blocked_by').in('id', frontier).is('deleted_at', null);
+
+                    const next = [];
+                    for (const row of rows || []) {
+                        const parents = String(row.blocked_by || '').split(',').map(x => x.trim()).filter(Boolean);
+                        for (const parentId of parents) {
+                            if (parentId === taskData.id) {
+                                throw new Error(`Không thể đặt phụ thuộc này: sẽ tạo thành vòng lặp. Công việc "${row.name}" đang bị chặn ngược lại bởi chính công việc bạn đang sửa.`);
+                            }
+                            if (!visited.has(parentId)) {
+                                visited.add(parentId);
+                                next.push(parentId);
+                            }
+                        }
+                    }
+                    frontier = next;
+                }
+            }
+
             if (taskData.status === 'Done' && taskData.blockedBy) {
                 const blockerIds = String(taskData.blockedBy).split(',').map(x => x.trim()).filter(Boolean);
                 if (blockerIds.length > 0) {
