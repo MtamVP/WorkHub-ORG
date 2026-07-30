@@ -166,11 +166,28 @@ function showToast(message, type = 'success') {
     }
 }
 
+// Trả về các phần tử có thể focus, đang thực sự hiển thị, bên trong container —
+// dùng để bẫy Tab trong modal và để tự focus vào phần tử đầu tiên khi mở.
+function getFocusableElements(container) {
+    if (!container) return [];
+    return Array.from(container.querySelectorAll(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(el => el.offsetParent !== null);
+}
+
+// Nhớ phần tử đang focus trước khi mở TỪNG modal (WeakMap theo modal, không phải 1 biến
+// dùng chung) để khi có modal chồng modal (vd. hộp xác nhận trên modal chi tiết task),
+// đóng modal trong cùng vẫn trả focus đúng về modal ngoài, không nhảy hẳn ra ngoài trang.
+const modalReturnFocus = new WeakMap();
+
 function showModal(id) {
     const modal = document.getElementById(id);
     if (modal) {
+        modalReturnFocus.set(modal, document.activeElement);
         modal.style.display = 'flex';
         modal.classList.add('show-modal');
+        const focusables = getFocusableElements(modal);
+        if (focusables.length > 0) setTimeout(() => focusables[0].focus(), 30);
     }
 }
 
@@ -179,6 +196,11 @@ function hideModal(id) {
     if (modal) {
         modal.style.display = 'none';
         modal.classList.remove('show-modal');
+        const toFocus = modalReturnFocus.get(modal);
+        modalReturnFocus.delete(modal);
+        if (toFocus && document.body.contains(toFocus) && typeof toFocus.focus === 'function') {
+            toFocus.focus();
+        }
     }
 }
 /**
@@ -2721,11 +2743,14 @@ let searchPaletteIndex = -1;     // mục đang được chọn
 let searchDebounceTimer = null;
 let searchRequestSeq = 0;        // chống kết quả cũ về sau đè kết quả mới
 
+let searchPaletteReturnFocus = null;
+
 function openSearchPalette() {
     const palette = document.getElementById('search-palette');
     const input = document.getElementById('search-palette-input');
     if (!palette || !input) return;
 
+    searchPaletteReturnFocus = document.activeElement;
     palette.style.display = 'flex';
     input.value = '';
     searchPaletteResults = [];
@@ -2740,6 +2765,10 @@ function closeSearchPalette() {
     clearTimeout(searchDebounceTimer);
     searchPaletteResults = [];
     searchPaletteIndex = -1;
+    if (searchPaletteReturnFocus && document.body.contains(searchPaletteReturnFocus) && typeof searchPaletteReturnFocus.focus === 'function') {
+        searchPaletteReturnFocus.focus();
+    }
+    searchPaletteReturnFocus = null;
 }
 
 function renderSearchHint(text) {
@@ -5846,6 +5875,36 @@ document.addEventListener('DOMContentLoaded', function () {
             if (openModals.length > 0) {
                 const top = openModals[openModals.length - 1];
                 if (top.id && typeof hideModal === 'function') hideModal(top.id);
+            }
+            return;
+        }
+
+        // Bẫy Tab trong modal/search-palette đang mở — không phải Bootstrap nên không tự
+        // có sẵn focus trap; thiếu nó thì Tab lọt luôn ra sidebar/header phía sau modal.
+        if (key === 'tab') {
+            const openModals = document.querySelectorAll('.custom-modal.show-modal');
+            const topModal = openModals.length > 0 ? openModals[openModals.length - 1] : null;
+            const palette = document.getElementById('search-palette');
+            const paletteOpen = palette && palette.style.display !== 'none';
+            const trapTarget = topModal || (paletteOpen ? palette : null);
+            if (!trapTarget) return;
+
+            const focusables = getFocusableElements(trapTarget);
+            if (focusables.length === 0) { e.preventDefault(); return; }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            const current = document.activeElement;
+
+            if (e.shiftKey) {
+                if (current === first || !trapTarget.contains(current)) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (current === last || !trapTarget.contains(current)) {
+                    e.preventDefault();
+                    first.focus();
+                }
             }
         }
     });
