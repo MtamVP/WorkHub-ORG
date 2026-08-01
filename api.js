@@ -336,32 +336,68 @@ const API = {
         }
     },
     task: {
+        // Đọc người thực hiện từ bảng quan hệ task_assignees (nguồn sự thật kể từ 2026-08-01).
+        // Trả về { taskId: [email,...] } cho danh sách id truyền vào.
+        _fetchAssigneeMap: async (taskIds) => {
+            const map = {};
+            if (!sbClient || !Array.isArray(taskIds) || taskIds.length === 0) return map;
+            const { data, error } = await sbClient.from('task_assignees')
+                .select('task_id, user_email').in('task_id', taskIds);
+            if (error) throw error;
+            (data || []).forEach(row => {
+                if (!map[row.task_id]) map[row.task_id] = [];
+                map[row.task_id].push(row.user_email);
+            });
+            return map;
+        },
+        // Ghi lại toàn bộ người thực hiện của 1 task: xoá hết rồi chèn lại (ghi đè, không cộng dồn).
+        _writeAssignees: async (taskId, emails) => {
+            if (!sbClient || !taskId) return [];
+            const clean = (Array.isArray(emails)
+                ? emails
+                : String(emails || '').split(','))
+                .map(e => String(e).trim().toLowerCase())
+                .filter(Boolean);
+            const unique = Array.from(new Set(clean));
+
+            const { error: delErr } = await sbClient.from('task_assignees').delete().eq('task_id', taskId);
+            if (delErr) throw delErr;
+            if (unique.length > 0) {
+                const { error: insErr } = await sbClient.from('task_assignees')
+                    .insert(unique.map(email => ({ task_id: taskId, user_email: email })));
+                if (insErr) throw insErr;
+            }
+            return unique;
+        },
         list: async (projectId, groupKey) => {
             const { data, error } = await sbClient.from('tasks').select('*').is('deleted_at', null).eq('project_id', projectId)
                 .order('sort_order', { ascending: true }).order('created_at', { ascending: true }).limit(1000);
             if (error) throw error;
-            
+
             const { data: users } = await sbClient.from('users').select('email, nickname');
             if (data) {
+                const assigneeMap = await API.task._fetchAssigneeMap(data.map(t => t.id));
                 data.forEach(task => {
                     task.dueDate = task.due_date ? task.due_date.slice(0, 10) : '';
-                    if (users && task.assignees) {
-                        const emails = task.assignees.split(',').map(e => e.trim().toLowerCase());
-                        const names = [];
-                        emails.forEach(email => {
+                    const emails = assigneeMap[task.id] || [];
+                    // Giữ nguyên hợp đồng cũ với script.js: assignees vẫn là chuỗi CSV,
+                    // nhưng giờ được SUY RA từ bảng quan hệ chứ không còn là dữ liệu gốc.
+                    task.assignees = emails.join(', ');
+                    task.assigneeEmails = emails;
+                    if (users && emails.length > 0) {
+                        task.assigneeNames = emails.map(email => {
                             const u = users.find(user => user.email && user.email.toLowerCase() === email);
-                            if (u && u.nickname) names.push(u.nickname);
-                            else names.push(email.split('@')[0]);
+                            return (u && u.nickname) ? u.nickname : email.split('@')[0];
                         });
-                        task.assigneeNames = names;
                     }
                 });
             }
             return data;
         },
         // Việc của tôi: gom task được giao cho 1 email, xuyên suốt mọi dự án trong nhóm.
-        // Lọc bằng cách so khớp CHÍNH XÁC từng email trong cột assignees (CSV) ở JS,
-        // tránh lỗi so khớp con chuỗi (vd email này là tập con của email khác).
+        // Từ 2026-08-01 lọc thẳng trên bảng quan hệ task_assignees (có index theo user_email)
+        // thay vì tải toàn bộ task về rồi lọc ở trình duyệt. Cũng loại bỏ hẳn lớp lỗi
+        // so-khớp-con-chuỗi mà cách cũ phải tự né.
         listMine: async (email, groupKey) => {
             if (!sbClient || !email) return [];
             const targetEmail = String(email).trim().toLowerCase();
@@ -375,21 +411,27 @@ const API = {
             projects.forEach(p => { projectMap[p.id] = p.name; });
             const projectIds = projects.map(p => p.id);
 
+            const { data: rows, error: aErr } = await sbClient.from('task_assignees')
+                .select('task_id').eq('user_email', targetEmail).limit(2000);
+            if (aErr) throw aErr;
+            const myTaskIds = (rows || []).map(r => r.task_id);
+            if (myTaskIds.length === 0) return [];
+
             const { data, error } = await sbClient.from('tasks').select('*')
                 .is('deleted_at', null)
                 .in('project_id', projectIds)
-                .not('assignees', 'is', null)
+                .in('id', myTaskIds)
                 .limit(2000);
             if (error) throw error;
 
-            const mine = (data || []).filter(t => {
-                const emails = (t.assignees || '').split(',').map(e => e.trim().toLowerCase());
-                return emails.includes(targetEmail);
-            });
-
+            const mine = data || [];
+            const assigneeMap = await API.task._fetchAssigneeMap(mine.map(t => t.id));
             mine.forEach(task => {
                 task.dueDate = task.due_date ? task.due_date.slice(0, 10) : '';
                 task.projectName = projectMap[task.project_id] || '';
+                const emails = assigneeMap[task.id] || [];
+                task.assignees = emails.join(', ');
+                task.assigneeEmails = emails;
             });
 
             mine.sort((a, b) => {
@@ -413,12 +455,15 @@ const API = {
             const projectIds = projects.map(p => p.id);
 
             const { data: tasks, error } = await sbClient.from('tasks')
-                .select('assignees, status, priority, due_date')
+                .select('id, status, priority, due_date')
                 .is('deleted_at', null)
                 .in('project_id', projectIds)
                 .not('status', 'eq', 'Done')
                 .limit(2000);
             if (error) throw error;
+
+            // Người thực hiện lấy từ bảng quan hệ, gắn ngược lại vào từng task
+            const wlAssigneeMap = await API.task._fetchAssigneeMap((tasks || []).map(t => t.id));
 
             const { data: users } = await sbClient.from('users').select('email, nickname');
             const nameByEmail = {};
@@ -429,7 +474,7 @@ const API = {
             const buckets = {};
 
             (tasks || []).forEach(t => {
-                const emails = String(t.assignees || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+                const emails = wlAssigneeMap[t.id] || [];
                 const targets = emails.length > 0 ? emails : ['__unassigned__'];
 
                 targets.forEach(email => {
@@ -568,12 +613,15 @@ const API = {
                 due_date: taskData.dueDate,
                 description: taskData.description,
                 attachments: typeof taskData.attachments === 'string' ? JSON.parse(taskData.attachments || '[]') : taskData.attachments,
+                // Cột assignees vẫn được ghi kèm trong GIAI ĐOẠN CHUYỂN TIẾP để có thể quay lui
+                // an toàn. Nguồn sự thật đã là bảng task_assignees ngay bên dưới.
                 assignees: Array.isArray(taskData.assignees) ? taskData.assignees.join(', ') : taskData.assignees,
                 parent_task_id: taskData.parentTaskId || null,
                 blocked_by: taskData.blockedBy || null,
                 labels: taskData.labels || null
             });
             if (error) throw error;
+            await API.task._writeAssignees(taskData.id, taskData.assignees);
             if (taskData.projectId) await API.project.recalculate(taskData.projectId, groupKey);
             return `Đã lưu task "${taskData.name}"!`;
         },
@@ -627,6 +675,8 @@ const API = {
                 .update({ assignees: assignees || null, updated_at: new Date().toISOString() })
                 .in('id', taskIds);
             if (error) throw error;
+            // Ghi đè người thực hiện trong bảng quan hệ cho từng task đã chọn
+            await Promise.all(taskIds.map(id => API.task._writeAssignees(id, assignees)));
             if (projectId) await API.project.recalculate(projectId, groupKey);
             return `Đã gán người thực hiện cho ${taskIds.length} công việc!`;
         },
