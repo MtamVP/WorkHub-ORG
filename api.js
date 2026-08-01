@@ -36,6 +36,14 @@ async function getUserId(emailOrUsername) {
     return data ? data.id : null;
 }
 
+// ID dạng "PREFIX_timestamp_random" — timestamp một mình có thể trùng nếu 2 người tạo
+// cùng lúc (từng xảy ra ở id file/trace log, đã tự vá riêng lẻ ở 2 chỗ đó bằng cách
+// tương tự). Hàm này dùng chung cho mọi chỗ sinh id còn lại, vẫn ra chuỗi text bình
+// thường nên không cần đổi kiểu cột nào.
+function genId(prefix) {
+    return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+
 const API = {
     auth: {
         getRealEmail: async (username) => {
@@ -197,7 +205,7 @@ const API = {
             return projects;
         },
         create: async (projectData, groupKey) => {
-            const id = "PJ_" + Date.now();
+            const id = genId("PJ");
             const ownerId = await getUserId(projectData.owner);
 
             const { error } = await sbClient.from('projects').insert({
@@ -311,7 +319,7 @@ const API = {
         addMilestone: async (projectId, title, targetDate) => {
             if (!title || !title.trim()) throw new Error("Tên cột mốc không được để trống.");
             const { error } = await sbClient.from('project_milestones').insert({
-                id: "MS_" + Date.now(),
+                id: genId("MS"),
                 project_id: projectId,
                 title: title.trim(),
                 target_date: targetDate || null
@@ -542,7 +550,7 @@ const API = {
         },
         save: async (taskData, groupKey) => {
             const isNew = !taskData.id;
-            taskData.id = taskData.id || "T_" + Date.now();
+            taskData.id = taskData.id || genId("T");
 
             // Chống ghi đè khi hai người sửa cùng lúc: client gửi kèm updated_at của bản nó
             // đang xem; nếu bản trong DB đã mới hơn thì từ chối lưu thay vì đè âm thầm.
@@ -635,7 +643,7 @@ const API = {
         addChecklistItem: async (taskId, text) => {
             if (!text || !text.trim()) throw new Error("Nội dung mục không được để trống.");
             const current = await API.task.getChecklist(taskId);
-            current.push({ id: "CL_" + Date.now(), text: text.trim(), done: false });
+            current.push({ id: genId("CL"), text: text.trim(), done: false });
             const { error } = await sbClient.from('tasks').update({ checklist: current }).eq('id', taskId);
             if (error) throw error;
             return current;
@@ -748,7 +756,7 @@ const API = {
 
             if (fileData.includes('base64,')) fileData = fileData.split('base64,')[1];
             const blob = b64toBlob(fileData, mimeType);
-            const fileId = "TF_" + Date.now();
+            const fileId = genId("TF");
             const safeFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
             const filePath = `tasks/${taskId}/${fileId}_${safeFileName}`;
             const bucketName = 'general_bucket';
@@ -991,7 +999,7 @@ const API = {
         },
         create: async (eventData, calendarType, groupKey, email) => {
             const { error } = await sbClient.from('events').insert({
-                id: "EV_" + Date.now(),
+                id: genId("EV"),
                 title: eventData.title,
                 start_time: eventData.startDate + ' ' + eventData.startTime,
                 end_time: eventData.endDate + ' ' + eventData.endTime,
@@ -1126,7 +1134,7 @@ const API = {
         addFinanceNote: async (payload) => {
             const authorId = await getUserId(payload.author);
             const { error } = await sbClient.from('finance_notes').insert({
-                id: "FN_" + Date.now(),
+                id: genId("FN"),
                 author_id: authorId,
                 title: payload.title || 'Note',
                 content: payload.content,
