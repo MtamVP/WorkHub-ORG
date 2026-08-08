@@ -7,6 +7,7 @@ import time
 import csv
 import math
 import logging
+import requests
 import urllib.request
 import urllib.error
 from typing import Dict, List, Optional, Any
@@ -25,6 +26,9 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("WorkHub-RAG")
 
+env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(env_path):
+    load_dotenv(env_path)
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gqsbsqaxzpzcloaopzvv.supabase.co")
@@ -62,16 +66,54 @@ gemini_model = None
 HAVE_GEMINI = False
 
 def call_gemini_llm(prompt: str, api_key: Optional[str] = None) -> Optional[str]:
-    """Gọi Gemini API với khả năng fallback nhiều model và giới hạn token đầu ra cao (8192 tokens)."""
     key = api_key or GEMINI_API_KEY
     if not key:
         return None
+
+    model_candidates = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.5-pro",
+        "gemini-flash-latest",
+        "gemini-pro-latest",
+        "gemini-2.0-flash-lite"
+    ]
+
+    for m_name in model_candidates:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={key}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [{"text": prompt}]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "topP": 0.95,
+                    "maxOutputTokens": 8192
+                }
+            }
+            resp = requests.post(url, json=payload, timeout=60)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        ans_text = parts[0]["text"].strip()
+                        if len(ans_text) > 10:
+                            logger.info(f"Gemini REST success with model '{m_name}'.")
+                            return ans_text
+            else:
+                logger.warning(f"Gemini REST '{m_name}' status {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"Gemini REST attempt '{m_name}' failed: {e}")
+            continue
+
     try:
         import google.generativeai as genai
         genai.configure(api_key=key)
-        
-        # Danh sách các model để thử lần lượt
-        model_candidates = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"]
         for m_name in model_candidates:
             try:
                 model = genai.GenerativeModel(m_name)
@@ -79,17 +121,19 @@ def call_gemini_llm(prompt: str, api_key: Optional[str] = None) -> Optional[str]
                     prompt,
                     generation_config=genai.types.GenerationConfig(
                         max_output_tokens=8192,
-                        temperature=0.3,
+                        temperature=0.2,
                         top_p=0.95
                     )
                 )
                 if resp and resp.text and resp.text.strip():
+                    logger.info(f"Gemini SDK success with model '{m_name}'.")
                     return resp.text.strip()
             except Exception as ex:
-                logger.warning(f"Gemini candidate '{m_name}' failed: {ex}")
+                logger.warning(f"Gemini SDK candidate '{m_name}' failed: {ex}")
                 continue
     except Exception as e:
-        logger.warning(f"Error executing Gemini API: {e}")
+        logger.warning(f"Error executing Gemini SDK: {e}")
+
     return None
 
 if GEMINI_API_KEY:
@@ -104,15 +148,12 @@ if GEMINI_API_KEY:
 
 
 def clean_document_title(raw_name: str) -> str:
-    """Loại bỏ mã hash/timestamp ngẫu nhiên từ Supabase và chuẩn hóa tên hiển thị."""
     if not raw_name:
         return ""
     base = raw_name.split("#")[0]
-    # Bỏ prefix F_<timestamp>_ hoặc <timestamp>_
     clean = re.sub(r'^(?:F_)?\d{10,20}_?', '', base, flags=re.IGNORECASE)
     root, ext = os.path.splitext(clean)
     
-    # Từ điển dịch các từ tiếng Việt (cả dạng bị sanitize _ và dạng không dấu)
     subs = [
         (r'(?i)\b(?:N_I_DUNG|NOI_DUNG)\b', 'Nội Dung'),
         (r'(?i)\b(?:KH_A_H_C|KHOA_HOC)\b', 'Khóa Học'),
@@ -164,7 +205,6 @@ def remove_vietnamese_accents(text: str) -> str:
     return s
 
 def expand_vietnamese_query(query: str) -> str:
-    """Mở rộng câu truy vấn bằng từ đồng nghĩa và biến thể tiếng Việt."""
     q_norm = remove_vietnamese_accents(query)
     added_terms = []
     for key, syns in SYNONYM_EXPANSIONS.items():
@@ -420,7 +460,6 @@ class BronzeStorageManager:
         if bucket_name and bucket_name not in target_buckets:
             target_buckets.append(bucket_name)
 
-        # 1. Truy vấn bảng 'files' với điều kiện deleted_at IS NULL (chỉ lấy file còn hiệu lực)
         try:
             tbl_url = f"{SUPABASE_URL}/rest/v1/files?select=*&deleted_at=is.null"
             t_req = urllib.request.Request(tbl_url, headers=self.headers)
@@ -457,7 +496,6 @@ class BronzeStorageManager:
         except Exception as e:
             logger.warning(f"Error querying files table: {e}")
 
-        # 2. Quét các object trong Supabase Storage Buckets
         for b_name in target_buckets:
             for prefix in ["bronze", ""]:
                 try:
@@ -509,7 +547,6 @@ class BronzeStorageManager:
                 except Exception as ex:
                     logger.warning(f"Error scanning {b_name}/{prefix}: {ex}")
 
-        # 3. DỌN DẸP FILE ĐÃ XÓA: Xóa các file trên đĩa local không còn tồn tại trên Supabase
         existing_local_files = glob.glob(os.path.join(self.local_dir, "*.*"))
         for loc_f in existing_local_files:
             bname = os.path.basename(loc_f)
@@ -607,7 +644,6 @@ class RAGEngine:
         self.corpus = corpus
         self.doc_ids = list(corpus.keys())
 
-        # Gom nhóm toàn bộ chunk theo file gốc (Whole-Document Grouping)
         self.file_to_chunks = {}
         for c_id in self.doc_ids:
             parent_file = c_id.split("#")[0]
@@ -619,12 +655,10 @@ class RAGEngine:
         for doc_id, doc_text in self.corpus.items():
             self.article_chunks.extend(adaptive_chunking(doc_id, doc_text))
 
-        # 1. Build Okapi BM25 index with Vietnamese tokenization
         corpus_tokens = [tokenize_vietnamese(text) for text in self.corpus.values()]
         self.bm25_index = BM25Okapi(corpus_tokens)
         self.global_idf = build_global_idf(corpus_tokens)
 
-        # 2. Build TF-IDF Semantic n-gram index
         chunk_texts = [c["doc_text"] for c in self.article_chunks]
         self.tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2), max_features=30000)
         self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(chunk_texts)
@@ -636,8 +670,8 @@ class RAGEngine:
     def query(
         self,
         question: str,
-        top_k_docs: int = 3,
-        use_llm: bool = False,
+        top_k_docs: int = 5,
+        use_llm: bool = True,
         gemini_api_key: Optional[str] = None,
         history: Optional[List[Dict[str, str]]] = None,
         catalog: Optional[List[Dict[str, Any]]] = None
@@ -650,25 +684,21 @@ class RAGEngine:
                 "suggestions": []
             }
 
-        # 1. Mở rộng câu hỏi thông minh (Synonym & Semantic Query Expansion)
         expanded_query = expand_vietnamese_query(question)
         q_tokens = tokenize_vietnamese(expanded_query)
         q_norm = remove_vietnamese_accents(question)
 
-        # 2. Phát hiện ý định câu hỏi (Intent Recognition)
         is_global_inquiry = any(kw in q_norm for kw in [
             "tom tat", "tong quan", "toan bo", "tat ca", "co nhung tai lieu", "danh sach file",
             "kho co gi", "gioi thieu", "bao gom nhung gi", "so sanh"
         ])
 
-        # BM25 scores
         bm25_scores = self.bm25_index.get_scores(q_tokens)
         bm25_ranks = {
             self.doc_ids[i]: rank + 1
             for rank, i in enumerate(np.argsort(bm25_scores)[::-1][:30])
         }
 
-        # TF-IDF Cosine similarity
         q_vec = self.tfidf_vectorizer.transform([expanded_query])
         cos_sim = cosine_similarity(q_vec, self.tfidf_matrix)[0]
         top_chunk_indices = np.argsort(cos_sim)[::-1][:30]
@@ -679,14 +709,12 @@ class RAGEngine:
             if parent_doc_id not in tfidf_ranks:
                 tfidf_ranks[parent_doc_id] = rank + 1
 
-        # Title Matching Bonus: Tăng điểm mạnh nếu câu hỏi trùng với tên tài liệu
         title_boost = {}
         for doc_id in self.doc_ids:
             parent_file = doc_id.split("#")[0]
             clean_name = clean_document_title(parent_file)
             clean_norm = remove_vietnamese_accents(clean_name)
             
-            # Kiểm tra xem từ khóa trong câu hỏi có xuất hiện trong tên file
             words = [w for w in clean_norm.split() if len(w) > 2]
             match_count = sum(1 for w in words if w in q_norm)
             if match_count >= 2:
@@ -694,7 +722,6 @@ class RAGEngine:
             elif match_count == 1:
                 title_boost[doc_id] = 0.02
 
-        # Reciprocal Rank Fusion (RRF) có kết hợp Title Boost
         fused_score = {}
         for doc_id in set(bm25_ranks) | set(tfidf_ranks) | set(title_boost):
             score = (
@@ -717,12 +744,12 @@ class RAGEngine:
                 "suggestions": []
             }
 
-        # 3. Gom toàn văn tài liệu liên quan (Whole-Document Context Windowing)
-        # Nếu một trang của file được chọn, ta gom toàn bộ các trang của file đó vào để AI có mạch ngữ cảnh 100%
         active_parent_files = list(dict.fromkeys([d.split("#")[0] for d in ranked_doc_ids]))
-        
+        other_files = [f for f in self.file_to_chunks.keys() if f not in active_parent_files]
+        all_ordered_files = active_parent_files + other_files
+
         context_blocks = []
-        for p_file in active_parent_files:
+        for p_file in all_ordered_files:
             file_chunks = self.file_to_chunks.get(p_file, [])
             clean_file = clean_document_title(p_file)
             
@@ -731,27 +758,18 @@ class RAGEngine:
                 c_text = self.corpus.get(c_id, "").strip()
                 if c_text:
                     parts = c_id.split("#")
-                    page_info = f" ({parts[1].replace('_', ' ')})" if len(parts) > 1 else ""
-                    file_full_text.append(f"--- [Phần: {page_info.strip(' ()') or 'Nội dung'}] ---\n{c_text}")
+                    page_info = f"Trang {parts[1].replace('_', ' ').replace('Trang ', '')}" if len(parts) > 1 else "Nội dung"
+                    file_full_text.append(f"--- [Phần: {page_info}] ---\n{c_text}")
             
             if file_full_text:
-                context_blocks.append(f"=== [TÀI LIỆU TOÀN VĂN: {clean_file}] ===\n" + "\n\n".join(file_full_text))
+                context_blocks.append(f"==================================================\n📁 [TÀI LIỆU TOÀN VĂN: {clean_file}]\n==================================================\n" + "\n\n".join(file_full_text))
 
-        # Nếu là câu hỏi tổng quan hoặc chỉ có ít tài liệu trong kho, gộp thêm các file còn lại vào ngữ cảnh
-        if is_global_inquiry and len(self.file_to_chunks) <= 5:
-            for p_file, chunks in self.file_to_chunks.items():
-                if p_file not in active_parent_files:
-                    clean_file = clean_document_title(p_file)
-                    sample_texts = [self.corpus.get(c, "") for c in chunks[:3]]
-                    context_blocks.append(f"=== [TÀI LIỆU BỔ SUNG: {clean_file}] ===\n" + "\n\n".join(sample_texts))
+        combined_context = "\n\n".join(context_blocks)
 
-        combined_context = "\n\n====================\n\n".join(context_blocks)
-
-        # 4. Trích xuất đa đoạn văn chi tiết (Chế độ dự phòng khi không dùng LLM hoặc khi mất mạng)
         extracted_sections = []
         for d_id in ranked_doc_ids:
             raw_text = self.corpus.get(d_id, "")
-            ext = extract_best_sentences(question, raw_text, self.global_idf, top_k=20, max_chars=3500)
+            ext = extract_best_sentences(question, raw_text, self.global_idf, top_k=25, max_chars=4500)
             if ext:
                 parts = d_id.split("#")
                 clean_file = clean_document_title(parts[0])
@@ -761,55 +779,53 @@ class RAGEngine:
         fallback_answer = "\n\n---\n\n".join(extracted_sections) if extracted_sections else "Không tìm thấy nội dung chi tiết trong tài liệu."
         final_answer = fallback_answer
 
-        # Chuẩn bị thông tin danh mục file (Catalog Overview)
         catalog_summary = ""
         if catalog:
             cat_lines = [f"- 📁 **{c.get('display_name')}** ({c.get('total_pages', 1)} trang, {c.get('file_size', '')})" for c in catalog]
             catalog_summary = "DANH MỤC CÁC TÀI LIỆU HIỆN CÓ TRONG KHO:\n" + "\n".join(cat_lines)
 
-        # Định dạng lịch sử hội thoại gần nhất
         history_text = ""
         if history and isinstance(history, list) and len(history) > 0:
             hist_lines = []
-            for h in history[-4:]:
+            for h in history[-6:]:
                 r = "Người dùng" if h.get("role") == "user" else "Ciel (AI)"
-                hist_lines.append(f"{r}: {h.get('content', '')[:300]}")
+                hist_lines.append(f"{r}: {h.get('content', '')[:350]}")
             history_text = "LỊCH SỬ TRÒ CHUYỆN GẦN ĐÂY:\n" + "\n".join(hist_lines)
 
-        # 5. Siêu Trí tuệ Nhân tạo Ciel (Super Intelligent Analytical Agent)
-        if use_llm:
-            prompt = f"""Bạn là Ciel - Siêu Trợ lý Trí tuệ Nhân tạo & Phân tích Tri thức cao cấp của WorkHub.
-Nhiệm vụ của bạn là đọc hiểu toàn diện kho tài liệu nội bộ, phân tích sâu sắc, logic, chính xác và trả lời câu hỏi của người dùng một cách đẳng cấp nhất.
+        prompt = f"""Bạn là Ciel - Siêu Trí tuệ Nhân tạo & Cố vấn Phân tích Tri thức cao cấp của WorkHub.
+Dưới đây là TOÀN BỘ dữ liệu tài liệu nội bộ đã được số hóa từ kho lưu trữ Bronze Storage.
 
 {catalog_summary}
 
 {history_text}
 
-[DỮ LIỆU TÀI LIỆU TRÍCH XUẤT TỪ KHO LƯU TRỮ]:
-{combined_context[:25000]}
+[KHO TRI THỨC TOÀN VĂN]:
+{combined_context[:120000]}
 
 [CÂU HỎI CỦA NGƯỜI DÙNG]:
 {question}
 
-[HƯỚNG DẪN TRẢ LỜI ĐẲNG CẤP TỪNG BƯỚC]:
-1. **Phân tích chiều sâu**: Đọc kỹ toàn bộ các tài liệu được cung cấp. Tuyệt đối KHÔNG trả lời hời hợt, ngắn ngủi hay cắt bớt nội dung. 
-2. **Cấu trúc câu trả lời chuyên nghiệp**:
-   - 🌟 **Tóm tắt cốt lõi (Key Takeaways)**: Nêu rõ kết luận/trọng tâm chính.
-   - 📑 **Phân tích chi tiết**: Trình bày cặn kẽ từng phần, từng module, chương mục, điều khoản hoặc quy trình cụ thể có trong tài liệu.
-   - 📊 **Bảng biểu / Lộ trình** (Nếu có danh sách khóa học, số liệu, so sánh hoặc mốc thời gian): Hãy sử dụng bảng Markdown chuẩn (`| Cột 1 | Cột 2 |`).
-   - 💡 **Đánh giá & Khuyến nghị thực tiễn**: Lời khuyên, điểm cần lưu ý hoặc hướng dẫn áp dụng.
-3. **Định dạng Markdown đẹp mắt**: Sử dụng các cấp tiêu đề (###, ####), in đậm (**từ khóa**), gạch đầu dòng rõ ràng.
-4. **Gợi ý câu hỏi tiếp theo**: Ở dòng cuối cùng của câu trả lời, hãy tạo đúng định dạng sau với 3 câu hỏi gợi ý thông minh nhất để người dùng khám phá sâu hơn:
+[QUY TẮC TRẢ LỜI ĐẲNG CẤP & CHUYÊN NGHIỆP]:
+1. **TRẢ LỜI TRỰC DIỆN & CHÍNH XÁC NHẤT**: Hãy trả lời thẳng vào trọng tâm câu hỏi của người dùng ngay từ phần đầu tiên, giải thích rõ ràng, mạch lạc và súc tích.
+2. **CHI TIẾT, ĐẦY ĐỦ & TOÀN DIỆN**:
+   - Trích xuất toàn bộ thông tin chi tiết, lộ trình, các module, điều khoản, tiêu chuẩn, số liệu và các bước thực hiện có trong tài liệu.
+   - Tuyệt đối KHÔNG trả lời ngắn ngủi, chung chung hoặc cắt bớt chi tiết. Nếu tài liệu có 5 module, hãy phân tích đầy đủ cả 5 module.
+3. **TRÌNH BÀY ĐẸP MẮT (MARKDOWN)**:
+   - Sử dụng tiêu đề (###, ####) phân cấp nội dung logic.
+   - In đậm (**từ khóa, thuật ngữ**) quan trọng.
+   - Sử dụng bảng biểu Markdown (`| Cột 1 | Cột 2 |`) nếu có danh sách khóa học, bảng giá, so sánh hoặc mốc tiến độ.
+   - Gạch đầu dòng rõ ràng, dễ theo dõi.
+4. **TRÍCH DẪN NGUỒN**: Nêu rõ thông tin được trích xuất từ tài liệu nào và số trang tương ứng.
+5. **GỢI Ý CÂU HỎI TIẾP THEO**: Ở dòng cuối cùng của câu trả lời, hãy tạo đúng định dạng sau với 3 câu hỏi gợi ý thông minh nhất để người dùng khám phá sâu hơn:
 [GỢI Ý CÂU HỎI TIẾP THEO]:
 - Câu hỏi gợi ý 1?
 - Câu hỏi gợi ý 2?
 - Câu hỏi gợi ý 3?"""
 
-            llm_res = call_gemini_llm(prompt, api_key=gemini_api_key)
-            if llm_res and len(llm_res.strip()) > 50:
-                final_answer = llm_res
+        llm_res = call_gemini_llm(prompt, api_key=gemini_api_key)
+        if llm_res and len(llm_res.strip()) > 30:
+            final_answer = llm_res
 
-        # 6. Tách gợi ý câu hỏi thông minh (Smart Follow-up Suggestions)
         suggestions = []
         if "[GỢI Ý CÂU HỎI TIẾP THEO]:" in final_answer:
             parts = final_answer.split("[GỢI Ý CÂU HỎI TIẾP THEO]:")
@@ -823,7 +839,6 @@ Nhiệm vụ của bạn là đọc hiểu toàn diện kho tài liệu nội b�
             
             final_answer = main_ans
         
-        # Fallback suggestions nếu chưa có
         if not suggestions:
             suggestions = [
                 "Tóm tắt chi tiết toàn bộ nội dung của tài liệu này",
@@ -831,7 +846,6 @@ Nhiệm vụ của bạn là đọc hiểu toàn diện kho tài liệu nội b�
                 "Liệt kê các bước thực hiện hoặc lộ trình chi tiết"
             ]
 
-        # Chuẩn hóa tên nguồn trích dẫn
         clean_sources = []
         for d_id in ranked_doc_ids:
             parts = d_id.split("#")
@@ -890,8 +904,8 @@ def startup_event():
 
 class ChatQueryRequest(BaseModel):
     question: str
-    top_docs: Optional[int] = 3
-    use_llm: Optional[bool] = False
+    top_docs: Optional[int] = 5
+    use_llm: Optional[bool] = True
     gemini_api_key: Optional[str] = None
     history: Optional[List[Dict[str, str]]] = []
 
@@ -901,15 +915,12 @@ class SyncRequest(BaseModel):
 
 
 @app.get("/")
-def home():
-    catalog = storage_mgr.get_document_catalog()
+def root_endpoint():
     return {
-        "service": "WorkHub Universal RAG API",
+        "service": "WorkHub Universal RAG Engine",
         "status": "online",
-        "is_indexed": rag_engine.is_ready,
-        "docs_count": len(catalog),
-        "chunks_count": len(rag_engine.article_chunks),
-        "last_indexed": rag_engine.last_indexed_time
+        "version": "3.0.0",
+        "features": ["Hybrid BM25+TF-IDF", "Whole-Corpus Ingestion", "Gemini 2.5 Flash Super Reasoning", "Multi-turn Memory"]
     }
 
 
@@ -918,7 +929,7 @@ def get_status():
     catalog = storage_mgr.get_document_catalog()
     return {
         "status": "ready" if rag_engine.is_ready else "empty",
-        "model": "BM25 + TF-IDF + Gemini Super Reasoning",
+        "model": "BM25 + TF-IDF + Gemini 2.5 Flash Super Reasoning",
         "device": "cpu",
         "documents_indexed": len(catalog),
         "chunks_indexed": len(rag_engine.corpus),
@@ -937,10 +948,12 @@ def chat_endpoint(req: ChatQueryRequest):
         raise HTTPException(status_code=400, detail="Câu hỏi không được để trống.")
 
     catalog = storage_mgr.get_document_catalog()
+    should_use_llm = True if req.use_llm is None or req.use_llm is True else False
+
     res = rag_engine.query(
         question=req.question.strip(),
-        top_k_docs=req.top_docs or 3,
-        use_llm=req.use_llm or False,
+        top_k_docs=req.top_docs or 5,
+        use_llm=should_use_llm,
         gemini_api_key=req.gemini_api_key,
         history=req.history or [],
         catalog=catalog

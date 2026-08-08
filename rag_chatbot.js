@@ -34,12 +34,10 @@ function initRAGChatbot() {
 
   checkRAGServerStatus();
   
-  // Tự động đồng bộ ngầm sau 1s khi mở trang / F5 để luôn khớp danh sách file với Supabase
   setTimeout(() => {
     syncBronzeStorage({ silent: true });
   }, 1000);
 
-  // Lắng nghe sự kiện khi có file được upload hoặc xóa ở các tab khác
   window.addEventListener('workhub_files_changed', () => {
     syncBronzeStorage({ silent: true });
   });
@@ -47,11 +45,8 @@ function initRAGChatbot() {
 
 function cleanDocumentTitle(rawName) {
   if (!rawName) return '';
-  // 1. Tách phần chunk/page nếu có (ví dụ: doc.pdf#Trang_1)
   let name = rawName.split('#')[0];
-  // 2. Cắt bỏ mã số ngẫu nhiên đằng trước do Supabase gắn (ví dụ: F_1786160737664260_ hoặc 1786160737664260_)
   name = name.replace(/^(?:F_)?\d{10,20}_?/i, '');
-  // 3. Xử lý các từ tiếng Việt (cả dạng bị sanitize _ và dạng không dấu)
   const dict = [
     [/N_I_DUNG|NOI_DUNG/gi, 'Nội dung'],
     [/KH_A_H_C|KHOA_HOC/gi, 'Khóa học'],
@@ -74,9 +69,7 @@ function cleanDocumentTitle(rawName) {
     name = name.replace(regex, repl);
   });
   
-  // 4. Xóa đuôi file nếu cần lấy tên thuần
   name = name.replace(/\.(pdf|docx?|xlsx?|csv|txt|json)$/i, '');
-  // 5. Thay thế các dấu gạch dưới còn lại thành khoảng trắng và xóa khoảng trắng thừa
   name = name.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
   
   return name || rawName;
@@ -261,8 +254,8 @@ async function handleSendRAGQuery() {
   const topDocsSelect = document.getElementById('rag-top-docs-select');
   const useLlmCheckbox = document.getElementById('rag-use-llm-toggle');
 
-  const topDocs = topDocsSelect ? parseInt(topDocsSelect.value, 10) : 3;
-  const useLLM = useLlmCheckbox ? useLlmCheckbox.checked : false;
+  const topDocs = topDocsSelect ? parseInt(topDocsSelect.value, 10) : 5;
+  const useLLM = useLlmCheckbox ? useLlmCheckbox.checked : true;
 
   appendUserMessage(question);
   inputEl.value = '';
@@ -294,7 +287,6 @@ async function handleSendRAGQuery() {
     const data = await res.json();
     const result = data.data;
 
-    // Cập nhật bộ nhớ hội thoại
     ragChatHistory.push({ role: 'user', content: question });
     ragChatHistory.push({ role: 'assistant', content: result.answer });
     if (ragChatHistory.length > 10) {
@@ -418,7 +410,7 @@ function appendAssistantLoadingMessage() {
     <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
     <div class="rag-msg-bubble">
       <div class="d-flex align-items-center gap-2 mb-1 text-primary small" style="font-size: 11px;">
-        <i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> Ciel đang phân tích toàn diện tri thức...
+        <i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> Ciel đang phân tích...
       </div>
       <div class="rag-loading-dots">
         <span></span><span></span><span></span>
@@ -523,27 +515,21 @@ function formatMarkdown(text) {
   if (!text) return '';
   let escaped = escapeHTML(text);
 
-  // Headers
   escaped = escaped.replace(/^#### (.*$)/gim, '<h6 class="fw-bold mt-2 mb-1 text-primary">$1</h6>');
   escaped = escaped.replace(/^### (.*$)/gim, '<h5 class="fw-bold mt-3 mb-2 text-dark">$1</h5>');
   escaped = escaped.replace(/^## (.*$)/gim, '<h4 class="fw-bold mt-3 mb-2 text-dark">$1</h4>');
 
-  // Bold & Italic
   escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-  // Inline code & code blocks
   escaped = escaped.replace(/```([\s\S]*?)```/g, '<pre class="p-2 bg-dark text-light rounded font-monospace my-2" style="font-size: 12px; overflow-x: auto;"><code>$1</code></pre>');
   escaped = escaped.replace(/`([^`]+)`/g, '<code class="p-1 rounded bg-secondary bg-opacity-10 text-danger font-monospace" style="font-size: 0.9em;">$1</code>');
 
-  // Horizontal divider
   escaped = escaped.replace(/^---$/gim, '<hr class="my-2 border-secondary opacity-25">');
 
-  // Lists
   escaped = escaped.replace(/^\s*[\-\*]\s+(.*)$/gm, '<li style="margin-left: 18px; margin-bottom: 4px;">$1</li>');
   escaped = escaped.replace(/^\s*(\d+)\.\s+(.*)$/gm, '<li style="margin-left: 18px; margin-bottom: 4px;" value="$1">$2</li>');
 
-  // Paragraphs
   escaped = escaped.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
 
   return escaped;
