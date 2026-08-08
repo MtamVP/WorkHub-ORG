@@ -41,19 +41,28 @@ function cleanDocumentTitle(rawName) {
   let name = rawName.split('#')[0];
   // 2. Cắt bỏ mã số ngẫu nhiên đằng trước do Supabase gắn (ví dụ: F_1786160737664260_ hoặc 1786160737664260_)
   name = name.replace(/^(?:F_)?\d{10,20}_?/i, '');
-  // 3. Xử lý các từ tiếng Việt bị biến thành mã gạch dưới
-  name = name.replace(/N_I_DUNG/gi, 'Nội dung');
-  name = name.replace(/KH_A_H_C/gi, 'Khóa học');
-  name = name.replace(/C_A/gi, 'của');
-  name = name.replace(/B_O_C_O/gi, 'Báo cáo');
-  name = name.replace(/QUY__NH/gi, 'Quy định');
-  name = name.replace(/T_I_LI_U/gi, 'Tài liệu');
-  name = name.replace(/H_P___NG/gi, 'Hợp đồng');
-  name = name.replace(/K_HO_CH/gi, 'Kế hoạch');
-  name = name.replace(/TH_NG_B_O/gi, 'Thông báo');
-  name = name.replace(/H__NG_D_N/gi, 'Hướng dẫn');
-  name = name.replace(/QUY_TR_NH/gi, 'Quy trình');
-  name = name.replace(/CH_NH_S_CH/gi, 'Chính sách');
+  // 3. Xử lý các từ tiếng Việt (cả dạng bị sanitize _ và dạng không dấu)
+  const dict = [
+    [/N_I_DUNG|NOI_DUNG/gi, 'Nội dung'],
+    [/KH_A_H_C|KHOA_HOC/gi, 'Khóa học'],
+    [/C_A|\bCUA\b/gi, 'của'],
+    [/B_O_C_O|BAO_CAO/gi, 'Báo cáo'],
+    [/QUY__NH|QUY_DINH/gi, 'Quy định'],
+    [/T_I_LI_U|TAI_LIEU/gi, 'Tài liệu'],
+    [/T_I_CH_NH|TAI_CHINH/gi, 'Tài chính'],
+    [/H_P___NG|HOP_DONG/gi, 'Hợp đồng'],
+    [/K_HO_CH|KE_HOACH/gi, 'Kế hoạch'],
+    [/TH_NG_B_O|THONG_BAO/gi, 'Thông báo'],
+    [/H__NG_D_N|HUONG_DAN/gi, 'Hướng dẫn'],
+    [/QUY_TR_NH|QUY_TRINH/gi, 'Quy trình'],
+    [/CH_NH_S_CH|CHINH_SACH/gi, 'Chính sách'],
+    [/DOANH_NGHIEP/gi, 'Doanh nghiệp'],
+    [/PHAN_TICH/gi, 'Phân tích'],
+  ];
+
+  dict.forEach(([regex, repl]) => {
+    name = name.replace(regex, repl);
+  });
   
   // 4. Xóa đuôi file nếu cần lấy tên thuần
   name = name.replace(/\.(pdf|docx?|xlsx?|csv|txt|json)$/i, '');

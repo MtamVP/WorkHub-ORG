@@ -81,20 +81,23 @@ def clean_document_title(raw_name: str) -> str:
     clean = re.sub(r'^(?:F_)?\d{10,20}_?', '', base, flags=re.IGNORECASE)
     root, ext = os.path.splitext(clean)
     
-    # Từ điển dịch các từ tiếng Việt bị sanitize dấu gạch dưới
+    # Từ điển dịch các từ tiếng Việt (cả dạng bị sanitize _ và dạng không dấu)
     subs = [
-        (r'(?i)\bN_I_DUNG\b', 'Nội Dung'),
-        (r'(?i)\bKH_A_H_C\b', 'Khóa Học'),
-        (r'(?i)\bC_A\b', 'Của'),
-        (r'(?i)\bB_O_C_O\b', 'Báo Cáo'),
-        (r'(?i)\bQUY__NH\b', 'Quy Định'),
-        (r'(?i)\bT_I_LI_U\b', 'Tài Liệu'),
-        (r'(?i)\bH_P___NG\b', 'Hợp Đồng'),
-        (r'(?i)\bK_HO_CH\b', 'Kế Hoạch'),
-        (r'(?i)\bTH_NG_B_O\b', 'Thông Báo'),
-        (r'(?i)\bH__NG_D_N\b', 'Hướng Dẫn'),
-        (r'(?i)\bQUY_TR_NH\b', 'Quy Trình'),
-        (r'(?i)\bCH_NH_S_CH\b', 'Chính Sách'),
+        (r'(?i)\b(?:N_I_DUNG|NOI_DUNG)\b', 'Nội Dung'),
+        (r'(?i)\b(?:KH_A_H_C|KHOA_HOC)\b', 'Khóa Học'),
+        (r'(?i)\b(?:C_A|CUA)\b', 'Của'),
+        (r'(?i)\b(?:B_O_C_O|BAO_CAO)\b', 'Báo Cáo'),
+        (r'(?i)\b(?:QUY__NH|QUY_DINH)\b', 'Quy Định'),
+        (r'(?i)\b(?:T_I_LI_U|TAI_LIEU)\b', 'Tài Liệu'),
+        (r'(?i)\b(?:T_I_CH_NH|TAI_CHINH)\b', 'Tài Chính'),
+        (r'(?i)\b(?:H_P___NG|HOP_DONG)\b', 'Hợp Đồng'),
+        (r'(?i)\b(?:K_HO_CH|KE_HOACH)\b', 'Kế Hoạch'),
+        (r'(?i)\b(?:TH_NG_B_O|THONG_BAO)\b', 'Thông Báo'),
+        (r'(?i)\b(?:H__NG_D_N|HUONG_DAN)\b', 'Hướng Dẫn'),
+        (r'(?i)\b(?:QUY_TR_NH|QUY_TRINH)\b', 'Quy Trình'),
+        (r'(?i)\b(?:CH_NH_S_CH|CHINH_SACH)\b', 'Chính Sách'),
+        (r'(?i)\b(?:DOANH_NGHIEP)\b', 'Doanh Nghiệp'),
+        (r'(?i)\b(?:PHAN_TICH)\b', 'Phân Tích'),
     ]
     for pattern, repl in subs:
         root = re.sub(pattern, repl, root)

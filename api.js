@@ -44,6 +44,42 @@ function genId(prefix) {
     return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 }
 
+// Chuyển đổi ký tự tiếng Việt có dấu sang không dấu (ô, ơ -> o, ư -> u, ê -> e, đ -> d, v.v.)
+function removeVietnameseTones(str) {
+    if (!str) return '';
+    str = String(str);
+    str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+    str = str.replace(/À|Á|Ạ|Ả|Ã|Â|Ầ|Ấ|Ậ|Ẩ|Ẫ|Ă|Ằ|Ắ|Ặ|Ẳ|Ẵ/g, "A");
+    str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+    str = str.replace(/È|É|Ẹ|Ẻ|Ẽ|Ê|Ề|Ế|Ệ|Ể|Ễ/g, "E");
+    str = str.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+    str = str.replace(/Ì|Í|Ị|Ỉ|Ĩ/g, "I");
+    str = str.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+    str = str.replace(/Ò|Ó|Ọ|Ỏ|Õ|Ô|Ồ|Ố|Ộ|Ổ|Ỗ|Ơ|Ờ|Ớ|Ợ|Ở|Ỡ/g, "O");
+    str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+    str = str.replace(/Ù|Ú|Ụ|Ủ|Ũ|Ư|Ừ|Ứ|Ự|Ử|Ữ/g, "U");
+    str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+    str = str.replace(/Ỳ|Ý|Ỵ|Ỷ|Ỹ/g, "Y");
+    str = str.replace(/đ/g, "d");
+    str = str.replace(/Đ/g, "D");
+    // Xóa các dấu kết hợp (Combining Diacritical Marks)
+    str = str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return str;
+}
+window.removeVietnameseTones = removeVietnameseTones;
+
+function sanitizeFileName(fileName) {
+    if (!fileName) return 'file_' + Date.now();
+    // 1. Chuyển đổi tiếng Việt có dấu sang không dấu
+    const noTones = removeVietnameseTones(fileName);
+    // 2. Chuyển các ký tự đặc biệt còn lại thành _ (giữ lại dấu chấm ., gạch nối -, gạch dưới _)
+    let safe = noTones.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    // 3. Gom nhiều dấu gạch dưới liên tiếp thành 1 dấu gạch dưới
+    safe = safe.replace(/_+/g, '_');
+    return safe;
+}
+window.sanitizeFileName = sanitizeFileName;
+
 const API = {
     auth: {
         getRealEmail: async (username) => {
@@ -757,7 +793,7 @@ const API = {
             if (fileData.includes('base64,')) fileData = fileData.split('base64,')[1];
             const blob = b64toBlob(fileData, mimeType);
             const fileId = genId("TF");
-            const safeFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const safeFileName = sanitizeFileName(fileName);
             const filePath = `tasks/${taskId}/${fileId}_${safeFileName}`;
             const bucketName = 'general_bucket';
 
@@ -841,7 +877,7 @@ const API = {
 
             const blob = b64toBlob(fileData, mimeType);
             const fileId = "F_" + Date.now() + Math.floor(Math.random()*1000);
-            const safeFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const safeFileName = sanitizeFileName(fileName);
             const filePath = `${fileId}_${safeFileName}`;
             const bucketName = groupKey === 'finance' ? 'finance_bucket' :
                 (groupKey === 'science' ? 'science_bucket' : 'general_bucket');
