@@ -249,6 +249,8 @@ function renderDynamicPrompts(items) {
   container.innerHTML = html;
 }
 
+let ragChatHistory = [];
+
 async function handleSendRAGQuery() {
   if (isGenerating) return;
 
@@ -271,13 +273,16 @@ async function handleSendRAGQuery() {
   updateSendBtnState(true);
 
   try {
+    const geminiApiKey = localStorage.getItem('rag_gemini_api_key') || '';
     const res = await fetch(`${RAG_API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: question,
         top_docs: topDocs,
-        use_llm: useLLM
+        use_llm: useLLM,
+        gemini_api_key: geminiApiKey || undefined,
+        history: ragChatHistory.slice(-6)
       })
     });
 
@@ -289,8 +294,15 @@ async function handleSendRAGQuery() {
     const data = await res.json();
     const result = data.data;
 
+    // Cập nhật bộ nhớ hội thoại
+    ragChatHistory.push({ role: 'user', content: question });
+    ragChatHistory.push({ role: 'assistant', content: result.answer });
+    if (ragChatHistory.length > 10) {
+      ragChatHistory = ragChatHistory.slice(-10);
+    }
+
     removeLoadingMessage(loadingMsgId);
-    appendAssistantMessage(result.answer, result.sources, result.retrieved_docs);
+    appendAssistantMessage(result.answer, result.sources, result.retrieved_docs, result.suggestions);
 
     renderQueryInspector(question, result);
   } catch (err) {
@@ -324,7 +336,7 @@ function appendUserMessage(text) {
   area.scrollTop = area.scrollHeight;
 }
 
-function appendAssistantMessage(markdownText, sources = [], retrievedDocs = []) {
+function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], suggestions = []) {
   const area = document.getElementById('rag-messages-area');
   if (!area) return;
 
@@ -343,34 +355,80 @@ function appendAssistantMessage(markdownText, sources = [], retrievedDocs = []) 
     `;
   }
 
+  let suggestionsHtml = '';
+  if (suggestions && suggestions.length > 0) {
+    suggestionsHtml = `
+      <div class="rag-suggestions-box mt-3 pt-2 border-top border-light-subtle">
+        <div class="small fw-semibold text-primary mb-2" style="font-size: 11px;">
+          <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Câu hỏi gợi ý tiếp theo:
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          ${suggestions.map(sugg => `
+            <button type="button" class="btn btn-sm btn-light border rounded-pill text-start py-1 px-2 shadow-sm text-secondary" style="font-size: 11px; transition: all 0.2s;" onmouseover="this.classList.add('border-primary', 'text-primary')" onmouseout="this.classList.remove('border-primary', 'text-primary')" onclick="sendQuickPrompt('${escapeHTML(sugg)}')">
+              <i class="fa-regular fa-comment-dots text-primary me-1"></i> ${escapeHTML(sugg)}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  const msgUniqueId = `msg-${Date.now()}`;
+
   msgDiv.innerHTML = `
-    <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
-    <div class="rag-msg-bubble">
-      <div class="rag-markdown-content">${formatMarkdown(markdownText)}</div>
+    <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
+    <div class="rag-msg-bubble position-relative">
+      <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light-subtle">
+        <span class="small fw-bold text-primary" style="font-size: 11px;"><i class="fa-solid fa-brain me-1"></i> Ciel AI (WorkHub Intelligence)</span>
+        <button type="button" class="btn btn-sm text-muted p-0 border-0" title="Sao chép câu trả lời" onclick="copyMessageText('${msgUniqueId}', this)">
+          <i class="fa-regular fa-copy" style="font-size: 12px;"></i>
+        </button>
+      </div>
+      <div id="${msgUniqueId}" class="rag-msg-text mb-2">${formatMarkdown(markdownText)}</div>
       ${sourcesHtml}
+      ${suggestionsHtml}
     </div>
   `;
   area.appendChild(msgDiv);
   area.scrollTop = area.scrollHeight;
 }
 
+function copyMessageText(elementId, btn) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = el.innerText || el.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    if (btn) {
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = `<i class="fa-solid fa-check text-success" style="font-size: 12px;"></i>`;
+      setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
+    }
+  }).catch(() => {});
+}
+
 function appendAssistantLoadingMessage() {
   const area = document.getElementById('rag-messages-area');
-  if (!area) return null;
+  if (!area) return '';
 
-  const loadingId = 'rag-loading-' + Date.now();
+  const id = `rag-loading-${Date.now()}`;
   const msgDiv = document.createElement('div');
+  msgDiv.id = id;
   msgDiv.className = 'rag-message assistant';
-  msgDiv.id = loadingId;
   msgDiv.innerHTML = `
-    <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
-    <div class="rag-msg-bubble text-muted">
-      <i class="fa-solid fa-spinner fa-spin me-2 text-primary"></i> Đang tìm kiếm thông tin...
+    <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
+    <div class="rag-msg-bubble">
+      <div class="d-flex align-items-center gap-2 mb-1 text-primary small" style="font-size: 11px;">
+        <i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> Ciel đang phân tích toàn diện tri thức...
+      </div>
+      <div class="rag-loading-dots">
+        <span></span><span></span><span></span>
+      </div>
     </div>
   `;
+
   area.appendChild(msgDiv);
   area.scrollTop = area.scrollHeight;
-  return loadingId;
+  return id;
 }
 
 function removeLoadingMessage(id) {
@@ -382,49 +440,51 @@ function removeLoadingMessage(id) {
 function updateSendBtnState(loading) {
   const btn = document.getElementById('rag-send-btn');
   if (!btn) return;
-  btn.disabled = loading;
-  btn.innerHTML = loading ? `<i class="fa-solid fa-spinner fa-spin"></i>` : `<i class="fa-solid fa-paper-plane"></i>`;
+
+  if (loading) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i>`;
+  }
 }
 
 function clearRAGChat() {
+  ragChatHistory = [];
   const area = document.getElementById('rag-messages-area');
-  if (!area) return;
-  area.innerHTML = `
-    <div class="rag-message assistant">
-      <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
-      <div class="rag-msg-bubble">
-        Xin chào! Tôi là Trợ lý AI WorkHub.<br>
-        Tôi có thể hỗ trợ bạn tra cứu, tóm tắt và phân tích dữ liệu từ tài liệu lưu trữ nội bộ một cách nhanh chóng và chính xác.
+  if (area) {
+    area.innerHTML = `
+      <div class="rag-message assistant">
+        <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
+        <div class="rag-msg-bubble">
+          Đã xóa lịch sử trò chuyện. Bạn có thể đặt câu hỏi mới về các tài liệu trong hệ thống!
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
 }
 
-function renderQueryInspector(question, result) {
+function renderQueryInspector(query, result) {
   const container = document.getElementById('rag-inspector-container');
   if (!container) return;
 
-  if (!result || !result.retrieved_docs || result.retrieved_docs.length === 0) {
-    container.innerHTML = `<div class="text-muted small">Chưa có dữ liệu truy vấn.</div>`;
+  const docs = result.retrieved_docs || [];
+  if (docs.length === 0) {
+    container.innerHTML = `<div class="text-muted small">Chưa có thông tin truy xuất.</div>`;
     return;
   }
 
-  let html = `
-    <div class="small mb-2"><b>Câu hỏi:</b> <span class="text-primary">${escapeHTML(question)}</span></div>
-    <div class="small mb-2"><b>Tài liệu ưu tiên:</b> <span class="badge bg-success">${escapeHTML(result.best_doc_id || 'N/A')}</span></div>
-    <hr style="margin: 8px 0; border-color: var(--border-light);">
-    <div class="fw-bold small mb-2"><i class="fa-solid fa-chart-simple text-primary me-1"></i> Kết quả:</div>
-  `;
+  let html = `<div class="small fw-bold mb-2 text-secondary"><i class="fa-solid fa-magnifying-glass me-1"></i> Kết quả xếp hạng (${docs.length}):</div>`;
 
-  result.retrieved_docs.forEach((doc, idx) => {
-    const docName = doc.display_name || cleanDocumentTitle(doc.doc_id);
+  docs.forEach((doc, idx) => {
     html += `
-      <div class="p-2 mb-2 rounded" style="background: var(--hover-bg); border: 1px solid var(--border-light); font-size: 11px;">
-        <div class="d-flex justify-content-between font-monospace fw-bold text-primary mb-1">
-          <span>#${idx + 1} ${escapeHTML(docName)}</span>
-          <span class="text-success">${Math.round((doc.score || 0) * 1000) / 10}%</span>
+      <div class="rag-inspector-item">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="rag-inspector-doc-name text-truncate">#${idx + 1} ${escapeHTML(doc.display_name || doc.doc_id)}</span>
+          <span class="badge bg-primary-subtle text-primary border" style="font-size: 10px;">${(doc.score * 100).toFixed(2)} pts</span>
         </div>
-        <div class="text-muted text-truncate" title="${escapeHTML(doc.text || '')}">${escapeHTML(doc.text || '')}</div>
+        <div class="text-muted small" style="font-size: 11px; line-height: 1.4;">${escapeHTML(doc.text)}</div>
       </div>
     `;
   });
@@ -463,10 +523,27 @@ function formatMarkdown(text) {
   if (!text) return '';
   let escaped = escapeHTML(text);
 
+  // Headers
+  escaped = escaped.replace(/^#### (.*$)/gim, '<h6 class="fw-bold mt-2 mb-1 text-primary">$1</h6>');
+  escaped = escaped.replace(/^### (.*$)/gim, '<h5 class="fw-bold mt-3 mb-2 text-dark">$1</h5>');
+  escaped = escaped.replace(/^## (.*$)/gim, '<h4 class="fw-bold mt-3 mb-2 text-dark">$1</h4>');
+
+  // Bold & Italic
   escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // Inline code & code blocks
+  escaped = escaped.replace(/```([\s\S]*?)```/g, '<pre class="p-2 bg-dark text-light rounded font-monospace my-2" style="font-size: 12px; overflow-x: auto;"><code>$1</code></pre>');
   escaped = escaped.replace(/`([^`]+)`/g, '<code class="p-1 rounded bg-secondary bg-opacity-10 text-danger font-monospace" style="font-size: 0.9em;">$1</code>');
-  escaped = escaped.replace(/^\s*-\s+(.*)$/gm, '<li style="margin-left: 18px;">$1</li>');
+
+  // Horizontal divider
+  escaped = escaped.replace(/^---$/gim, '<hr class="my-2 border-secondary opacity-25">');
+
+  // Lists
+  escaped = escaped.replace(/^\s*[\-\*]\s+(.*)$/gm, '<li style="margin-left: 18px; margin-bottom: 4px;">$1</li>');
+  escaped = escaped.replace(/^\s*(\d+)\.\s+(.*)$/gm, '<li style="margin-left: 18px; margin-bottom: 4px;" value="$1">$2</li>');
+
+  // Paragraphs
   escaped = escaped.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
 
   return escaped;

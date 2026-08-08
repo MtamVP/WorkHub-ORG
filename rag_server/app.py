@@ -60,13 +60,44 @@ except ImportError:
 
 gemini_model = None
 HAVE_GEMINI = False
+
+def call_gemini_llm(prompt: str, api_key: Optional[str] = None) -> Optional[str]:
+    """Gọi Gemini API với khả năng fallback nhiều model và giới hạn token đầu ra cao (8192 tokens)."""
+    key = api_key or GEMINI_API_KEY
+    if not key:
+        return None
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=key)
+        
+        # Danh sách các model để thử lần lượt
+        model_candidates = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"]
+        for m_name in model_candidates:
+            try:
+                model = genai.GenerativeModel(m_name)
+                resp = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=8192,
+                        temperature=0.3,
+                        top_p=0.95
+                    )
+                )
+                if resp and resp.text and resp.text.strip():
+                    return resp.text.strip()
+            except Exception as ex:
+                logger.warning(f"Gemini candidate '{m_name}' failed: {ex}")
+                continue
+    except Exception as e:
+        logger.warning(f"Error executing Gemini API: {e}")
+    return None
+
 if GEMINI_API_KEY:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel("gemini-1.5-flash")
         HAVE_GEMINI = True
-        logger.info("Gemini API configured successfully.")
+        logger.info("Gemini API configured successfully from env.")
     except Exception as e:
         logger.warning(f"Failed to configure Gemini: {e}")
         HAVE_GEMINI = False
@@ -109,6 +140,40 @@ def clean_document_title(raw_name: str) -> str:
         root = base
     return f"{root}{ext}".strip()
 
+
+SYNONYM_EXPANSIONS = {
+    "khoa hoc": ["khoá học", "khóa học", "đào tạo", "chương trình", "bài giảng", "syllabus", "nội dung", "module", "bài học", "học phần"],
+    "lo trinh": ["lộ trình", "kế hoạch", "các giai đoạn", "quy trình", "roadmap", "timeline", "thời gian biểu", "tiến độ"],
+    "chi phi": ["chi phí", "học phí", "giá", "ngân sách", "bảng giá", "thanh toán", "ưu đãi", "học bổng", "tiền"],
+    "tom tat": ["tóm tắt", "tổng quan", "mục lục", "khái quát", "sơ lược", "điểm chính", "kết luận", "toàn văn", "tất cả"],
+    "quy dinh": ["quy định", "chính sách", "điều khoản", "nội quy", "nghĩa vụ", "yêu cầu", "điều kiện", "tiêu chuẩn"],
+    "giang vien": ["giảng viên", "người hướng dẫn", "mentor", "thầy cô", "chuyên gia", "tác giả", "diễn giả"],
+    "thuc hanh": ["thực hành", "bài tập", "dự án", "project", "lab", "bài kiểm tra", "đánh giá", "ứng dụng"],
+    "muc tieu": ["mục tiêu", "chuẩn đầu ra", "kết quả đạt được", "lợi ích", "kiến thức", "kỹ năng"],
+}
+
+def remove_vietnamese_accents(text: str) -> str:
+    s = text.lower()
+    s = re.sub(r'[àáạảãâầấậẩẫăằắặẳẵ]', 'a', s)
+    s = re.sub(r'[èéẹẻẽêềếệểễ]', 'e', s)
+    s = re.sub(r'[ìíịỉĩ]', 'i', s)
+    s = re.sub(r'[òóọỏõôồốộổỗơờớợởỡ]', 'o', s)
+    s = re.sub(r'[ùúụủũưừứựửữ]', 'u', s)
+    s = re.sub(r'[ỳýỵỷỹ]', 'y', s)
+    s = re.sub(r'đ', 'd', s)
+    return s
+
+def expand_vietnamese_query(query: str) -> str:
+    """Mở rộng câu truy vấn bằng từ đồng nghĩa và biến thể tiếng Việt."""
+    q_norm = remove_vietnamese_accents(query)
+    added_terms = []
+    for key, syns in SYNONYM_EXPANSIONS.items():
+        if key in q_norm:
+            added_terms.extend(syns[:4])
+    if added_terms:
+        unique_syns = list(dict.fromkeys(added_terms))
+        return f"{query} {' '.join(unique_syns)}"
+    return query
 
 def tokenize_vietnamese(text: str) -> List[str]:
     clean_text = re.sub(r'[^\w\s]', " ", text).lower()
@@ -299,7 +364,7 @@ def build_global_idf(corpus_tokens: List[List[str]]) -> Dict[str, float]:
     return idf
 
 
-def extract_best_sentences(query: str, document_text: str, global_idf: Dict[str, float], top_k: int = 8, max_chars: int = 1500) -> str:
+def extract_best_sentences(query: str, document_text: str, global_idf: Dict[str, float], top_k: int = 25, max_chars: int = 6000) -> str:
     sentences = split_sentences(document_text)
     if not sentences:
         return document_text[:max_chars]
@@ -516,6 +581,7 @@ class RAGEngine:
         self.corpus: Dict[str, str] = {}
         self.doc_ids: List[str] = []
         self.article_chunks: List[Dict[str, str]] = []
+        self.file_to_chunks: Dict[str, List[str]] = {}
         self.bm25_index: Optional[BM25Okapi] = None
         self.tfidf_vectorizer: Optional[TfidfVectorizer] = None
         self.tfidf_matrix = None
@@ -528,6 +594,7 @@ class RAGEngine:
             self.corpus = {}
             self.doc_ids = []
             self.article_chunks = []
+            self.file_to_chunks = {}
             self.bm25_index = None
             self.tfidf_vectorizer = None
             self.tfidf_matrix = None
@@ -540,6 +607,14 @@ class RAGEngine:
         self.corpus = corpus
         self.doc_ids = list(corpus.keys())
 
+        # Gom nhóm toàn bộ chunk theo file gốc (Whole-Document Grouping)
+        self.file_to_chunks = {}
+        for c_id in self.doc_ids:
+            parent_file = c_id.split("#")[0]
+            if parent_file not in self.file_to_chunks:
+                self.file_to_chunks[parent_file] = []
+            self.file_to_chunks[parent_file].append(c_id)
+
         self.article_chunks = []
         for doc_id, doc_text in self.corpus.items():
             self.article_chunks.extend(adaptive_chunking(doc_id, doc_text))
@@ -549,35 +624,54 @@ class RAGEngine:
         self.bm25_index = BM25Okapi(corpus_tokens)
         self.global_idf = build_global_idf(corpus_tokens)
 
-        # 2. Build TF-IDF Semantic n-gram index (Ultra lightweight < 20MB RAM)
+        # 2. Build TF-IDF Semantic n-gram index
         chunk_texts = [c["doc_text"] for c in self.article_chunks]
-        self.tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2), max_features=25000)
+        self.tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2), max_features=30000)
         self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(chunk_texts)
 
         self.is_ready = True
         self.last_indexed_time = time.strftime("%Y-%m-%d %H:%M:%S")
-        logger.info(f"RAG Index ready: {len(self.corpus)} chunks indexed.")
+        logger.info(f"RAG Index ready: {len(self.corpus)} chunks indexed across {len(self.file_to_chunks)} files.")
 
-    def query(self, question: str, top_k_docs: int = 3, use_llm: bool = False) -> Dict[str, Any]:
+    def query(
+        self,
+        question: str,
+        top_k_docs: int = 3,
+        use_llm: bool = False,
+        gemini_api_key: Optional[str] = None,
+        history: Optional[List[Dict[str, str]]] = None,
+        catalog: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
         if not self.is_ready or not self.corpus:
             return {
-                "answer": "Hệ thống RAG chưa có dữ liệu.",
+                "answer": "Hệ thống chưa có tài liệu nào trong Bronze Storage. Vui lòng tải tài liệu lên để tra cứu.",
                 "sources": [],
-                "retrieved_docs": []
+                "retrieved_docs": [],
+                "suggestions": []
             }
 
+        # 1. Mở rộng câu hỏi thông minh (Synonym & Semantic Query Expansion)
+        expanded_query = expand_vietnamese_query(question)
+        q_tokens = tokenize_vietnamese(expanded_query)
+        q_norm = remove_vietnamese_accents(question)
+
+        # 2. Phát hiện ý định câu hỏi (Intent Recognition)
+        is_global_inquiry = any(kw in q_norm for kw in [
+            "tom tat", "tong quan", "toan bo", "tat ca", "co nhung tai lieu", "danh sach file",
+            "kho co gi", "gioi thieu", "bao gom nhung gi", "so sanh"
+        ])
+
         # BM25 scores
-        q_tokens = tokenize_vietnamese(question)
         bm25_scores = self.bm25_index.get_scores(q_tokens)
         bm25_ranks = {
             self.doc_ids[i]: rank + 1
-            for rank, i in enumerate(np.argsort(bm25_scores)[::-1][:20])
+            for rank, i in enumerate(np.argsort(bm25_scores)[::-1][:30])
         }
 
         # TF-IDF Cosine similarity
-        q_vec = self.tfidf_vectorizer.transform([question])
+        q_vec = self.tfidf_vectorizer.transform([expanded_query])
         cos_sim = cosine_similarity(q_vec, self.tfidf_matrix)[0]
-        top_chunk_indices = np.argsort(cos_sim)[::-1][:20]
+        top_chunk_indices = np.argsort(cos_sim)[::-1][:30]
 
         tfidf_ranks = {}
         for rank, chunk_idx in enumerate(top_chunk_indices):
@@ -585,13 +679,30 @@ class RAGEngine:
             if parent_doc_id not in tfidf_ranks:
                 tfidf_ranks[parent_doc_id] = rank + 1
 
-        # Reciprocal Rank Fusion (RRF)
+        # Title Matching Bonus: Tăng điểm mạnh nếu câu hỏi trùng với tên tài liệu
+        title_boost = {}
+        for doc_id in self.doc_ids:
+            parent_file = doc_id.split("#")[0]
+            clean_name = clean_document_title(parent_file)
+            clean_norm = remove_vietnamese_accents(clean_name)
+            
+            # Kiểm tra xem từ khóa trong câu hỏi có xuất hiện trong tên file
+            words = [w for w in clean_norm.split() if len(w) > 2]
+            match_count = sum(1 for w in words if w in q_norm)
+            if match_count >= 2:
+                title_boost[doc_id] = 0.05 * match_count
+            elif match_count == 1:
+                title_boost[doc_id] = 0.02
+
+        # Reciprocal Rank Fusion (RRF) có kết hợp Title Boost
         fused_score = {}
-        for doc_id in set(bm25_ranks) | set(tfidf_ranks):
-            fused_score[doc_id] = (
+        for doc_id in set(bm25_ranks) | set(tfidf_ranks) | set(title_boost):
+            score = (
                 1.0 / (60.0 + bm25_ranks.get(doc_id, 999)) +
-                1.0 / (60.0 + tfidf_ranks.get(doc_id, 999))
+                1.0 / (60.0 + tfidf_ranks.get(doc_id, 999)) +
+                title_boost.get(doc_id, 0.0)
             )
+            fused_score[doc_id] = score
 
         ranked_doc_ids = [
             doc_id
@@ -600,32 +711,125 @@ class RAGEngine:
 
         if not ranked_doc_ids:
             return {
-                "answer": "Không tìm thấy thông tin phù hợp trong Bronze Storage.",
+                "answer": "Không tìm thấy thông tin phù hợp trong kho tài liệu.",
                 "sources": [],
-                "retrieved_docs": []
+                "retrieved_docs": [],
+                "suggestions": []
             }
 
-        best_doc_id = ranked_doc_ids[0]
-        context_text = self.corpus.get(best_doc_id, "")
+        # 3. Gom toàn văn tài liệu liên quan (Whole-Document Context Windowing)
+        # Nếu một trang của file được chọn, ta gom toàn bộ các trang của file đó vào để AI có mạch ngữ cảnh 100%
+        active_parent_files = list(dict.fromkeys([d.split("#")[0] for d in ranked_doc_ids]))
+        
+        context_blocks = []
+        for p_file in active_parent_files:
+            file_chunks = self.file_to_chunks.get(p_file, [])
+            clean_file = clean_document_title(p_file)
+            
+            file_full_text = []
+            for c_id in file_chunks:
+                c_text = self.corpus.get(c_id, "").strip()
+                if c_text:
+                    parts = c_id.split("#")
+                    page_info = f" ({parts[1].replace('_', ' ')})" if len(parts) > 1 else ""
+                    file_full_text.append(f"--- [Phần: {page_info.strip(' ()') or 'Nội dung'}] ---\n{c_text}")
+            
+            if file_full_text:
+                context_blocks.append(f"=== [TÀI LIỆU TOÀN VĂN: {clean_file}] ===\n" + "\n\n".join(file_full_text))
 
-        extracted_answer = extract_best_sentences(question, context_text, self.global_idf, top_k=8, max_chars=1500)
+        # Nếu là câu hỏi tổng quan hoặc chỉ có ít tài liệu trong kho, gộp thêm các file còn lại vào ngữ cảnh
+        if is_global_inquiry and len(self.file_to_chunks) <= 5:
+            for p_file, chunks in self.file_to_chunks.items():
+                if p_file not in active_parent_files:
+                    clean_file = clean_document_title(p_file)
+                    sample_texts = [self.corpus.get(c, "") for c in chunks[:3]]
+                    context_blocks.append(f"=== [TÀI LIỆU BỔ SUNG: {clean_file}] ===\n" + "\n\n".join(sample_texts))
 
-        final_answer = extracted_answer
-        if use_llm and HAVE_GEMINI and gemini_model:
-            try:
-                prompt = f"""Bạn là trợ lý tài liệu thông minh WorkHub. Dựa vào nội dung trích xuất từ tài liệu sau đây, hãy trả lời câu hỏi một cách chính xác, chi tiết, logic và đầy đủ:
+        combined_context = "\n\n====================\n\n".join(context_blocks)
 
-[Nội dung tài liệu trích xuất]:
-{extracted_answer or context_text[:2500]}
+        # 4. Trích xuất đa đoạn văn chi tiết (Chế độ dự phòng khi không dùng LLM hoặc khi mất mạng)
+        extracted_sections = []
+        for d_id in ranked_doc_ids:
+            raw_text = self.corpus.get(d_id, "")
+            ext = extract_best_sentences(question, raw_text, self.global_idf, top_k=20, max_chars=3500)
+            if ext:
+                parts = d_id.split("#")
+                clean_file = clean_document_title(parts[0])
+                page_info = f" ({parts[1].replace('_', ' ')})" if len(parts) > 1 else ""
+                extracted_sections.append(f"#### 📄 Trích từ: {clean_file}{page_info}\n{ext}")
 
-[Câu hỏi]: {question}
+        fallback_answer = "\n\n---\n\n".join(extracted_sections) if extracted_sections else "Không tìm thấy nội dung chi tiết trong tài liệu."
+        final_answer = fallback_answer
 
-Hãy trả lời bằng tiếng Việt chuyên nghiệp, định dạng Markdown đẹp mắt (dùng tiêu đề, gạch đầu dòng, bảng số liệu nếu có)."""
-                resp = gemini_model.generate_content(prompt)
-                if resp and resp.text:
-                    final_answer = resp.text
-            except Exception as e:
-                logger.warning(f"Gemini LLM error: {e}")
+        # Chuẩn bị thông tin danh mục file (Catalog Overview)
+        catalog_summary = ""
+        if catalog:
+            cat_lines = [f"- 📁 **{c.get('display_name')}** ({c.get('total_pages', 1)} trang, {c.get('file_size', '')})" for c in catalog]
+            catalog_summary = "DANH MỤC CÁC TÀI LIỆU HIỆN CÓ TRONG KHO:\n" + "\n".join(cat_lines)
+
+        # Định dạng lịch sử hội thoại gần nhất
+        history_text = ""
+        if history and isinstance(history, list) and len(history) > 0:
+            hist_lines = []
+            for h in history[-4:]:
+                r = "Người dùng" if h.get("role") == "user" else "Ciel (AI)"
+                hist_lines.append(f"{r}: {h.get('content', '')[:300]}")
+            history_text = "LỊCH SỬ TRÒ CHUYỆN GẦN ĐÂY:\n" + "\n".join(hist_lines)
+
+        # 5. Siêu Trí tuệ Nhân tạo Ciel (Super Intelligent Analytical Agent)
+        if use_llm:
+            prompt = f"""Bạn là Ciel - Siêu Trợ lý Trí tuệ Nhân tạo & Phân tích Tri thức cao cấp của WorkHub.
+Nhiệm vụ của bạn là đọc hiểu toàn diện kho tài liệu nội bộ, phân tích sâu sắc, logic, chính xác và trả lời câu hỏi của người dùng một cách đẳng cấp nhất.
+
+{catalog_summary}
+
+{history_text}
+
+[DỮ LIỆU TÀI LIỆU TRÍCH XUẤT TỪ KHO LƯU TRỮ]:
+{combined_context[:25000]}
+
+[CÂU HỎI CỦA NGƯỜI DÙNG]:
+{question}
+
+[HƯỚNG DẪN TRẢ LỜI ĐẲNG CẤP TỪNG BƯỚC]:
+1. **Phân tích chiều sâu**: Đọc kỹ toàn bộ các tài liệu được cung cấp. Tuyệt đối KHÔNG trả lời hời hợt, ngắn ngủi hay cắt bớt nội dung. 
+2. **Cấu trúc câu trả lời chuyên nghiệp**:
+   - 🌟 **Tóm tắt cốt lõi (Key Takeaways)**: Nêu rõ kết luận/trọng tâm chính.
+   - 📑 **Phân tích chi tiết**: Trình bày cặn kẽ từng phần, từng module, chương mục, điều khoản hoặc quy trình cụ thể có trong tài liệu.
+   - 📊 **Bảng biểu / Lộ trình** (Nếu có danh sách khóa học, số liệu, so sánh hoặc mốc thời gian): Hãy sử dụng bảng Markdown chuẩn (`| Cột 1 | Cột 2 |`).
+   - 💡 **Đánh giá & Khuyến nghị thực tiễn**: Lời khuyên, điểm cần lưu ý hoặc hướng dẫn áp dụng.
+3. **Định dạng Markdown đẹp mắt**: Sử dụng các cấp tiêu đề (###, ####), in đậm (**từ khóa**), gạch đầu dòng rõ ràng.
+4. **Gợi ý câu hỏi tiếp theo**: Ở dòng cuối cùng của câu trả lời, hãy tạo đúng định dạng sau với 3 câu hỏi gợi ý thông minh nhất để người dùng khám phá sâu hơn:
+[GỢI Ý CÂU HỎI TIẾP THEO]:
+- Câu hỏi gợi ý 1?
+- Câu hỏi gợi ý 2?
+- Câu hỏi gợi ý 3?"""
+
+            llm_res = call_gemini_llm(prompt, api_key=gemini_api_key)
+            if llm_res and len(llm_res.strip()) > 50:
+                final_answer = llm_res
+
+        # 6. Tách gợi ý câu hỏi thông minh (Smart Follow-up Suggestions)
+        suggestions = []
+        if "[GỢI Ý CÂU HỎI TIẾP THEO]:" in final_answer:
+            parts = final_answer.split("[GỢI Ý CÂU HỎI TIẾP THEO]:")
+            main_ans = parts[0].strip()
+            sugg_text = parts[1].strip()
+            
+            for line in sugg_text.split("\n"):
+                clean_s = re.sub(r'^\s*[-*•\d.]+\s*', '', line).strip()
+                if clean_s and len(clean_s) > 5 and len(clean_s) < 150:
+                    suggestions.append(clean_s)
+            
+            final_answer = main_ans
+        
+        # Fallback suggestions nếu chưa có
+        if not suggestions:
+            suggestions = [
+                "Tóm tắt chi tiết toàn bộ nội dung của tài liệu này",
+                "Có những lưu ý hoặc điều kiện quan trọng nào cần chú ý?",
+                "Liệt kê các bước thực hiện hoặc lộ trình chi tiết"
+            ]
 
         # Chuẩn hóa tên nguồn trích dẫn
         clean_sources = []
@@ -652,9 +856,10 @@ Hãy trả lời bằng tiếng Việt chuyên nghiệp, định dạng Markdown
 
         return {
             "answer": final_answer,
-            "sources": clean_sources,
+            "sources": list(dict.fromkeys(clean_sources)),
             "best_doc_id": clean_sources[0] if clean_sources else "",
-            "retrieved_docs": retrieved_details
+            "retrieved_docs": retrieved_details,
+            "suggestions": suggestions[:3]
         }
 
 
@@ -687,6 +892,8 @@ class ChatQueryRequest(BaseModel):
     question: str
     top_docs: Optional[int] = 3
     use_llm: Optional[bool] = False
+    gemini_api_key: Optional[str] = None
+    history: Optional[List[Dict[str, str]]] = []
 
 
 class SyncRequest(BaseModel):
@@ -711,11 +918,11 @@ def get_status():
     catalog = storage_mgr.get_document_catalog()
     return {
         "status": "ready" if rag_engine.is_ready else "empty",
-        "model": "BM25 + TF-IDF + Gemini",
+        "model": "BM25 + TF-IDF + Gemini Super Reasoning",
         "device": "cpu",
         "documents_indexed": len(catalog),
         "chunks_indexed": len(rag_engine.corpus),
-        "have_gemini": HAVE_GEMINI,
+        "have_gemini": bool(GEMINI_API_KEY),
         "have_underthesea": HAVE_UNDERTHESEA,
         "have_pypdf": HAVE_PYPDF,
         "have_docx": HAVE_DOCX,
@@ -729,10 +936,14 @@ def chat_endpoint(req: ChatQueryRequest):
     if not req.question or not req.question.strip():
         raise HTTPException(status_code=400, detail="Câu hỏi không được để trống.")
 
+    catalog = storage_mgr.get_document_catalog()
     res = rag_engine.query(
         question=req.question.strip(),
         top_k_docs=req.top_docs or 3,
-        use_llm=req.use_llm or False
+        use_llm=req.use_llm or False,
+        gemini_api_key=req.gemini_api_key,
+        history=req.history or [],
+        catalog=catalog
     )
     return {
         "success": True,
