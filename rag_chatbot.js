@@ -870,6 +870,17 @@ function exportRAGChat(format = 'markdown') {
 
     printHtml += `</div>`;
     existingPrintDiv.innerHTML = printHtml;
+
+    const cleanupPrint = () => {
+      if (existingPrintDiv && existingPrintDiv.parentNode) {
+        existingPrintDiv.parentNode.removeChild(existingPrintDiv);
+      }
+      window.removeEventListener('afterprint', cleanupPrint);
+    };
+
+    window.addEventListener('afterprint', cleanupPrint);
+    setTimeout(() => { cleanupPrint(); }, 3000);
+
     window.print();
   }
 }

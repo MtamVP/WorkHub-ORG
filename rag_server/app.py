@@ -444,6 +444,9 @@ def extract_best_sentences(query: str, document_text: str, global_idf: Dict[str,
     return "\n\n".join(result) if result else document_text[:max_chars]
 
 
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".json", ".txt", ".md"}
+
+
 class BronzeStorageManager:
     def __init__(self, local_dir: str = LOCAL_CORPUS_DIR):
         self.local_dir = local_dir
@@ -503,12 +506,20 @@ class BronzeStorageManager:
             logger.warning(f"Error querying files table: {e}")
 
         for b_name in target_buckets:
-            for prefix in ["bronze", ""]:
+            prefixes_to_scan = ["bronze", ""]
+            scanned_prefixes = set()
+
+            while prefixes_to_scan:
+                prefix = prefixes_to_scan.pop(0)
+                if prefix in scanned_prefixes:
+                    continue
+                scanned_prefixes.add(prefix)
+
                 try:
                     list_url = f"{SUPABASE_URL}/storage/v1/object/list/{b_name}"
                     req = urllib.request.Request(
                         list_url,
-                        data=json.dumps({"prefix": prefix, "limit": 100, "offset": 0}).encode("utf-8"),
+                        data=json.dumps({"prefix": prefix, "limit": 200, "offset": 0}).encode("utf-8"),
                         headers=self.headers,
                         method="POST"
                     )
@@ -517,17 +528,38 @@ class BronzeStorageManager:
 
                     for f in file_list:
                         fname = f.get("name")
-                        if not fname or fname.startswith(".") or fname == "bronze":
+                        if not fname or fname.startswith("."):
                             continue
-                        
-                        active_remote_files.add(fname)
-                        local_path = os.path.join(self.local_dir, fname)
+
+                        metadata = f.get("metadata") or {}
+                        mime = metadata.get("mimetype", "")
+                        size = metadata.get("size", metadata.get("contentLength", -1))
+
+                        full_key = f"{prefix}/{fname}".strip("/") if prefix else fname
+
+                        if size is None or size == 0 or mime == "" or not f.get("id"):
+                            sub_prefix = full_key
+                            if sub_prefix not in scanned_prefixes:
+                                prefixes_to_scan.append(sub_prefix)
+                            continue
+
+                        ext = os.path.splitext(fname)[1].lower()
+                        if ext not in SUPPORTED_EXTENSIONS:
+                            continue
+
+                        safe_fname = fname.replace("/", "_").replace("\\", "_")
+                        rel_local = full_key
+
+                        local_path = os.path.join(self.local_dir, *rel_local.replace("\\", "/").split("/"))
+                        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+                        active_remote_files.add(os.path.basename(local_path))
+                        active_remote_files.add(os.path.relpath(local_path, self.local_dir).replace("\\", "/"))
 
                         if not os.path.exists(local_path):
-                            full_key = f"{prefix}/{fname}".strip("/") if prefix else fname
                             pub_url = f"{SUPABASE_URL}/storage/v1/object/public/{b_name}/{full_key}"
                             auth_url = f"{SUPABASE_URL}/storage/v1/object/authenticated/{b_name}/{full_key}"
-                            
+
                             file_bytes = None
                             try:
                                 d_req = urllib.request.Request(pub_url, headers=self.headers)
@@ -540,41 +572,79 @@ class BronzeStorageManager:
                                         file_bytes = d_resp.read()
                                 except Exception:
                                     pass
-                            
+
                             if file_bytes:
                                 with open(local_path, "wb") as out_f:
                                     out_f.write(file_bytes)
-                                if fname not in downloaded:
-                                    downloaded.append(fname)
-                                    logger.info(f"Downloaded: {fname} ({len(file_bytes)} bytes)")
+                                if rel_local not in downloaded:
+                                    downloaded.append(rel_local)
+                                    logger.info(f"Downloaded: {rel_local} ({len(file_bytes)} bytes)")
                         else:
-                            if fname not in downloaded:
-                                downloaded.append(fname)
+                            if rel_local not in downloaded:
+                                downloaded.append(rel_local)
                 except Exception as ex:
                     logger.warning(f"Error scanning {b_name}/{prefix}: {ex}")
 
-        existing_local_files = glob.glob(os.path.join(self.local_dir, "*.*"))
-        for loc_f in existing_local_files:
-            bname = os.path.basename(loc_f)
-            if bname not in active_remote_files:
+        for root, dirs, files in os.walk(self.local_dir):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for fname in files:
+                if fname.startswith("."):
+                    continue
+                full_path = os.path.join(root, fname)
+                rel_path = os.path.relpath(full_path, self.local_dir).replace("\\", "/")
+                bname = os.path.basename(full_path)
+                if bname not in active_remote_files and rel_path not in active_remote_files:
+                    try:
+                        os.remove(full_path)
+                        logger.info(f"Purged orphaned file: {rel_path}")
+                    except Exception as ex:
+                        logger.warning(f"Failed to remove orphaned file {full_path}: {ex}")
+
+        for root, dirs, files in os.walk(self.local_dir, topdown=False):
+            if root == self.local_dir:
+                continue
+            if not os.listdir(root):
                 try:
-                    os.remove(loc_f)
-                    logger.info(f"Purged deleted file from disk: {bname}")
-                except Exception as ex:
-                    logger.warning(f"Failed to remove orphaned file {loc_f}: {ex}")
+                    os.rmdir(root)
+                    logger.info(f"Removed empty subfolder: {root}")
+                except Exception:
+                    pass
 
         return list(active_remote_files)
 
+    def _collect_all_files(self) -> List[str]:
+        collected = []
+        for root, dirs, files in os.walk(self.local_dir):
+            dirs[:] = [d for d in sorted(dirs) if not d.startswith(".")]
+            for fname in sorted(files):
+                if fname.startswith("."):
+                    continue
+                ext = os.path.splitext(fname)[1].lower()
+                if ext not in SUPPORTED_EXTENSIONS:
+                    continue
+                full_path = os.path.join(root, fname)
+                collected.append(full_path)
+        return collected
+
+    def _make_doc_id(self, file_path: str) -> str:
+        rel = os.path.relpath(file_path, self.local_dir)
+        rel_norm = rel.replace("\\", "/")
+        if rel_norm == os.path.basename(file_path):
+            return os.path.basename(file_path)
+        parts = rel_norm.split("/")
+        subfolder = "__".join(parts[:-1])
+        return f"{subfolder}__{parts[-1]}"
+
     def get_document_catalog(self) -> List[Dict[str, Any]]:
         catalog = []
-        all_files = glob.glob(os.path.join(self.local_dir, "*.*"))
-        seen_files = set()
+        seen_doc_ids = set()
+        all_files = self._collect_all_files()
 
         for file_path in all_files:
-            fname = os.path.basename(file_path)
-            if fname in seen_files or fname.startswith("."):
+            doc_id = self._make_doc_id(file_path)
+            if doc_id in seen_doc_ids:
                 continue
-            seen_files.add(fname)
+            seen_doc_ids.add(doc_id)
 
             size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
             if size_bytes >= 1024 * 1024:
@@ -593,29 +663,42 @@ class BronzeStorageManager:
                 if len(preview_text) > 300:
                     preview_text = preview_text[:300] + "..."
 
+            fname = os.path.basename(file_path)
+            rel_path = os.path.relpath(file_path, self.local_dir).replace("\\", "/")
             display_title = clean_document_title(fname)
+            if rel_path != fname:
+                folder_label = "/".join(rel_path.split("/")[:-1])
+                display_title = f"{display_title} [{folder_label}]"
 
             catalog.append({
-                "file_name": fname,
+                "file_name": doc_id,
                 "display_name": display_title,
-                "clean_name": re.sub(r'\.[^/.]+$', '', display_title),
+                "clean_name": re.sub(r'\.[^/.]+$', '', clean_document_title(fname)),
                 "total_pages": total_pages,
                 "file_size": size_str,
-                "preview": preview_text or "Tài liệu văn bản số hóa"
+                "preview": preview_text or "Tài liệu văn bản số hóa",
+                "rel_path": rel_path
             })
 
         return catalog
 
     def load_all_documents(self) -> Dict[str, str]:
         corpus: Dict[str, str] = {}
-        all_files = glob.glob(os.path.join(self.local_dir, "*.*"))
-        
+        all_files = self._collect_all_files()
+
         for file_path in all_files:
+            doc_id_prefix = self._make_doc_id(file_path)
             extracted_chunks = extract_text_from_file(file_path)
             for c in extracted_chunks:
-                corpus[c["chunk_id"]] = c["text"]
+                original_chunk_id = c["chunk_id"]
+                base_file = os.path.basename(file_path)
+                if original_chunk_id.startswith(base_file):
+                    new_chunk_id = doc_id_prefix + original_chunk_id[len(base_file):]
+                else:
+                    new_chunk_id = original_chunk_id
+                corpus[new_chunk_id] = c["text"]
 
-        logger.info(f"Loaded {len(corpus)} document chunks from {len(all_files)} files.")
+        logger.info(f"Loaded {len(corpus)} document chunks from {len(all_files)} files (recursive scan).")
         return corpus
 
 

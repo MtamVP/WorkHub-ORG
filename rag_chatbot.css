@@ -435,20 +435,27 @@
   50% { opacity: 0; }
 }
 
+#rag-print-container {
+  display: none;
+}
+
 @media print {
   body * {
     visibility: hidden;
   }
   #rag-print-container, #rag-print-container * {
     visibility: visible;
+    display: block !important;
   }
   #rag-print-container {
-    position: absolute;
+    position: fixed;
     left: 0;
     top: 0;
     width: 100%;
     padding: 20px;
     background: #fff;
     color: #000;
+    z-index: 99999;
   }
 }
+
