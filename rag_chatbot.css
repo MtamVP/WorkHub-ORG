@@ -417,3 +417,38 @@
     min-height: 500px;
   }
 }
+
+/* Typing cursor animation */
+.rag-typing-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  background-color: var(--gold, #d97706);
+  margin-left: 3px;
+  vertical-align: middle;
+  animation: ragBlinkCursor 0.7s infinite;
+  border-radius: 1px;
+}
+
+@keyframes ragBlinkCursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #rag-print-container, #rag-print-container * {
+    visibility: visible;
+  }
+  #rag-print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 20px;
+    background: #fff;
+    color: #000;
+  }
+}

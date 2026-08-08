@@ -662,6 +662,17 @@
               </div>
 
               <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-outline-secondary dropdown-toggle py-1 px-2" type="button" id="rag-export-dropdown-btn" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 11px;">
+                    <i class="fa-solid fa-file-export me-1"></i> Xuất hội thoại
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="rag-export-dropdown-btn" style="font-size: 12px;">
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportRAGChat('markdown')"><i class="fa-brands fa-markdown text-primary me-2"></i> Xuất Markdown (.md)</a></li>
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportRAGChat('txt')"><i class="fa-solid fa-file-lines text-secondary me-2"></i> Xuất Văn bản (.txt)</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportRAGChat('print')"><i class="fa-solid fa-print text-danger me-2"></i> In / Xuất PDF</a></li>
+                  </ul>
+                </div>
                 <button type="button" id="rag-clear-chat-btn" class="btn btn-sm btn-link text-decoration-none text-muted" title="Xóa lịch sử hội thoại">
                   <i class="fa-solid fa-arrows-rotate"></i> Làm mới hội thoại
                 </button>
@@ -688,10 +699,16 @@
             <!-- Khung Nhập Liệu -->
             <div class="rag-input-container">
               <div class="rag-input-controls">
-                <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-3 flex-wrap">
                   <div class="form-check form-switch mb-0">
                     <input class="form-check-input" type="checkbox" id="rag-use-llm-toggle" checked>
                     <label class="form-check-label small" for="rag-use-llm-toggle">Tích hợp AI</label>
+                  </div>
+                  <div class="d-flex align-items-center gap-1">
+                    <label class="small text-muted mb-0" for="rag-focus-doc-select"><i class="fa-solid fa-filter text-primary me-1"></i>Phạm vi:</label>
+                    <select id="rag-focus-doc-select" class="form-select form-select-sm" style="max-width: 180px; padding: 2px 24px 2px 8px; font-size: 12px;">
+                      <option value="all">📁 Tất cả tài liệu</option>
+                    </select>
                   </div>
                   <div class="d-flex align-items-center gap-1">
                     <label class="small text-muted mb-0" for="rag-top-docs-select">Trích dẫn:</label>
@@ -1173,7 +1190,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1786174927502"></script>
+  <script src="/api.js?v=1786178129444"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -1201,8 +1218,8 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1786174927502"></script>
-  <script src="/rag_chatbot.js?v=1786174927502"></script>
+  <script src="/script.js?v=1786178129444"></script>
+  <script src="/rag_chatbot.js?v=1786178129444"></script>
 
   <script>
     function switchTaskView(view) {

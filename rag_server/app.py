@@ -183,14 +183,20 @@ def clean_document_title(raw_name: str) -> str:
 
 
 SYNONYM_EXPANSIONS = {
-    "khoa hoc": ["khoá học", "khóa học", "đào tạo", "chương trình", "bài giảng", "syllabus", "nội dung", "module", "bài học", "học phần"],
-    "lo trinh": ["lộ trình", "kế hoạch", "các giai đoạn", "quy trình", "roadmap", "timeline", "thời gian biểu", "tiến độ"],
-    "chi phi": ["chi phí", "học phí", "giá", "ngân sách", "bảng giá", "thanh toán", "ưu đãi", "học bổng", "tiền"],
-    "tom tat": ["tóm tắt", "tổng quan", "mục lục", "khái quát", "sơ lược", "điểm chính", "kết luận", "toàn văn", "tất cả"],
-    "quy dinh": ["quy định", "chính sách", "điều khoản", "nội quy", "nghĩa vụ", "yêu cầu", "điều kiện", "tiêu chuẩn"],
-    "giang vien": ["giảng viên", "người hướng dẫn", "mentor", "thầy cô", "chuyên gia", "tác giả", "diễn giả"],
-    "thuc hanh": ["thực hành", "bài tập", "dự án", "project", "lab", "bài kiểm tra", "đánh giá", "ứng dụng"],
-    "muc tieu": ["mục tiêu", "chuẩn đầu ra", "kết quả đạt được", "lợi ích", "kiến thức", "kỹ năng"],
+    "khoa hoc": ["khoá học", "khóa học", "đào tạo", "chương trình", "bài giảng", "syllabus", "nội dung", "module", "bài học", "học phần", "chuyên đề"],
+    "lo trinh": ["lộ trình", "kế hoạch", "các giai đoạn", "quy trình", "roadmap", "timeline", "thời gian biểu", "tiến độ", "các bước", "hướng dẫn"],
+    "chi phi": ["chi phí", "học phí", "giá", "ngân sách", "bảng giá", "thanh toán", "ưu đãi", "học bổng", "tiền", "đơn giá", "kinh phí"],
+    "tom tat": ["tóm tắt", "tổng quan", "mục lục", "khái quát", "sơ lược", "điểm chính", "kết luận", "toàn văn", "tất cả", "nội dung chính"],
+    "quy dinh": ["quy định", "chính sách", "điều khoản", "nội quy", "nghĩa vụ", "yêu cầu", "điều kiện", "tiêu chuẩn", "quy chế", "nguyên tắc"],
+    "giang vien": ["giảng viên", "người hướng dẫn", "mentor", "thầy cô", "chuyên gia", "tác giả", "diễn giả", "huấn luyện viên"],
+    "thuc hanh": ["thực hành", "bài tập", "dự án", "project", "lab", "bài kiểm tra", "đánh giá", "ứng dụng", "case study", "thực chiến"],
+    "muc tieu": ["mục tiêu", "chuẩn đầu ra", "kết quả đạt được", "lợi ích", "kiến thức", "kỹ năng", "đầu ra", "kỳ vọng"],
+    "tai chinh": ["tài chính", "doanh thu", "lợi nhuận", "chi tiêu", "dòng tiền", "báo cáo", "kế toán", "ngân sách", "hóa đơn", "thu chi"],
+    "hop dong": ["hợp đồng", "thỏa thuận", "ký kết", "bên a", "bên b", "phụ lục", "cam kết", "nghĩa vụ", "thanh lý"],
+    "bao cao": ["báo cáo", "thống kê", "tổng kết", "đánh giá", "kết quả", "tình hình", "biên bản", "nghiệm thu"],
+    "nhan su": ["nhân sự", "nhân viên", "tuyển dụng", "nhân sự", "chức vụ", "phòng ban", "đãi ngộ", "lương thưởng", "phúc lợi"],
+    "ky nang": ["kỹ năng", "năng lực", "kinh nghiệm", "chuyên môn", "kiến thức", "thành thạo", "hiểu biết"],
+    "cong cu": ["công cụ", "phần mềm", "hệ thống", "nền tảng", "framework", "ngôn ngữ", "thư viện", "công nghệ"]
 }
 
 def remove_vietnamese_accents(text: str) -> str:
@@ -674,14 +680,68 @@ class RAGEngine:
         use_llm: bool = True,
         gemini_api_key: Optional[str] = None,
         history: Optional[List[Dict[str, str]]] = None,
-        catalog: Optional[List[Dict[str, Any]]] = None
+        catalog: Optional[List[Dict[str, Any]]] = None,
+        focus_doc_id: Optional[str] = None
     ) -> Dict[str, Any]:
         if not self.is_ready or not self.corpus:
+            history_text = ""
+            if history and isinstance(history, list) and len(history) > 0:
+                hist_lines = []
+                for h in history[-6:]:
+                    r = "Người dùng" if h.get("role") == "user" else "Ciel (AI)"
+                    hist_lines.append(f"{r}: {h.get('content', '')[:350]}")
+                history_text = "LỊCH SỬ TRÒ CHUYỆN GẦN ĐÂY:\n" + "\n".join(hist_lines)
+
+            general_prompt = f"""Bạn là Ciel - Siêu Trí tuệ Nhân tạo & Cố vấn Tri thức cao cấp của WorkHub.
+Hiện tại kho lưu trữ Bronze Storage đang trống (chưa có tài liệu nào được tải lên).
+
+{history_text}
+
+[CÂU HỎI CỦA NGƯỜI DÙNG]:
+{question}
+
+[QUY TẮC PHẢN HỒI]:
+1. **DÒNG ĐẦU TIÊN**: Luôn bắt đầu bằng dòng ghi chú sau:
+> 💡 *Lưu ý: Do kho Bronze Storage hiện chưa có tài liệu nào, Ciel sẽ giải đáp dựa trên tri thức tổng quát.*
+
+2. **TRẢ LỜI ĐẲNG CẤP & CHI TIẾT**:
+   - Trả lời thẳng vào trọng tâm câu hỏi, phân tích chuyên sâu, mạch lạc và đầy đủ.
+   - Trình bày định dạng Markdown đẹp mắt (tiêu đề ###, gạch đầu dòng, in đậm thuật ngữ, bảng biểu nếu có).
+   
+3. **GỢI Ý CÂU HỎI TIẾP THEO**: Ở dòng cuối cùng, tạo đúng định dạng:
+[GỢI Ý CÂU HỎI TIẾP THEO]:
+- Câu hỏi gợi ý 1?
+- Câu hỏi gợi ý 2?
+- Câu hỏi gợi ý 3?"""
+
+            ans = call_gemini_llm(general_prompt, api_key=gemini_api_key)
+            if not ans:
+                ans = "> 💡 *Lưu ý: Do kho Bronze Storage hiện chưa có tài liệu nào, Ciel sẽ giải đáp dựa trên tri thức tổng quát.*\n\nXin chào! Tôi là Ciel. Hiện tại kho tài liệu chưa có dữ liệu nào được lập chỉ mục. Bạn có thể tải tài liệu lên Bronze Storage để tôi phân tích, hoặc đặt bất kỳ câu hỏi nào để tôi hỗ trợ nhé!"
+
+            suggestions = []
+            if "[GỢI Ý CÂU HỎI TIẾP THEO]:" in ans:
+                parts = ans.split("[GỢI Ý CÂU HỎI TIẾP THEO]:")
+                main_ans = parts[0].strip()
+                sugg_text = parts[1].strip()
+                for line in sugg_text.split("\n"):
+                    clean_s = re.sub(r'^\s*[-*•\d.]+\s*', '', line).strip()
+                    if clean_s and len(clean_s) > 5 and len(clean_s) < 150:
+                        suggestions.append(clean_s)
+                ans = main_ans
+
+            if not suggestions:
+                suggestions = [
+                    "Hướng dẫn cách tải tài liệu lên Bronze Storage",
+                    "WorkHub có những tính năng nào hỗ trợ công việc?",
+                    "Lập kế hoạch làm việc và quản lý thời gian hiệu quả"
+                ]
+
             return {
-                "answer": "Hệ thống chưa có tài liệu nào trong Bronze Storage. Vui lòng tải tài liệu lên để tra cứu.",
+                "answer": ans,
                 "sources": [],
+                "best_doc_id": "",
                 "retrieved_docs": [],
-                "suggestions": []
+                "suggestions": suggestions[:3]
             }
 
         expanded_query = expand_vietnamese_query(question)
@@ -724,11 +784,18 @@ class RAGEngine:
 
         fused_score = {}
         for doc_id in set(bm25_ranks) | set(tfidf_ranks) | set(title_boost):
+            bm25_r = bm25_ranks.get(doc_id, 999)
+            tfidf_r = tfidf_ranks.get(doc_id, 999)
             score = (
-                1.0 / (60.0 + bm25_ranks.get(doc_id, 999)) +
-                1.0 / (60.0 + tfidf_ranks.get(doc_id, 999)) +
+                1.0 / (60.0 + bm25_r) +
+                1.0 / (60.0 + tfidf_r) +
                 title_boost.get(doc_id, 0.0)
             )
+            doc_raw = self.corpus.get(doc_id, "")
+            doc_norm = remove_vietnamese_accents(doc_raw)
+            for key_term in [w for w in q_norm.split() if len(w) > 2]:
+                if key_term in doc_norm:
+                    score += 0.003
             fused_score[doc_id] = score
 
         ranked_doc_ids = [
@@ -736,17 +803,27 @@ class RAGEngine:
             for doc_id, _ in sorted(fused_score.items(), key=lambda x: (x[1], x[0]), reverse=True)[:top_k_docs]
         ]
 
-        if not ranked_doc_ids:
-            return {
-                "answer": "Không tìm thấy thông tin phù hợp trong kho tài liệu.",
-                "sources": [],
-                "retrieved_docs": [],
-                "suggestions": []
-            }
+        if focus_doc_id and focus_doc_id.strip() and focus_doc_id.strip().lower() != "all":
+            clean_focus = focus_doc_id.strip()
+            focus_chunks = self.file_to_chunks.get(clean_focus, [])
+            if not focus_chunks:
+                for f_key in self.file_to_chunks.keys():
+                    if clean_focus.lower() in f_key.lower() or f_key.lower() in clean_focus.lower():
+                        focus_chunks = self.file_to_chunks[f_key]
+                        clean_focus = f_key
+                        break
 
-        active_parent_files = list(dict.fromkeys([d.split("#")[0] for d in ranked_doc_ids]))
-        other_files = [f for f in self.file_to_chunks.keys() if f not in active_parent_files]
-        all_ordered_files = active_parent_files + other_files
+            if focus_chunks:
+                ranked_doc_ids = focus_chunks[:top_k_docs]
+                all_ordered_files = [clean_focus]
+            else:
+                active_parent_files = list(dict.fromkeys([d.split("#")[0] for d in ranked_doc_ids]))
+                other_files = [f for f in self.file_to_chunks.keys() if f not in active_parent_files]
+                all_ordered_files = active_parent_files + other_files
+        else:
+            active_parent_files = list(dict.fromkeys([d.split("#")[0] for d in ranked_doc_ids]))
+            other_files = [f for f in self.file_to_chunks.keys() if f not in active_parent_files]
+            all_ordered_files = active_parent_files + other_files
 
         context_blocks = []
         for p_file in all_ordered_files:
@@ -815,7 +892,9 @@ Dưới đây là TOÀN BỘ dữ liệu tài liệu nội bộ đã được s�
    - In đậm (**từ khóa, thuật ngữ**) quan trọng.
    - Sử dụng bảng biểu Markdown (`| Cột 1 | Cột 2 |`) nếu có danh sách khóa học, bảng giá, so sánh hoặc mốc tiến độ.
    - Gạch đầu dòng rõ ràng, dễ theo dõi.
-4. **TRÍCH DẪN NGUỒN**: Nêu rõ thông tin được trích xuất từ tài liệu nào và số trang tương ứng.
+4. **TRÍCH DẪN & XỬ LÝ CÂU HỎI NGOÀI TÀI LIỆU**:
+   - Nếu câu hỏi liên quan đến tài liệu: Nêu rõ thông tin được trích xuất từ tài liệu nào và số trang tương ứng.
+   - Nếu câu hỏi là kiến thức chung, chào hỏi, toán, lập trình hoặc không có trong tài liệu: Hãy trả lời đầy đủ, chi tiết và thông minh dựa trên tri thức tổng quát của bạn (kèm ghi chú: `> 💡 *Lưu ý: Nội dung này được giải đáp từ tri thức tổng quát do không có trong tài liệu lưu trữ.*`).
 5. **GỢI Ý CÂU HỎI TIẾP THEO**: Ở dòng cuối cùng của câu trả lời, hãy tạo đúng định dạng sau với 3 câu hỏi gợi ý thông minh nhất để người dùng khám phá sâu hơn:
 [GỢI Ý CÂU HỎI TIẾP THEO]:
 - Câu hỏi gợi ý 1?
@@ -908,6 +987,7 @@ class ChatQueryRequest(BaseModel):
     use_llm: Optional[bool] = True
     gemini_api_key: Optional[str] = None
     history: Optional[List[Dict[str, str]]] = []
+    focus_doc_id: Optional[str] = None
 
 
 class SyncRequest(BaseModel):
@@ -956,7 +1036,8 @@ def chat_endpoint(req: ChatQueryRequest):
         use_llm=should_use_llm,
         gemini_api_key=req.gemini_api_key,
         history=req.history or [],
-        catalog=catalog
+        catalog=catalog,
+        focus_doc_id=req.focus_doc_id
     )
     return {
         "success": True,
@@ -1000,6 +1081,50 @@ def list_documents():
         "total": len(catalog),
         "items": catalog
     }
+
+
+@app.get("/api/documents/page")
+def get_document_page(doc_id: str):
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="Thiếu doc_id")
+    
+    clean_target = doc_id.strip()
+    
+    if clean_target in rag_engine.corpus:
+        parts = clean_target.split("#")
+        clean_file = clean_document_title(parts[0])
+        page_info = parts[1].replace("_", " ") if len(parts) > 1 else "Toàn văn"
+        return {
+            "success": True,
+            "doc_id": clean_target,
+            "display_name": f"{clean_file} ({page_info})",
+            "text": rag_engine.corpus[clean_target]
+        }
+    
+    for c_id, text in rag_engine.corpus.items():
+        if clean_target.lower() in c_id.lower() or c_id.lower() in clean_target.lower():
+            parts = c_id.split("#")
+            clean_file = clean_document_title(parts[0])
+            page_info = parts[1].replace("_", " ") if len(parts) > 1 else "Toàn văn"
+            return {
+                "success": True,
+                "doc_id": c_id,
+                "display_name": f"{clean_file} ({page_info})",
+                "text": text
+            }
+
+    for fname, chunks in rag_engine.file_to_chunks.items():
+        if clean_target.lower() in fname.lower() or fname.lower() in clean_target.lower():
+            full_texts = [rag_engine.corpus.get(c, "") for c in chunks if rag_engine.corpus.get(c, "")]
+            clean_file = clean_document_title(fname)
+            return {
+                "success": True,
+                "doc_id": fname,
+                "display_name": clean_file,
+                "text": "\n\n--- Phân đoạn tiếp theo ---\n\n".join(full_texts)
+            }
+
+    raise HTTPException(status_code=404, detail="Không tìm thấy nội dung trang tài liệu yêu cầu.")
 
 
 if __name__ == "__main__":

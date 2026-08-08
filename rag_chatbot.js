@@ -203,6 +203,20 @@ async function loadRAGDocumentsList() {
     const items = data.items || [];
     renderDynamicPrompts(items);
 
+    const focusSelect = document.getElementById('rag-focus-doc-select');
+    if (focusSelect) {
+      const currentVal = focusSelect.value;
+      focusSelect.innerHTML = `<option value="all">📁 Tất cả tài liệu</option>`;
+      items.forEach(doc => {
+        const displayName = doc.display_name || cleanDocumentTitle(doc.file_name || doc.doc_id);
+        const opt = document.createElement('option');
+        opt.value = doc.file_name || doc.doc_id || displayName;
+        opt.textContent = `📄 ${displayName}`;
+        if (opt.value === currentVal) opt.selected = true;
+        focusSelect.appendChild(opt);
+      });
+    }
+
     if (!container) return;
 
     if (items.length === 0) {
@@ -241,8 +255,16 @@ function renderDynamicPrompts(items) {
 
   if (!items || items.length === 0) {
     container.innerHTML = `
-      <span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý:</span>
-      <span class="text-muted small align-self-center fst-italic">Chưa có tài liệu. Nhấn <b>"Đồng bộ dữ liệu"</b> để tạo câu hỏi gợi ý.</span>
+      <span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý chung:</span>
+      <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Ciel là ai và có thể giúp gì cho tôi trong WorkHub?')">
+        <i class="fa-solid fa-sparkles text-primary me-1"></i> Ciel có thể giúp gì?
+      </button>
+      <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Hướng dẫn cách tải tài liệu lên Bronze Storage để Ciel phân tích dữ liệu')">
+        <i class="fa-solid fa-cloud-arrow-up text-primary me-1"></i> Tải tài liệu lên Storage
+      </button>
+      <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Lập kế hoạch công việc và quản lý thời gian hiệu quả trong tuần')">
+        <i class="fa-solid fa-calendar-check text-primary me-1"></i> Lập kế hoạch tuần
+      </button>
     `;
     return;
   }
@@ -291,9 +313,11 @@ async function handleSendRAGQuery() {
 
   const topDocsSelect = document.getElementById('rag-top-docs-select');
   const useLlmCheckbox = document.getElementById('rag-use-llm-toggle');
+  const focusDocSelect = document.getElementById('rag-focus-doc-select');
 
   const topDocs = topDocsSelect ? parseInt(topDocsSelect.value, 10) : 5;
   const useLLM = useLlmCheckbox ? useLlmCheckbox.checked : true;
+  const focusDocId = focusDocSelect ? focusDocSelect.value : 'all';
 
   appendUserMessage(question, true);
   inputEl.value = '';
@@ -313,7 +337,8 @@ async function handleSendRAGQuery() {
         top_docs: topDocs,
         use_llm: useLLM,
         gemini_api_key: geminiApiKey || undefined,
-        history: ragChatHistory.slice(-6)
+        history: ragChatHistory.slice(-6),
+        focus_doc_id: focusDocId !== 'all' ? focusDocId : undefined
       })
     });
 
@@ -332,7 +357,7 @@ async function handleSendRAGQuery() {
     }
 
     removeLoadingMessage(loadingMsgId);
-    appendAssistantMessage(result.answer, result.sources, result.retrieved_docs, result.suggestions, true);
+    await streamAssistantMessage(result.answer, result.sources, result.retrieved_docs, result.suggestions, true);
     saveChatToLocalStorage();
 
     renderQueryInspector(question, result);
@@ -370,6 +395,23 @@ function appendUserMessage(text, shouldSave = true) {
     savedMessages.push({ type: 'user', text });
     saveChatToLocalStorage();
   }
+}
+
+function buildAssistantHTML(msgUniqueId, formattedContent, sourcesHtml, suggestionsHtml) {
+  return `
+    <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
+    <div class="rag-msg-bubble position-relative">
+      <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light-subtle">
+        <span class="small fw-bold text-primary" style="font-size: 11px;"><i class="fa-solid fa-brain me-1"></i> Ciel</span>
+        <button type="button" class="btn btn-sm text-muted p-0 border-0" title="Sao chép câu trả lời" onclick="copyMessageText('${msgUniqueId}', this)">
+          <i class="fa-regular fa-copy" style="font-size: 12px;"></i>
+        </button>
+      </div>
+      <div id="${msgUniqueId}" class="rag-msg-text mb-2">${formattedContent}</div>
+      ${sourcesHtml}
+      ${suggestionsHtml}
+    </div>
+  `;
 }
 
 function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], suggestions = [], shouldSave = true) {
@@ -410,23 +452,92 @@ function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], 
   }
 
   const msgUniqueId = `msg-${Date.now()}`;
-
-  msgDiv.innerHTML = `
-    <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
-    <div class="rag-msg-bubble position-relative">
-      <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light-subtle">
-        <span class="small fw-bold text-primary" style="font-size: 11px;"><i class="fa-solid fa-brain me-1"></i> Ciel</span>
-        <button type="button" class="btn btn-sm text-muted p-0 border-0" title="Sao chép câu trả lời" onclick="copyMessageText('${msgUniqueId}', this)">
-          <i class="fa-regular fa-copy" style="font-size: 12px;"></i>
-        </button>
-      </div>
-      <div id="${msgUniqueId}" class="rag-msg-text mb-2">${formatMarkdown(markdownText)}</div>
-      ${sourcesHtml}
-      ${suggestionsHtml}
-    </div>
-  `;
+  msgDiv.innerHTML = buildAssistantHTML(msgUniqueId, formatMarkdown(markdownText), sourcesHtml, suggestionsHtml);
   area.appendChild(msgDiv);
   area.scrollTop = area.scrollHeight;
+
+  if (shouldSave) {
+    savedMessages.push({
+      type: 'assistant',
+      text: markdownText,
+      sources,
+      retrievedDocs,
+      suggestions
+    });
+    saveChatToLocalStorage();
+  }
+}
+
+async function streamAssistantMessage(markdownText, sources = [], retrievedDocs = [], suggestions = [], shouldSave = true) {
+  const area = document.getElementById('rag-messages-area');
+  if (!area) {
+    appendAssistantMessage(markdownText, sources, retrievedDocs, suggestions, shouldSave);
+    return;
+  }
+
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'rag-message assistant';
+
+  let sourcesHtml = '';
+  if (sources && sources.length > 0) {
+    sourcesHtml = `
+      <div class="rag-citation-box">
+        <div class="rag-citation-header"><i class="fa-solid fa-bookmark text-primary"></i> Trích dẫn từ Bronze Storage:</div>
+        <div>
+          ${sources.map(s => `<span class="rag-source-tag" onclick="showSourceSnippet('${escapeHTML(s)}')"><i class="fa-solid fa-file-lines"></i> ${escapeHTML(s)}</span>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  let suggestionsHtml = '';
+  if (suggestions && suggestions.length > 0) {
+    suggestionsHtml = `
+      <div class="rag-suggestions-box mt-3 pt-2 border-top border-light-subtle">
+        <div class="small fw-semibold text-primary mb-2" style="font-size: 11px;">
+          <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Câu hỏi gợi ý tiếp theo:
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          ${suggestions.map(sugg => `
+            <button type="button" class="btn btn-sm btn-light border rounded-pill text-start py-1 px-2 shadow-sm text-secondary" style="font-size: 11px; transition: all 0.2s;" onmouseover="this.classList.add('border-primary', 'text-primary')" onmouseout="this.classList.remove('border-primary', 'text-primary')" onclick="sendQuickPrompt('${escapeHTML(sugg)}')">
+              <i class="fa-regular fa-comment-dots text-primary me-1"></i> ${escapeHTML(sugg)}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  const msgUniqueId = `msg-${Date.now()}`;
+  msgDiv.innerHTML = buildAssistantHTML(msgUniqueId, `<span class="rag-typing-cursor"></span>`, '', '');
+  area.appendChild(msgDiv);
+
+  const textEl = msgDiv.querySelector(`#${msgUniqueId}`);
+  const totalLength = markdownText.length;
+  const chunkSize = totalLength > 1500 ? 12 : (totalLength > 600 ? 6 : 3);
+  let currentIndex = 0;
+
+  await new Promise((resolve) => {
+    const interval = setInterval(() => {
+      currentIndex += chunkSize;
+      if (currentIndex >= totalLength) {
+        currentIndex = totalLength;
+        clearInterval(interval);
+        if (textEl) {
+          textEl.innerHTML = formatMarkdown(markdownText);
+        }
+        msgDiv.innerHTML = buildAssistantHTML(msgUniqueId, formatMarkdown(markdownText), sourcesHtml, suggestionsHtml);
+        area.scrollTop = area.scrollHeight;
+        resolve();
+      } else {
+        const currentSlice = markdownText.slice(0, currentIndex);
+        if (textEl) {
+          textEl.innerHTML = formatMarkdown(currentSlice) + `<span class="rag-typing-cursor"></span>`;
+        }
+        area.scrollTop = area.scrollHeight;
+      }
+    }, 15);
+  });
 
   if (shouldSave) {
     savedMessages.push({
@@ -545,16 +656,63 @@ function renderQueryInspector(query, result) {
   container.innerHTML = html;
 }
 
-function showSourceSnippet(docId) {
-  if (typeof Swal !== 'undefined') {
+async function showSourceSnippet(docId) {
+  if (typeof Swal === 'undefined') {
+    alert(`Nguồn trích dẫn: ${docId}`);
+    return;
+  }
+
+  Swal.fire({
+    title: `<i class="fa-solid fa-file-lines text-primary me-2"></i> ${escapeHTML(docId)}`,
+    html: `<div class="d-flex align-items-center justify-content-center p-4"><i class="fa-solid fa-spinner fa-spin fa-2x text-primary"></i> <span class="ms-2">Đang nạp toàn văn trang tài liệu...</span></div>`,
+    showConfirmButton: false,
+    width: '680px'
+  });
+
+  try {
+    const res = await fetch(`${RAG_API_BASE}/api/documents/page?doc_id=${encodeURIComponent(docId)}`);
+    if (!res.ok) throw new Error('Không thể nạp nội dung chi tiết');
+    const data = await res.json();
+    
+    let contentText = data.text || 'Không có nội dung văn bản.';
+    let highlightedHtml = escapeHTML(contentText);
+
+    const activeQuestion = ragChatHistory && ragChatHistory.length > 0 
+      ? ragChatHistory[ragChatHistory.length - (ragChatHistory[ragChatHistory.length - 1].role === 'user' ? 1 : 2)]?.content || ''
+      : '';
+
+    if (activeQuestion) {
+      const words = activeQuestion.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      words.forEach(w => {
+        try {
+          const reg = new RegExp(`(${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+          highlightedHtml = highlightedHtml.replace(reg, '<mark class="bg-warning-subtle text-dark px-1 rounded fw-semibold">$1</mark>');
+        } catch (e) {}
+      });
+    }
+
+    Swal.fire({
+      title: `<div class="d-flex align-items-center gap-2"><i class="fa-solid fa-file-shield text-primary"></i> <span>${escapeHTML(data.display_name || docId)}</span></div>`,
+      html: `
+        <div class="text-start mb-2 small text-muted">
+          <i class="fa-solid fa-circle-info text-info me-1"></i> Nội dung thực tế được trích từ tài liệu Bronze Storage:
+        </div>
+        <div class="text-start p-3 bg-light rounded font-monospace border" style="max-height: 420px; overflow-y: auto; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">
+          ${highlightedHtml}
+        </div>
+      `,
+      icon: 'info',
+      confirmButtonText: 'Đóng',
+      confirmButtonColor: '#2563eb',
+      width: '720px'
+    });
+  } catch (err) {
     Swal.fire({
       title: `<i class="fa-solid fa-file-lines text-primary me-2"></i> ${escapeHTML(docId)}`,
-      text: `Trích xuất từ kho dữ liệu Bronze Storage.`,
+      html: `<div class="text-start text-muted p-2">Trích xuất từ kho dữ liệu Bronze Storage.<br><small class="text-secondary fst-italic">(${escapeHTML(err.message)})</small></div>`,
       icon: 'info',
       confirmButtonText: 'Đóng'
     });
-  } else {
-    alert(`Nguồn: ${docId}`);
   }
 }
 
@@ -604,4 +762,114 @@ function escapeHTML(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function exportRAGChat(format = 'markdown') {
+  if (!savedMessages || savedMessages.length === 0) {
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: 'Chưa có nội dung',
+        text: 'Lịch sử hội thoại hiện đang trống để có thể xuất file.',
+        icon: 'warning',
+        confirmButtonText: 'Đã hiểu'
+      });
+    } else {
+      alert('Lịch sử hội thoại hiện đang trống.');
+    }
+    return;
+  }
+
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const filenameBase = `WorkHub_RAG_Chat_${timestamp}`;
+
+  if (format === 'markdown') {
+    let mdContent = `# Báo Cáo Hội Thoại Tri Thức - WorkHub RAG (Ciel AI)\n`;
+    mdContent += `*Thời gian xuất:* ${new Date().toLocaleString('vi-VN')}\n\n---\n\n`;
+
+    savedMessages.forEach((msg, idx) => {
+      if (msg.type === 'user') {
+        mdContent += `### 👤 Người dùng:\n${msg.text}\n\n`;
+      } else {
+        mdContent += `### 🧠 Ciel (AI Assistant):\n${msg.text}\n\n`;
+        if (msg.sources && msg.sources.length > 0) {
+          mdContent += `> **Trích dẫn nguồn:** ${msg.sources.join(', ')}\n\n`;
+        }
+        if (msg.suggestions && msg.suggestions.length > 0) {
+          mdContent += `*Câu hỏi gợi ý:* ${msg.suggestions.join(' | ')}\n\n`;
+        }
+      }
+      mdContent += `---\n\n`;
+    });
+
+    const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${filenameBase}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } else if (format === 'txt') {
+    let txtContent = `========================================================\nBÁO CÁO HỘI THOẠI TRI THỨC WORKHUB (CIEL AI)\nThời gian xuất: ${new Date().toLocaleString('vi-VN')}\n========================================================\n\n`;
+
+    savedMessages.forEach((msg) => {
+      if (msg.type === 'user') {
+        txtContent += `[NGƯỜI DÙNG]:\n${msg.text}\n\n`;
+      } else {
+        txtContent += `[CIEL AI]:\n${msg.text}\n`;
+        if (msg.sources && msg.sources.length > 0) {
+          txtContent += `[NGUỒN TRÍCH DẪN]: ${msg.sources.join(', ')}\n`;
+        }
+        txtContent += `\n--------------------------------------------------------\n\n`;
+      }
+    });
+
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${filenameBase}.txt`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } else if (format === 'print') {
+    let existingPrintDiv = document.getElementById('rag-print-container');
+    if (!existingPrintDiv) {
+      existingPrintDiv = document.createElement('div');
+      existingPrintDiv.id = 'rag-print-container';
+      document.body.appendChild(existingPrintDiv);
+    }
+
+    let printHtml = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
+        <h2 style="color: #b45309; border-bottom: 2px solid #b45309; padding-bottom: 8px;">WorkHub - Báo Cáo Truy Xuất Tri Thức (Ciel AI)</h2>
+        <p style="font-size: 12px; color: #666;">Ngày in: ${new Date().toLocaleString('vi-VN')}</p>
+        <hr style="margin-bottom: 20px;">
+    `;
+
+    savedMessages.forEach((msg) => {
+      if (msg.type === 'user') {
+        printHtml += `
+          <div style="margin-bottom: 14px; background: #fef3c7; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #d97706;">
+            <strong>👤 Người dùng:</strong>
+            <p style="margin: 4px 0 0 0; white-space: pre-wrap;">${escapeHTML(msg.text)}</p>
+          </div>
+        `;
+      } else {
+        printHtml += `
+          <div style="margin-bottom: 18px; background: #f8fafc; padding: 12px 14px; border-radius: 6px; border-left: 4px solid #2563eb; border: 1px solid #e2e8f0;">
+            <strong style="color: #1d4ed8;">🧠 Ciel (AI):</strong>
+            <div style="margin-top: 6px;">${formatMarkdown(msg.text)}</div>
+            ${msg.sources && msg.sources.length > 0 ? `<div style="font-size: 11px; color: #475569; margin-top: 8px;"><b>Nguồn trích dẫn:</b> ${escapeHTML(msg.sources.join(', '))}</div>` : ''}
+          </div>
+        `;
+      }
+    });
+
+    printHtml += `</div>`;
+    existingPrintDiv.innerHTML = printHtml;
+    window.print();
+  }
 }
