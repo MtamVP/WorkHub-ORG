@@ -110,20 +110,24 @@ async function syncBronzeStorage() {
 
 async function loadRAGDocumentsList() {
   const container = document.getElementById('rag-documents-list-container');
-  if (!container) return;
 
   try {
     const res = await fetch(`${RAG_API_BASE}/api/documents`);
     if (!res.ok) throw new Error('Không thể tải tài liệu');
     const data = await res.json();
 
-    if (!data.items || data.items.length === 0) {
-      container.innerHTML = `<div class="text-muted small text-center py-3">Chưa có tài liệu. Nhấn "Đồng bộ" để tải.</div>`;
+    const items = data.items || [];
+    renderDynamicPrompts(items);
+
+    if (!container) return;
+
+    if (items.length === 0) {
+      container.innerHTML = `<div class="text-muted small text-center py-3">Chưa có tài liệu trong Bronze Storage.<br>Nhấn <b>"Đồng bộ dữ liệu"</b> để tải.</div>`;
       return;
     }
 
     let html = '';
-    data.items.forEach(doc => {
+    items.forEach(doc => {
       html += `
         <div class="rag-doc-item" onclick="viewRAGDocumentDetail('${encodeURIComponent(doc.doc_id)}', '${encodeURIComponent(doc.preview)}')">
           <div class="rag-doc-item-title">
@@ -135,8 +139,50 @@ async function loadRAGDocumentsList() {
     });
     container.innerHTML = html;
   } catch (err) {
-    container.innerHTML = `<div class="text-muted small text-center py-3">Chưa có tài liệu.</div>`;
+    renderDynamicPrompts([]);
+    if (container) container.innerHTML = `<div class="text-muted small text-center py-3">Không thể kết nối danh sách tài liệu.</div>`;
   }
+}
+
+function renderDynamicPrompts(items) {
+  const container = document.getElementById('rag-quick-prompts-container');
+  if (!container) return;
+
+  if (!items || items.length === 0) {
+    container.innerHTML = `
+      <span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý:</span>
+      <span class="text-muted small align-self-center fst-italic">Chưa có tài liệu. Nhấn <b>"Đồng bộ dữ liệu"</b> để tạo câu hỏi gợi ý từ kho Bronze.</span>
+    `;
+    return;
+  }
+
+  const uniqueDocs = [];
+  const seen = new Set();
+
+  items.forEach(doc => {
+    let cleanName = doc.doc_id.split('_article_')[0].split('_chunk_')[0].split('__')[0];
+    cleanName = cleanName.replace(/\.[^/.]+$/, "");
+    if (!seen.has(cleanName) && cleanName.trim()) {
+      seen.add(cleanName);
+      uniqueDocs.push({
+        rawId: doc.doc_id,
+        cleanName: cleanName.replace(/_/g, ' ')
+      });
+    }
+  });
+
+  let html = `<span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý theo tài liệu:</span>`;
+
+  uniqueDocs.slice(0, 4).forEach((doc) => {
+    const question = `Tóm tắt nội dung chính và các điểm quan trọng trong tài liệu ${doc.cleanName}?`;
+    html += `
+      <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('${escapeHTML(question)}')">
+        📄 ${escapeHTML(doc.cleanName)}
+      </button>
+    `;
+  });
+
+  container.innerHTML = html;
 }
 
 async function handleSendRAGQuery() {

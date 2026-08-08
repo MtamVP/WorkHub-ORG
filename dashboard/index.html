@@ -668,18 +668,10 @@
               </div>
             </div>
 
-            <!-- Gợi ý câu hỏi nhanh -->
-            <div class="rag-quick-prompts">
+            <!-- Gợi ý câu hỏi nhanh (Tự động sinh từ tài liệu thực tế trong Bronze Storage) -->
+            <div id="rag-quick-prompts-container" class="rag-quick-prompts">
               <span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý:</span>
-              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Quy định về quyền và nghĩa vụ trong tài liệu nội bộ?')">
-                📋 Quy định & Trách nhiệm
-              </button>
-              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Tóm tắt các nội dung và số liệu chính trong báo cáo?')">
-                📊 Tóm tắt số liệu & Nội dung chính
-              </button>
-              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Phạm vi áp dụng và đối tượng điều chỉnh của văn bản?')">
-                ⚖️ Phạm vi & Đối tượng áp dụng
-              </button>
+              <span class="text-muted small align-self-center fst-italic">Đang tải gợi ý từ tài liệu...</span>
             </div>
 
             <!-- Luồng Tin Nhắn (Message Stream) -->
@@ -688,7 +680,7 @@
                 <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
                 <div class="rag-msg-bubble">
                   Xin chào! Tôi là Trợ lý AI của WorkHub.<br><br>
-                  Tôi có thể hỗ trợ bạn tra cứu văn bản, quy định, dữ liệu và báo cáo lưu trữ trên hệ thống. Hãy nhập câu hỏi hoặc chọn các gợi ý bên dưới để bắt đầu.
+                  Hãy lấp đầy tôi bằng những câu hỏi đen tối của bạn đi hehe!
                 </div>
               </div>
             </div>
@@ -699,7 +691,7 @@
                 <div class="d-flex align-items-center gap-3">
                   <div class="form-check form-switch mb-0">
                     <input class="form-check-input" type="checkbox" id="rag-use-llm-toggle" checked>
-                    <label class="form-check-label small" for="rag-use-llm-toggle">Tổng hợp thông minh (AI)</label>
+                    <label class="form-check-label small" for="rag-use-llm-toggle">Tích hợp AI</label>
                   </div>
                   <div class="d-flex align-items-center gap-1">
                     <label class="small text-muted mb-0" for="rag-top-docs-select">Trích dẫn:</label>
@@ -774,7 +766,7 @@
                   <option value="guest">Guest</option>
                   <option value="finance">Finance</option>
                   <option value="science">Science</option>
-                  <option value="all">All (Toàn quyền)</option>
+                  <option value="all">All</option>
                 </select>
               </div>
               <div class="col-4 col-md-2">
