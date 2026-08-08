@@ -785,7 +785,7 @@ Hiện tại kho lưu trữ Bronze Storage đang trống (chưa có tài liệu 
 
 [QUY TẮC PHẢN HỒI]:
 1. **DÒNG ĐẦU TIÊN**: Luôn bắt đầu bằng dòng ghi chú sau:
-> 💡 *Lưu ý: Do kho Bronze Storage hiện chưa có tài liệu nào, Ciel sẽ giải đáp dựa trên tri thức tổng quát.*
+> 💡 *Lưu ý: Do kho Bronze Storage hiện chưa có tài liệu nào, Ciel sẽ giải đáp dựa trên AI.*
 
 2. **TRẢ LỜI ĐẲNG CẤP & CHI TIẾT**:
    - Trả lời thẳng vào trọng tâm câu hỏi, phân tích chuyên sâu, mạch lạc và đầy đủ.
@@ -799,7 +799,7 @@ Hiện tại kho lưu trữ Bronze Storage đang trống (chưa có tài liệu 
 
             ans = call_gemini_llm(general_prompt, api_key=gemini_api_key)
             if not ans:
-                ans = "> 💡 *Lưu ý: Do kho Bronze Storage hiện chưa có tài liệu nào, Ciel sẽ giải đáp dựa trên tri thức tổng quát.*\n\nXin chào! Tôi là Ciel. Hiện tại kho tài liệu chưa có dữ liệu nào được lập chỉ mục. Bạn có thể tải tài liệu lên Bronze Storage để tôi phân tích, hoặc đặt bất kỳ câu hỏi nào để tôi hỗ trợ nhé!"
+                ans = "> 💡 *Lưu ý: Do kho Bronze Storage hiện chưa có tài liệu nào, Ciel sẽ giải đáp dựa trên AI.*\n\nXin chào! Tôi là Ciel. Hiện tại kho tài liệu chưa có dữ liệu nào được lập chỉ mục. Bạn có thể tải tài liệu lên Bronze Storage để tôi phân tích, hoặc đặt bất kỳ câu hỏi nào để tôi hỗ trợ nhé!"
 
             suggestions = []
             if "[GỢI Ý CÂU HỎI TIẾP THEO]:" in ans:
@@ -977,7 +977,7 @@ Dưới đây là TOÀN BỘ dữ liệu tài liệu nội bộ đã được s�
    - Gạch đầu dòng rõ ràng, dễ theo dõi.
 4. **TRÍCH DẪN & XỬ LÝ CÂU HỎI NGOÀI TÀI LIỆU**:
    - Nếu câu hỏi liên quan đến tài liệu: Nêu rõ thông tin được trích xuất từ tài liệu nào và số trang tương ứng.
-   - Nếu câu hỏi là kiến thức chung, chào hỏi, toán, lập trình hoặc không có trong tài liệu: Hãy trả lời đầy đủ, chi tiết và thông minh dựa trên tri thức tổng quát của bạn (kèm ghi chú: `> 💡 *Lưu ý: Nội dung này được giải đáp từ tri thức tổng quát do không có trong tài liệu lưu trữ.*`).
+   - Nếu câu hỏi là kiến thức chung, chào hỏi, toán, lập trình hoặc không có trong tài liệu: Hãy trả lời đầy đủ, chi tiết và thông minh dựa trên AI của bạn (kèm ghi chú: `> 💡 *Lưu ý: Nội dung này được giải đáp từ AI do không có trong tài liệu lưu trữ.*`).
 5. **GỢI Ý CÂU HỎI TIẾP THEO**: Ở dòng cuối cùng của câu trả lời, hãy tạo đúng định dạng sau với 3 câu hỏi gợi ý thông minh nhất để người dùng khám phá sâu hơn:
 [GỢI Ý CÂU HỎI TIẾP THEO]:
 - Câu hỏi gợi ý 1?
