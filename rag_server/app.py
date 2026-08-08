@@ -5,6 +5,8 @@ import json
 import glob
 import time
 import csv
+import urllib.request
+import urllib.error
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
