@@ -303,44 +303,16 @@ class BronzeStorageManager:
     def __init__(self, local_dir: str = LOCAL_CORPUS_DIR):
         self.local_dir = local_dir
         os.makedirs(self.local_dir, exist_ok=True)
-        self.supabase_client = None
-        if SUPABASE_URL and SUPABASE_KEY:
-            try:
-                from supabase import create_client
-                self.supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-            except Exception:
-                self.supabase_client = None
+        self.headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"
+        }
 
     def sync_from_supabase(self, bucket_name: str = BRONZE_BUCKET) -> List[str]:
         downloaded = []
-        if not self.supabase_client:
+        if not SUPABASE_URL or not SUPABASE_KEY:
             return downloaded
-
-        try:
-            res = self.supabase_client.from_("files").select("*").execute()
-            rows = res.data if res and hasattr(res, "data") else []
-            for row in rows:
-                name = row.get("name")
-                storage_path = row.get("storage_path") or ""
-                if not storage_path or not name:
-                    continue
-                
-                parts = storage_path.split("/", 1)
-                b_name = parts[0]
-                inner_path = parts[1] if len(parts) > 1 else name
-
-                try:
-                    data = self.supabase_client.storage.from_(b_name).download(inner_path)
-                    safe_name = name.replace("/", "_").replace("\\", "_")
-                    local_path = os.path.join(self.local_dir, safe_name)
-                    with open(local_path, "wb") as out_f:
-                        out_f.write(data)
-                    if safe_name not in downloaded:
-                        downloaded.append(safe_name)
-                except Exception:
-                    pass
-        except Exception:
-            pass
 
         target_buckets = ["general_bucket", "finance_bucket", "science_bucket", "bronze_storage"]
         if bucket_name and bucket_name not in target_buckets:
@@ -349,25 +321,73 @@ class BronzeStorageManager:
         for b_name in target_buckets:
             for prefix in ["bronze", ""]:
                 try:
-                    file_list = self.supabase_client.storage.from_(b_name).list(prefix)
+                    list_url = f"{SUPABASE_URL}/storage/v1/object/list/{b_name}"
+                    req = urllib.request.Request(
+                        list_url,
+                        data=json.dumps({"prefix": prefix, "limit": 100, "offset": 0}).encode("utf-8"),
+                        headers=self.headers,
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        file_list = json.loads(resp.read().decode("utf-8"))
+
                     for f in file_list:
                         fname = f.get("name")
-                        if not fname or fname.startswith("."):
+                        if not fname or fname.startswith(".") or fname == "bronze":
                             continue
                         
-                        full_storage_key = f"{prefix}/{fname}".strip("/") if prefix else fname
-                        if f.get("id") is not None or "." in fname:
+                        full_key = f"{prefix}/{fname}".strip("/") if prefix else fname
+                        pub_url = f"{SUPABASE_URL}/storage/v1/object/public/{b_name}/{full_key}"
+                        auth_url = f"{SUPABASE_URL}/storage/v1/object/authenticated/{b_name}/{full_key}"
+                        
+                        file_bytes = None
+                        try:
+                            d_req = urllib.request.Request(pub_url, headers=self.headers)
+                            with urllib.request.urlopen(d_req, timeout=20) as d_resp:
+                                file_bytes = d_resp.read()
+                        except Exception:
                             try:
-                                data = self.supabase_client.storage.from_(b_name).download(full_storage_key)
-                                local_path = os.path.join(self.local_dir, fname)
-                                with open(local_path, "wb") as out_f:
-                                    out_f.write(data)
-                                if fname not in downloaded:
-                                    downloaded.append(fname)
+                                d_req = urllib.request.Request(auth_url, headers=self.headers)
+                                with urllib.request.urlopen(d_req, timeout=20) as d_resp:
+                                    file_bytes = d_resp.read()
                             except Exception:
                                 pass
+                        
+                        if file_bytes:
+                            local_path = os.path.join(self.local_dir, fname)
+                            with open(local_path, "wb") as out_f:
+                                out_f.write(file_bytes)
+                            if fname not in downloaded:
+                                downloaded.append(fname)
                 except Exception:
                     pass
+
+        try:
+            tbl_url = f"{SUPABASE_URL}/rest/v1/files?select=*"
+            t_req = urllib.request.Request(tbl_url, headers=self.headers)
+            with urllib.request.urlopen(t_req, timeout=15) as t_resp:
+                records = json.loads(t_resp.read().decode("utf-8"))
+            for rec in records:
+                name = rec.get("name")
+                storage_path = rec.get("storage_path") or ""
+                if not storage_path or not name:
+                    continue
+                parts = storage_path.split("/", 1)
+                b_name = parts[0]
+                inner = parts[1] if len(parts) > 1 else name
+                try:
+                    d_req = urllib.request.Request(f"{SUPABASE_URL}/storage/v1/object/public/{b_name}/{inner}", headers=self.headers)
+                    with urllib.request.urlopen(d_req, timeout=20) as d_resp:
+                        data = d_resp.read()
+                        safe_name = name.replace("/", "_").replace("\\", "_")
+                        with open(os.path.join(self.local_dir, safe_name), "wb") as out_f:
+                            out_f.write(data)
+                        if safe_name not in downloaded:
+                            downloaded.append(safe_name)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         return downloaded
 
