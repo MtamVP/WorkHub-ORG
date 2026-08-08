@@ -5170,7 +5170,7 @@ function handleNotiClick(el) {
 // HỆ THỐNG TRẠNG THÁI (IDLE / LOUNGE DETECTOR)
 // ==========================================
 let idleTimer;
-const IDLE_TIMEOUT = 30000; // Thời gian chờ 30 giây (30000ms). Chỉnh số này nếu muốn đổi.
+const IDLE_TIMEOUT = 230307; // Thời gian chờ 30 giây (30000ms). Chỉnh số này nếu muốn đổi.
 
 function resetIdleTimer() {
     clearTimeout(idleTimer);
