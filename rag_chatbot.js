@@ -1,6 +1,8 @@
 let RAG_API_BASE = 'https://workhub-org.onrender.com';
 let isRAGConnected = false;
 let isGenerating = false;
+let ragChatHistory = [];
+let savedMessages = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   initRAGChatbot();
@@ -32,6 +34,7 @@ function initRAGChatbot() {
     });
   }
 
+  loadSavedRAGChat();
   checkRAGServerStatus();
   
   setTimeout(() => {
@@ -41,6 +44,43 @@ function initRAGChatbot() {
   window.addEventListener('workhub_files_changed', () => {
     syncBronzeStorage({ silent: true });
   });
+}
+
+function saveChatToLocalStorage() {
+  try {
+    localStorage.setItem('workhub_rag_messages_v1', JSON.stringify(savedMessages));
+    localStorage.setItem('workhub_rag_history_v1', JSON.stringify(ragChatHistory));
+  } catch (e) {}
+}
+
+function loadSavedRAGChat() {
+  const area = document.getElementById('rag-messages-area');
+  if (!area) return;
+
+  try {
+    const rawMsgs = localStorage.getItem('workhub_rag_messages_v1');
+    const rawHist = localStorage.getItem('workhub_rag_history_v1');
+    
+    if (rawHist) {
+      ragChatHistory = JSON.parse(rawHist) || [];
+    }
+
+    if (rawMsgs) {
+      const msgs = JSON.parse(rawMsgs);
+      if (Array.isArray(msgs) && msgs.length > 0) {
+        savedMessages = msgs;
+        area.innerHTML = '';
+        msgs.forEach(m => {
+          if (m.type === 'user') {
+            appendUserMessage(m.text, false);
+          } else if (m.type === 'assistant') {
+            appendAssistantMessage(m.text, m.sources || [], m.retrievedDocs || [], m.suggestions || [], false);
+          }
+        });
+        area.scrollTop = area.scrollHeight;
+      }
+    }
+  } catch (e) {}
 }
 
 function cleanDocumentTitle(rawName) {
@@ -242,8 +282,6 @@ function renderDynamicPrompts(items) {
   container.innerHTML = html;
 }
 
-let ragChatHistory = [];
-
 async function handleSendRAGQuery() {
   if (isGenerating) return;
 
@@ -257,7 +295,7 @@ async function handleSendRAGQuery() {
   const topDocs = topDocsSelect ? parseInt(topDocsSelect.value, 10) : 5;
   const useLLM = useLlmCheckbox ? useLlmCheckbox.checked : true;
 
-  appendUserMessage(question);
+  appendUserMessage(question, true);
   inputEl.value = '';
   inputEl.style.height = 'auto';
 
@@ -294,12 +332,13 @@ async function handleSendRAGQuery() {
     }
 
     removeLoadingMessage(loadingMsgId);
-    appendAssistantMessage(result.answer, result.sources, result.retrieved_docs, result.suggestions);
+    appendAssistantMessage(result.answer, result.sources, result.retrieved_docs, result.suggestions, true);
+    saveChatToLocalStorage();
 
     renderQueryInspector(question, result);
   } catch (err) {
     removeLoadingMessage(loadingMsgId);
-    appendAssistantMessage(`Không thể kết nối đến máy chủ (${err.message}). Vui lòng kiểm tra lại RAG Server.`);
+    appendAssistantMessage(`Không thể kết nối đến máy chủ (${err.message}). Vui lòng kiểm tra lại RAG Server.`, [], [], [], true);
   } finally {
     isGenerating = false;
     updateSendBtnState(false);
@@ -314,7 +353,7 @@ function sendQuickPrompt(promptText) {
   }
 }
 
-function appendUserMessage(text) {
+function appendUserMessage(text, shouldSave = true) {
   const area = document.getElementById('rag-messages-area');
   if (!area) return;
 
@@ -326,9 +365,14 @@ function appendUserMessage(text) {
   `;
   area.appendChild(msgDiv);
   area.scrollTop = area.scrollHeight;
+
+  if (shouldSave) {
+    savedMessages.push({ type: 'user', text });
+    saveChatToLocalStorage();
+  }
 }
 
-function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], suggestions = []) {
+function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], suggestions = [], shouldSave = true) {
   const area = document.getElementById('rag-messages-area');
   if (!area) return;
 
@@ -383,6 +427,17 @@ function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], 
   `;
   area.appendChild(msgDiv);
   area.scrollTop = area.scrollHeight;
+
+  if (shouldSave) {
+    savedMessages.push({
+      type: 'assistant',
+      text: markdownText,
+      sources,
+      retrievedDocs,
+      suggestions
+    });
+    saveChatToLocalStorage();
+  }
 }
 
 function copyMessageText(elementId, btn) {
@@ -444,6 +499,12 @@ function updateSendBtnState(loading) {
 
 function clearRAGChat() {
   ragChatHistory = [];
+  savedMessages = [];
+  try {
+    localStorage.removeItem('workhub_rag_messages_v1');
+    localStorage.removeItem('workhub_rag_history_v1');
+  } catch (e) {}
+
   const area = document.getElementById('rag-messages-area');
   if (area) {
     area.innerHTML = `
