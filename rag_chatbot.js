@@ -1,4 +1,4 @@
-let RAG_API_BASE = localStorage.getItem('rag_server_url') || 'http://localhost:8000';
+let RAG_API_BASE = 'https://workhub-org.onrender.com';
 let isRAGConnected = false;
 let isGenerating = false;
 
