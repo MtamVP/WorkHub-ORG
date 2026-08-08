@@ -414,8 +414,7 @@ function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], 
   msgDiv.innerHTML = `
     <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
     <div class="rag-msg-bubble position-relative">
-      <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light-subtle">
-        <span class="small fw-bold text-primary" style="font-size: 11px;"><i class="fa-solid fa-brain me-1"></i> Ciel AI (WorkHub Intelligence)</span>
+      <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light-subtle">Ciel</span>
         <button type="button" class="btn btn-sm text-muted p-0 border-0" title="Sao chép câu trả lời" onclick="copyMessageText('${msgUniqueId}', this)">
           <i class="fa-regular fa-copy" style="font-size: 12px;"></i>
         </button>
