@@ -345,6 +345,8 @@ class BronzeStorageManager:
 
     def sync_from_supabase(self, bucket_name: str = BRONZE_BUCKET) -> List[str]:
         downloaded = []
+        active_remote_files = set()
+
         if not SUPABASE_URL or not SUPABASE_KEY:
             logger.warning("Supabase URL or Key missing.")
             return downloaded
@@ -353,6 +355,44 @@ class BronzeStorageManager:
         if bucket_name and bucket_name not in target_buckets:
             target_buckets.append(bucket_name)
 
+        # 1. Truy vấn bảng 'files' với điều kiện deleted_at IS NULL (chỉ lấy file còn hiệu lực)
+        try:
+            tbl_url = f"{SUPABASE_URL}/rest/v1/files?select=*&deleted_at=is.null"
+            t_req = urllib.request.Request(tbl_url, headers=self.headers)
+            with urllib.request.urlopen(t_req, timeout=15) as t_resp:
+                records = json.loads(t_resp.read().decode("utf-8"))
+            for rec in records:
+                name = rec.get("name")
+                storage_path = rec.get("storage_path") or ""
+                if not storage_path or not name:
+                    continue
+                parts = storage_path.split("/", 1)
+                b_name = parts[0]
+                inner = parts[1] if len(parts) > 1 else name
+                
+                safe_name = os.path.basename(storage_path) or name.replace("/", "_").replace("\\", "_")
+                active_remote_files.add(safe_name)
+
+                local_path = os.path.join(self.local_dir, safe_name)
+                if not os.path.exists(local_path):
+                    try:
+                        d_req = urllib.request.Request(f"{SUPABASE_URL}/storage/v1/object/public/{b_name}/{inner}", headers=self.headers)
+                        with urllib.request.urlopen(d_req, timeout=20) as d_resp:
+                            data = d_resp.read()
+                            with open(local_path, "wb") as out_f:
+                                out_f.write(data)
+                            if safe_name not in downloaded:
+                                downloaded.append(safe_name)
+                                logger.info(f"Downloaded from files table: {safe_name}")
+                    except Exception as ex:
+                        logger.warning(f"Error downloading {storage_path}: {ex}")
+                else:
+                    if safe_name not in downloaded:
+                        downloaded.append(safe_name)
+        except Exception as e:
+            logger.warning(f"Error querying files table: {e}")
+
+        # 2. Quét các object trong Supabase Storage Buckets
         for b_name in target_buckets:
             for prefix in ["bronze", ""]:
                 try:
@@ -371,66 +411,55 @@ class BronzeStorageManager:
                         if not fname or fname.startswith(".") or fname == "bronze":
                             continue
                         
-                        full_key = f"{prefix}/{fname}".strip("/") if prefix else fname
-                        pub_url = f"{SUPABASE_URL}/storage/v1/object/public/{b_name}/{full_key}"
-                        auth_url = f"{SUPABASE_URL}/storage/v1/object/authenticated/{b_name}/{full_key}"
-                        
-                        file_bytes = None
-                        try:
-                            d_req = urllib.request.Request(pub_url, headers=self.headers)
-                            with urllib.request.urlopen(d_req, timeout=20) as d_resp:
-                                file_bytes = d_resp.read()
-                        except Exception:
+                        active_remote_files.add(fname)
+                        local_path = os.path.join(self.local_dir, fname)
+
+                        if not os.path.exists(local_path):
+                            full_key = f"{prefix}/{fname}".strip("/") if prefix else fname
+                            pub_url = f"{SUPABASE_URL}/storage/v1/object/public/{b_name}/{full_key}"
+                            auth_url = f"{SUPABASE_URL}/storage/v1/object/authenticated/{b_name}/{full_key}"
+                            
+                            file_bytes = None
                             try:
-                                d_req = urllib.request.Request(auth_url, headers=self.headers)
+                                d_req = urllib.request.Request(pub_url, headers=self.headers)
                                 with urllib.request.urlopen(d_req, timeout=20) as d_resp:
                                     file_bytes = d_resp.read()
                             except Exception:
-                                pass
-                        
-                        if file_bytes:
-                            local_path = os.path.join(self.local_dir, fname)
-                            with open(local_path, "wb") as out_f:
-                                out_f.write(file_bytes)
+                                try:
+                                    d_req = urllib.request.Request(auth_url, headers=self.headers)
+                                    with urllib.request.urlopen(d_req, timeout=20) as d_resp:
+                                        file_bytes = d_resp.read()
+                                except Exception:
+                                    pass
+                            
+                            if file_bytes:
+                                with open(local_path, "wb") as out_f:
+                                    out_f.write(file_bytes)
+                                if fname not in downloaded:
+                                    downloaded.append(fname)
+                                    logger.info(f"Downloaded: {fname} ({len(file_bytes)} bytes)")
+                        else:
                             if fname not in downloaded:
                                 downloaded.append(fname)
-                                logger.info(f"Downloaded: {fname} ({len(file_bytes)} bytes)")
                 except Exception as ex:
                     logger.warning(f"Error scanning {b_name}/{prefix}: {ex}")
 
-        try:
-            tbl_url = f"{SUPABASE_URL}/rest/v1/files?select=*"
-            t_req = urllib.request.Request(tbl_url, headers=self.headers)
-            with urllib.request.urlopen(t_req, timeout=15) as t_resp:
-                records = json.loads(t_resp.read().decode("utf-8"))
-            for rec in records:
-                name = rec.get("name")
-                storage_path = rec.get("storage_path") or ""
-                if not storage_path or not name:
-                    continue
-                parts = storage_path.split("/", 1)
-                b_name = parts[0]
-                inner = parts[1] if len(parts) > 1 else name
+        # 3. DỌN DẸP FILE ĐÃ XÓA: Xóa các file trên đĩa local không còn tồn tại trên Supabase
+        existing_local_files = glob.glob(os.path.join(self.local_dir, "*.*"))
+        for loc_f in existing_local_files:
+            bname = os.path.basename(loc_f)
+            if bname not in active_remote_files:
                 try:
-                    d_req = urllib.request.Request(f"{SUPABASE_URL}/storage/v1/object/public/{b_name}/{inner}", headers=self.headers)
-                    with urllib.request.urlopen(d_req, timeout=20) as d_resp:
-                        data = d_resp.read()
-                        safe_name = name.replace("/", "_").replace("\\", "_")
-                        with open(os.path.join(self.local_dir, safe_name), "wb") as out_f:
-                            out_f.write(data)
-                        if safe_name not in downloaded:
-                            downloaded.append(safe_name)
-                            logger.info(f"Downloaded from files table: {safe_name}")
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                    os.remove(loc_f)
+                    logger.info(f"Purged deleted file from disk: {bname}")
+                except Exception as ex:
+                    logger.warning(f"Failed to remove orphaned file {loc_f}: {ex}")
 
-        return downloaded
+        return list(active_remote_files)
 
     def get_document_catalog(self) -> List[Dict[str, Any]]:
         catalog = []
-        all_files = glob.glob(os.path.join(self.local_dir, "*.*")) + glob.glob(os.path.join("DeBai", "*.*"))
+        all_files = glob.glob(os.path.join(self.local_dir, "*.*"))
         seen_files = set()
 
         for file_path in all_files:
@@ -471,7 +500,7 @@ class BronzeStorageManager:
 
     def load_all_documents(self) -> Dict[str, str]:
         corpus: Dict[str, str] = {}
-        all_files = glob.glob(os.path.join(self.local_dir, "*.*")) + glob.glob(os.path.join("DeBai", "*.*"))
+        all_files = glob.glob(os.path.join(self.local_dir, "*.*"))
         
         for file_path in all_files:
             extracted_chunks = extract_text_from_file(file_path)
@@ -496,7 +525,16 @@ class RAGEngine:
 
     def build_index(self, corpus: Dict[str, str]):
         if not corpus:
+            self.corpus = {}
+            self.doc_ids = []
+            self.article_chunks = []
+            self.bm25_index = None
+            self.tfidf_vectorizer = None
+            self.tfidf_matrix = None
+            self.global_idf = {}
             self.is_ready = False
+            self.last_indexed_time = None
+            logger.info("RAG Index cleared (0 documents).")
             return
 
         self.corpus = corpus
@@ -706,23 +744,25 @@ def chat_endpoint(req: ChatQueryRequest):
 def sync_bronze_storage(req: SyncRequest = SyncRequest()):
     try:
         bucket = req.bucket_name or BRONZE_BUCKET
-        downloaded = storage_mgr.sync_from_supabase(bucket)
+        active_files = storage_mgr.sync_from_supabase(bucket)
         corpus = storage_mgr.load_all_documents()
         catalog = storage_mgr.get_document_catalog()
+        rag_engine.build_index(corpus)
         if corpus:
-            rag_engine.build_index(corpus)
             return {
                 "success": True,
-                "message": f"Đã đồng bộ {len(downloaded)} file và tạo chỉ mục {len(catalog)} tài liệu ({len(corpus)} trang/phân đoạn).",
-                "downloaded_files": downloaded,
+                "message": f"Đã đồng bộ {len(catalog)} tài liệu ({len(corpus)} trang/phân đoạn).",
+                "downloaded_files": active_files,
                 "total_documents": len(catalog),
                 "total_chunks": len(rag_engine.article_chunks)
             }
         else:
             return {
-                "success": False,
-                "message": "Không tìm thấy tài liệu nào trong Bronze Storage.",
-                "downloaded_files": downloaded
+                "success": True,
+                "message": "Đã dọn dẹp sạch sẽ: Hiện không còn tài liệu nào trong kho lưu trữ.",
+                "downloaded_files": [],
+                "total_documents": 0,
+                "total_chunks": 0
             }
     except Exception as e:
         logger.error(f"Sync error: {e}")

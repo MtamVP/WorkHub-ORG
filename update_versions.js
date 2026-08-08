@@ -45,6 +45,13 @@ htmlFiles.forEach(file => {
         changed = true;
     }
 
+    // Replace rag_chatbot.js?v=xxx
+    const ragRegex = /rag_chatbot\.js(?:\?v=[0-9.]+)?/g;
+    if (ragRegex.test(content)) {
+        content = content.replace(ragRegex, 'rag_chatbot.js' + version);
+        changed = true;
+    }
+
     if (changed) {
         fs.writeFileSync(file, content, 'utf8');
         console.log('Updated version in', file);
