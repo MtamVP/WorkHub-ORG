@@ -3229,7 +3229,6 @@ function removeUserAction(email, isSelf) {
     });
 }
 
-//  CHỌN CÔNG VIỆC CHẶN (DEPENDENCY)
 let blockersExpanded = false;
 function showBlockerCheckboxes() {
     const box = document.getElementById('blocker-checkboxes');
@@ -3238,7 +3237,6 @@ function showBlockerCheckboxes() {
     box.style.display = blockersExpanded ? 'block' : 'none';
 }
 
-// hàm tải danh sách checkbox công việc trong cùng dự án để chọn làm "chặn bởi" (loại trừ chính task đang sửa)
 function loadBlockerCheckboxes(excludeTaskId) {
     const container = document.getElementById('blocker-checkboxes');
     if (!container) return;

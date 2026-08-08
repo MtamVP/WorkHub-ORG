@@ -327,9 +327,9 @@ function clearRAGChat() {
   if (!area) return;
   area.innerHTML = `
     <div class="rag-message assistant">
-      <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
+      <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
       <div class="rag-msg-bubble">
-        Xin chào! Tôi là Trợ lý AI của WorkHub.<br><br>
+        Xin chào! Tôi là Ciel của WorkHub.<br>
         Hãy lấp đầy tôi bằng những câu hỏi đen tối của bạn đi hehe!
       </div>
     </div>
