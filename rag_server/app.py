@@ -492,7 +492,7 @@ class RAGEngine:
 
         if not ranked_doc_ids:
             return {
-                "answer": "Không tìm thấy thông tin phù hợp trong kho tài liệu Bronze Storage.",
+                "answer": "Không tìm thấy thông tin phù hợp trong Bronze Storage.",
                 "sources": [],
                 "retrieved_docs": []
             }
