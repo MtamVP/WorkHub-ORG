@@ -629,14 +629,14 @@
       <section id="ai-section" class="content-section" style="display:none;">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <div>
-            <h2 class="m-0 text-primary"><i class="fa-solid fa-robot me-2"></i>Trợ Lý AI Thông Minh (RAG Bronze Storage)</h2>
-            <div class="text-muted small mt-1">Hybrid Search (BM25 + Vietnamese-SBERT FAISS) trích xuất dữ liệu trực tiếp từ Bronze Storage</div>
+            <h2 class="m-0 text-primary"><i class="fa-solid fa-robot me-2"></i>Trợ Lý AI Doanh Nghiệp</h2>
+            <div class="text-muted small mt-1">Tra cứu văn bản, báo cáo và phân tích dữ liệu lưu trữ thông minh</div>
           </div>
           <div class="d-flex align-items-center gap-2">
             <button id="rag-sync-storage-btn" class="primary-btn btn-sm">
-              <i class="fa-solid fa-rotate me-1"></i> Đồng bộ Bronze Data
+              <i class="fa-solid fa-rotate me-1"></i> Đồng bộ dữ liệu
             </button>
-            <button id="rag-check-status-btn" class="secondary-btn btn-sm" title="Kiểm tra kết nối">
+            <button id="rag-check-status-btn" class="secondary-btn btn-sm" title="Kiểm tra kết nối máy chủ">
               <i class="fa-solid fa-network-wired"></i>
             </button>
           </div>
@@ -653,17 +653,17 @@
               <div class="d-flex align-items-center gap-2">
                 <div class="rag-status-badge">
                   <span id="rag-status-dot" class="rag-status-dot offline"></span>
-                  <span id="rag-status-text">Đang kiểm tra kết nối...</span>
+                  <span id="rag-status-text">Đang kết nối...</span>
                 </div>
                 <div class="rag-status-badge">
-                  <i class="fa-solid fa-database text-warning me-1"></i>
+                  <i class="fa-solid fa-database text-primary me-1"></i>
                   <span id="rag-docs-count-badge">0 tài liệu</span>
                 </div>
               </div>
 
               <div class="d-flex align-items-center gap-2">
-                <button type="button" id="rag-clear-chat-btn" class="btn btn-sm btn-link text-decoration-none text-muted" title="Xóa lịch sử chat">
-                  <i class="fa-solid fa-trash-can me-1"></i> Xóa hội thoại
+                <button type="button" id="rag-clear-chat-btn" class="btn btn-sm btn-link text-decoration-none text-muted" title="Xóa lịch sử hội thoại">
+                  <i class="fa-solid fa-trash-can me-1"></i> Làm mới hội thoại
                 </button>
               </div>
             </div>
@@ -671,14 +671,14 @@
             <!-- Gợi ý câu hỏi nhanh -->
             <div class="rag-quick-prompts">
               <span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý:</span>
-              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Quyền thành lập và quản lý doanh nghiệp được quy định như thế nào?')">
-                📋 Quyền thành lập doanh nghiệp
+              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Quy định về quyền và nghĩa vụ trong tài liệu nội bộ?')">
+                📋 Quy định & Trách nhiệm
               </button>
-              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Nguyên tắc quản lý dữ liệu Bronze Storage trong WorkHub là gì?')">
-                📦 Quản lý dữ liệu Bronze Storage
+              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Tóm tắt các nội dung và số liệu chính trong báo cáo?')">
+                📊 Tóm tắt số liệu & Nội dung chính
               </button>
-              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Đối tượng áp dụng và phạm vi điều chỉnh gồm những ai?')">
-                ⚖️ Phạm vi điều chỉnh & Đối tượng
+              <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('Phạm vi áp dụng và đối tượng điều chỉnh của văn bản?')">
+                ⚖️ Phạm vi & Đối tượng áp dụng
               </button>
             </div>
 
@@ -687,9 +687,8 @@
               <div class="rag-message assistant">
                 <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
                 <div class="rag-msg-bubble">
-                  Xin chào! Tôi là Trợ lý AI kết nối trực tiếp với vùng lưu trữ <b>Bronze Storage</b> của WorkHub.<br><br>
-                  Tôi sử dụng thuật toán <b>Hybrid Search</b> (BM25 kết hợp Vector Embedding tiếng Việt Vietnamese-SBERT qua FAISS) để trích xuất câu trả lời chính xác nhất từ tài liệu thô.<br><br>
-                  <i>Hãy nhập câu hỏi bên dưới hoặc chọn gợi ý nhanh để bắt đầu!</i>
+                  Xin chào! Tôi là Trợ lý AI của WorkHub.<br><br>
+                  Tôi có thể hỗ trợ bạn tra cứu văn bản, quy định, dữ liệu và báo cáo lưu trữ trên hệ thống. Hãy nhập câu hỏi hoặc chọn các gợi ý bên dưới để bắt đầu.
                 </div>
               </div>
             </div>
@@ -699,11 +698,11 @@
               <div class="rag-input-controls">
                 <div class="d-flex align-items-center gap-3">
                   <div class="form-check form-switch mb-0">
-                    <input class="form-check-input" type="checkbox" id="rag-use-llm-toggle">
-                    <label class="form-check-label small" for="rag-use-llm-toggle">Bật Generative AI (Gemini)</label>
+                    <input class="form-check-input" type="checkbox" id="rag-use-llm-toggle" checked>
+                    <label class="form-check-label small" for="rag-use-llm-toggle">Tổng hợp thông minh (AI)</label>
                   </div>
                   <div class="d-flex align-items-center gap-1">
-                    <label class="small text-muted mb-0" for="rag-top-docs-select">Top nguồn:</label>
+                    <label class="small text-muted mb-0" for="rag-top-docs-select">Trích dẫn:</label>
                     <select id="rag-top-docs-select" class="form-select form-select-sm" style="width: auto; padding: 2px 24px 2px 8px; font-size: 12px;">
                       <option value="1">Top 1</option>
                       <option value="3" selected>Top 3</option>
@@ -711,11 +710,11 @@
                     </select>
                   </div>
                 </div>
-                <div class="small text-muted font-monospace">Shift + Enter xuống dòng</div>
+                <div class="small text-muted font-monospace">Shift + Enter để xuống dòng</div>
               </div>
 
               <div class="rag-input-box">
-                <textarea id="rag-input" rows="1" placeholder="Hỏi bất kỳ điều gì về tài liệu trong Bronze Storage..."></textarea>
+                <textarea id="rag-input" rows="1" placeholder="Nhập câu hỏi hoặc yêu cầu tra cứu tài liệu..."></textarea>
                 <button type="button" id="rag-send-btn" class="rag-send-btn" title="Gửi câu hỏi">
                   <i class="fa-solid fa-paper-plane"></i>
                 </button>
@@ -724,29 +723,13 @@
 
           </div>
 
-          <!-- Bảng Phụ: Quản lý Tài Liệu & Chi tiết Truy Vấn -->
           <div class="rag-sidebar-wrapper">
             
-            <!-- Thẻ Cấu hình Server URL -->
-            <div class="rag-info-card">
-              <h4>
-                <span><i class="fa-solid fa-server me-1 text-primary"></i> RAG Backend Server</span>
-                <span class="badge bg-secondary font-monospace" style="font-size: 10px;">FastAPI</span>
-              </h4>
-              <div class="input-group input-group-sm mb-2">
-                <input type="text" id="rag-server-url-input" class="form-control font-monospace" value="http://localhost:8000" placeholder="http://localhost:8000">
-                <button class="btn btn-outline-primary" type="button" onclick="updateRAGServerUrl()">Lưu</button>
-              </div>
-              <div class="small text-muted">
-                <i class="fa-solid fa-circle-info me-1"></i> Khởi động server bằng file <code>rag_server/start_server.bat</code>.
-              </div>
-            </div>
-
-            <!-- Thẻ Danh Sách Tài Liệu Bronze -->
+            <!-- Thẻ Danh Sách Tài Liệu -->
             <div class="rag-info-card flex-grow-1 d-flex flex-column">
               <h4>
-                <span><i class="fa-solid fa-folder-tree me-1 text-warning"></i> Kho Tài Liệu Bronze</span>
-                <button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="loadRAGDocumentsList()" title="Tải lại">
+                <span><i class="fa-solid fa-folder-open me-1 text-primary"></i> Tài Liệu Hệ Thống</span>
+                <button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="loadRAGDocumentsList()" title="Làm mới">
                   <i class="fa-solid fa-rotate-right"></i>
                 </button>
               </h4>
@@ -758,10 +741,10 @@
             <!-- Thẻ Trích Xuất Chi Tiết (Inspector) -->
             <div class="rag-info-card">
               <h4>
-                <span><i class="fa-solid fa-magnifying-glass-chart me-1 text-info"></i> Chi Tiết Truy Vấn</span>
+                <span><i class="fa-solid fa-magnifying-glass-chart me-1 text-primary"></i> Nguồn Trích Dẫn Gần Nhất</span>
               </h4>
               <div id="rag-inspector-container">
-                <div class="text-muted small">Chưa có lượt truy vấn nào. Hãy đặt câu hỏi để xem phân tích BM25 & SBERT FAISS.</div>
+                <div class="text-muted small">Chưa có dữ liệu tra cứu. Hãy đặt câu hỏi để xem chi tiết trích dẫn.</div>
               </div>
             </div>
 

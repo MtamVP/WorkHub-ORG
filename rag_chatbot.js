@@ -283,7 +283,8 @@ function clearRAGChat() {
     <div class="rag-message assistant">
       <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
       <div class="rag-msg-bubble">
-        Làm ơn lấy đầy tôi bằng những câu hỏi đen tối đó đi!
+        Xin chào! Tôi là Trợ lý AI của WorkHub.<br><br>
+        Tôi có thể hỗ trợ bạn tra cứu văn bản, quy định, dữ liệu và báo cáo lưu trữ trên hệ thống. Hãy nhập câu hỏi hoặc chọn các gợi ý bên dưới để bắt đầu.
       </div>
     </div>
   `;
