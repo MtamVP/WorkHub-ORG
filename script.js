@@ -5597,6 +5597,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (sectionName === 'admin-users') {
                     if (typeof loadAdminUsers === 'function') loadAdminUsers();
                 }
+
+                // D4. Tab AI Assistant (RAG)
+                if (sectionName === 'ai') {
+                    if (typeof checkRAGServerStatus === 'function') checkRAGServerStatus();
+                }
             }
         });
     });

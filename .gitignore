@@ -1,2 +1,7 @@
 .wrangler/
 .claude/
+rag_server/.env
+rag_server/data_bronze/
+__pycache__/
+*.pyc
+*.log
