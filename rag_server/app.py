@@ -72,6 +72,41 @@ if GEMINI_API_KEY:
         HAVE_GEMINI = False
 
 
+def clean_document_title(raw_name: str) -> str:
+    """Loại bỏ mã hash/timestamp ngẫu nhiên từ Supabase và chuẩn hóa tên hiển thị."""
+    if not raw_name:
+        return ""
+    base = raw_name.split("#")[0]
+    # Bỏ prefix F_<timestamp>_ hoặc <timestamp>_
+    clean = re.sub(r'^(?:F_)?\d{10,20}_?', '', base, flags=re.IGNORECASE)
+    root, ext = os.path.splitext(clean)
+    
+    # Từ điển dịch các từ tiếng Việt bị sanitize dấu gạch dưới
+    subs = [
+        (r'(?i)\bN_I_DUNG\b', 'Nội Dung'),
+        (r'(?i)\bKH_A_H_C\b', 'Khóa Học'),
+        (r'(?i)\bC_A\b', 'Của'),
+        (r'(?i)\bB_O_C_O\b', 'Báo Cáo'),
+        (r'(?i)\bQUY__NH\b', 'Quy Định'),
+        (r'(?i)\bT_I_LI_U\b', 'Tài Liệu'),
+        (r'(?i)\bH_P___NG\b', 'Hợp Đồng'),
+        (r'(?i)\bK_HO_CH\b', 'Kế Hoạch'),
+        (r'(?i)\bTH_NG_B_O\b', 'Thông Báo'),
+        (r'(?i)\bH__NG_D_N\b', 'Hướng Dẫn'),
+        (r'(?i)\bQUY_TR_NH\b', 'Quy Trình'),
+        (r'(?i)\bCH_NH_S_CH\b', 'Chính Sách'),
+    ]
+    for pattern, repl in subs:
+        root = re.sub(pattern, repl, root)
+    
+    root = re.sub(r'_+', ' ', root).strip()
+    root = re.sub(r'\s+', ' ', root)
+    
+    if not root:
+        root = base
+    return f"{root}{ext}".strip()
+
+
 def tokenize_vietnamese(text: str) -> List[str]:
     clean_text = re.sub(r'[^\w\s]', " ", text).lower()
     if HAVE_UNDERTHESEA:
@@ -390,6 +425,47 @@ class BronzeStorageManager:
 
         return downloaded
 
+    def get_document_catalog(self) -> List[Dict[str, Any]]:
+        catalog = []
+        all_files = glob.glob(os.path.join(self.local_dir, "*.*")) + glob.glob(os.path.join("DeBai", "*.*"))
+        seen_files = set()
+
+        for file_path in all_files:
+            fname = os.path.basename(file_path)
+            if fname in seen_files or fname.startswith("."):
+                continue
+            seen_files.add(fname)
+
+            size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            if size_bytes >= 1024 * 1024:
+                size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+            elif size_bytes >= 1024:
+                size_str = f"{size_bytes / 1024:.1f} KB"
+            else:
+                size_str = f"{size_bytes} B"
+
+            chunks = extract_text_from_file(file_path)
+            total_pages = len(chunks)
+
+            preview_text = ""
+            if chunks:
+                preview_text = "\n".join([c["text"] for c in chunks[:2]]).strip()
+                if len(preview_text) > 300:
+                    preview_text = preview_text[:300] + "..."
+
+            display_title = clean_document_title(fname)
+
+            catalog.append({
+                "file_name": fname,
+                "display_name": display_title,
+                "clean_name": re.sub(r'\.[^/.]+$', '', display_title),
+                "total_pages": total_pages,
+                "file_size": size_str,
+                "preview": preview_text or "Tài liệu văn bản số hóa"
+            })
+
+        return catalog
+
     def load_all_documents(self) -> Dict[str, str]:
         corpus: Dict[str, str] = {}
         all_files = glob.glob(os.path.join(self.local_dir, "*.*")) + glob.glob(os.path.join("DeBai", "*.*"))
@@ -439,7 +515,7 @@ class RAGEngine:
 
         self.is_ready = True
         self.last_indexed_time = time.strftime("%Y-%m-%d %H:%M:%S")
-        logger.info(f"RAG Index ready: {len(self.corpus)} docs, {len(self.article_chunks)} chunks.")
+        logger.info(f"RAG Index ready: {len(self.corpus)} chunks indexed.")
 
     def query(self, question: str, top_k_docs: int = 3, use_llm: bool = False) -> Dict[str, Any]:
         if not self.is_ready or not self.corpus:
@@ -510,17 +586,33 @@ Hãy trả lời bằng tiếng Việt chuyên nghiệp, định dạng Markdown
             except Exception as e:
                 logger.warning(f"Gemini LLM error: {e}")
 
+        # Chuẩn hóa tên nguồn trích dẫn
+        clean_sources = []
+        for d_id in ranked_doc_ids:
+            parts = d_id.split("#")
+            clean_file = clean_document_title(parts[0])
+            if len(parts) > 1:
+                clean_page = parts[1].replace("_", " ")
+                clean_sources.append(f"{clean_file} ({clean_page})")
+            else:
+                clean_sources.append(clean_file)
+
         retrieved_details = []
         for d_id in ranked_doc_ids:
+            parts = d_id.split("#")
+            clean_file = clean_document_title(parts[0])
+            page_info = f" ({parts[1].replace('_', ' ')})" if len(parts) > 1 else ""
             retrieved_details.append({
                 "doc_id": d_id,
+                "display_name": f"{clean_file}{page_info}",
                 "text": self.corpus.get(d_id, "")[:400] + "...",
                 "score": float(fused_score.get(d_id, 0.0))
             })
 
         return {
             "answer": final_answer,
-            "sources": ranked_doc_ids,
+            "sources": clean_sources,
+            "best_doc_id": clean_sources[0] if clean_sources else "",
             "retrieved_docs": retrieved_details
         }
 
@@ -562,11 +654,12 @@ class SyncRequest(BaseModel):
 
 @app.get("/")
 def home():
+    catalog = storage_mgr.get_document_catalog()
     return {
         "service": "WorkHub Universal RAG API",
         "status": "online",
         "is_indexed": rag_engine.is_ready,
-        "docs_count": len(rag_engine.corpus),
+        "docs_count": len(catalog),
         "chunks_count": len(rag_engine.article_chunks),
         "last_indexed": rag_engine.last_indexed_time
     }
@@ -574,12 +667,13 @@ def home():
 
 @app.get("/api/status")
 def get_status():
+    catalog = storage_mgr.get_document_catalog()
     return {
         "status": "ready" if rag_engine.is_ready else "empty",
         "model": "BM25 + TF-IDF + Gemini",
         "device": "cpu",
-        "documents_indexed": len(rag_engine.corpus),
-        "chunks_indexed": len(rag_engine.article_chunks),
+        "documents_indexed": len(catalog),
+        "chunks_indexed": len(rag_engine.corpus),
         "have_gemini": HAVE_GEMINI,
         "have_underthesea": HAVE_UNDERTHESEA,
         "have_pypdf": HAVE_PYPDF,
@@ -611,13 +705,14 @@ def sync_bronze_storage(req: SyncRequest = SyncRequest()):
         bucket = req.bucket_name or BRONZE_BUCKET
         downloaded = storage_mgr.sync_from_supabase(bucket)
         corpus = storage_mgr.load_all_documents()
+        catalog = storage_mgr.get_document_catalog()
         if corpus:
             rag_engine.build_index(corpus)
             return {
                 "success": True,
-                "message": f"Đã đồng bộ {len(downloaded)} file và tạo chỉ mục {len(corpus)} tài liệu/phân đoạn.",
+                "message": f"Đã đồng bộ {len(downloaded)} file và tạo chỉ mục {len(catalog)} tài liệu ({len(corpus)} trang/phân đoạn).",
                 "downloaded_files": downloaded,
-                "total_documents": len(corpus),
+                "total_documents": len(catalog),
                 "total_chunks": len(rag_engine.article_chunks)
             }
         else:
@@ -633,16 +728,10 @@ def sync_bronze_storage(req: SyncRequest = SyncRequest()):
 
 @app.get("/api/documents")
 def list_documents():
-    docs_summary = []
-    for doc_id, text in list(rag_engine.corpus.items())[:100]:
-        docs_summary.append({
-            "doc_id": doc_id,
-            "length": len(text),
-            "preview": text[:150] + "..." if len(text) > 150 else text
-        })
+    catalog = storage_mgr.get_document_catalog()
     return {
-        "total": len(rag_engine.corpus),
-        "items": docs_summary
+        "total": len(catalog),
+        "items": catalog
     }
 
 

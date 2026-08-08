@@ -35,6 +35,34 @@ function initRAGChatbot() {
   checkRAGServerStatus();
 }
 
+function cleanDocumentTitle(rawName) {
+  if (!rawName) return '';
+  // 1. Tách phần chunk/page nếu có (ví dụ: doc.pdf#Trang_1)
+  let name = rawName.split('#')[0];
+  // 2. Cắt bỏ mã số ngẫu nhiên đằng trước do Supabase gắn (ví dụ: F_1786160737664260_ hoặc 1786160737664260_)
+  name = name.replace(/^(?:F_)?\d{10,20}_?/i, '');
+  // 3. Xử lý các từ tiếng Việt bị biến thành mã gạch dưới
+  name = name.replace(/N_I_DUNG/gi, 'Nội dung');
+  name = name.replace(/KH_A_H_C/gi, 'Khóa học');
+  name = name.replace(/C_A/gi, 'của');
+  name = name.replace(/B_O_C_O/gi, 'Báo cáo');
+  name = name.replace(/QUY__NH/gi, 'Quy định');
+  name = name.replace(/T_I_LI_U/gi, 'Tài liệu');
+  name = name.replace(/H_P___NG/gi, 'Hợp đồng');
+  name = name.replace(/K_HO_CH/gi, 'Kế hoạch');
+  name = name.replace(/TH_NG_B_O/gi, 'Thông báo');
+  name = name.replace(/H__NG_D_N/gi, 'Hướng dẫn');
+  name = name.replace(/QUY_TR_NH/gi, 'Quy trình');
+  name = name.replace(/CH_NH_S_CH/gi, 'Chính sách');
+  
+  // 4. Xóa đuôi file nếu cần lấy tên thuần
+  name = name.replace(/\.(pdf|docx?|xlsx?|csv|txt|json)$/i, '');
+  // 5. Thay thế các dấu gạch dưới còn lại thành khoảng trắng và xóa khoảng trắng thừa
+  name = name.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+  
+  return name || rawName;
+}
+
 async function checkRAGServerStatus() {
   const statusDot = document.getElementById('rag-status-dot');
   const statusText = document.getElementById('rag-status-text');
@@ -52,7 +80,10 @@ async function checkRAGServerStatus() {
 
     if (statusDot) statusDot.className = 'rag-status-dot online';
     if (statusText) statusText.innerHTML = `<span class="text-success fw-bold">Online</span>`;
-    if (docsCountBadge) docsCountBadge.textContent = `${data.documents_indexed || 0} tài liệu`;
+    if (docsCountBadge) {
+      const docCount = data.documents_indexed || 0;
+      docsCountBadge.textContent = `${docCount} tài liệu`;
+    }
 
     loadRAGDocumentsList();
   } catch (err) {
@@ -85,7 +116,7 @@ async function syncBronzeStorage() {
     const res = await fetch(`${RAG_API_BASE}/api/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bucket_name: 'bronze_storage' })
+      body: JSON.stringify({ bucket_name: 'general_bucket' })
     });
 
     const data = await res.json();
@@ -128,12 +159,19 @@ async function loadRAGDocumentsList() {
 
     let html = '';
     items.forEach(doc => {
+      const displayName = doc.display_name || cleanDocumentTitle(doc.file_name || doc.doc_id);
+      const metaInfo = [
+        doc.total_pages ? `${doc.total_pages} trang` : '',
+        doc.file_size ? `${doc.file_size}` : ''
+      ].filter(Boolean).join(' • ');
+
       html += `
-        <div class="rag-doc-item" onclick="viewRAGDocumentDetail('${encodeURIComponent(doc.doc_id)}', '${encodeURIComponent(doc.preview)}')">
-          <div class="rag-doc-item-title">
-            <i class="fa-solid fa-file-lines text-primary"></i> ${escapeHTML(doc.doc_id)}
+        <div class="rag-doc-item" onclick="viewRAGDocumentDetail('${encodeURIComponent(displayName)}', '${encodeURIComponent(doc.preview || '')}')">
+          <div class="rag-doc-item-title d-flex justify-content-between align-items-center">
+            <span class="text-truncate"><i class="fa-solid fa-file-lines text-primary me-1"></i> ${escapeHTML(displayName)}</span>
+            ${metaInfo ? `<span class="badge bg-light text-secondary border font-monospace" style="font-size: 10px;">${escapeHTML(metaInfo)}</span>` : ''}
           </div>
-          <div class="rag-doc-item-preview">${escapeHTML(doc.preview)}</div>
+          <div class="rag-doc-item-preview">${escapeHTML(doc.preview || 'Tài liệu văn bản đã được lập chỉ mục')}</div>
         </div>
       `;
     });
@@ -156,28 +194,34 @@ function renderDynamicPrompts(items) {
     return;
   }
 
-  const uniqueDocs = [];
-  const seen = new Set();
+  const promptList = [];
 
   items.forEach(doc => {
-    let cleanName = doc.doc_id.split('_article_')[0].split('_chunk_')[0].split('__')[0];
-    cleanName = cleanName.replace(/\.[^/.]+$/, "");
-    if (!seen.has(cleanName) && cleanName.trim()) {
-      seen.add(cleanName);
-      uniqueDocs.push({
-        rawId: doc.doc_id,
-        cleanName: cleanName.replace(/_/g, ' ')
-      });
-    }
+    const cleanName = doc.clean_name || cleanDocumentTitle(doc.display_name || doc.file_name || doc.doc_id);
+    if (!cleanName) return;
+
+    promptList.push({
+      label: `Tóm tắt ${cleanName}`,
+      question: `Tóm tắt nội dung chính và các điểm cốt lõi trong tài liệu ${cleanName}?`
+    });
+
+    promptList.push({
+      label: `Lộ trình & Module ${cleanName}`,
+      question: `Liệt kê chi tiết lộ trình các module, bài học và kiến thức trong tài liệu ${cleanName}?`
+    });
+
+    promptList.push({
+      label: `Mục tiêu & Yêu cầu ${cleanName}`,
+      question: `Mục tiêu đầu ra, yêu cầu và bài tập thực hành được nêu trong tài liệu ${cleanName} là gì?`
+    });
   });
 
   let html = `<span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý theo tài liệu:</span>`;
 
-  uniqueDocs.slice(0, 4).forEach((doc) => {
-    const question = `Tóm tắt nội dung chính và các điểm quan trọng trong tài liệu ${doc.cleanName}?`;
+  promptList.slice(0, 4).forEach((p) => {
     html += `
-      <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('${escapeHTML(question)}')">
-        ${escapeHTML(doc.cleanName)}
+      <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('${escapeHTML(p.question)}')">
+        ${escapeHTML(p.label)}
       </button>
     `;
   });
@@ -327,10 +371,10 @@ function clearRAGChat() {
   if (!area) return;
   area.innerHTML = `
     <div class="rag-message assistant">
-      <div class="rag-msg-avatar"><i class="fa-brands fa-google"></i></div>
+      <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
       <div class="rag-msg-bubble">
-        Xin chào! Tôi là Ciel của WorkHub.<br>
-        Hãy lấp đầy tôi bằng những câu hỏi đen tối của bạn đi hehe!
+        Xin chào! Tôi là Trợ lý AI WorkHub.<br>
+        Tôi có thể hỗ trợ bạn tra cứu, tóm tắt và phân tích dữ liệu từ tài liệu lưu trữ nội bộ một cách nhanh chóng và chính xác.
       </div>
     </div>
   `;
@@ -353,13 +397,14 @@ function renderQueryInspector(question, result) {
   `;
 
   result.retrieved_docs.forEach((doc, idx) => {
+    const docName = doc.display_name || cleanDocumentTitle(doc.doc_id);
     html += `
       <div class="p-2 mb-2 rounded" style="background: var(--hover-bg); border: 1px solid var(--border-light); font-size: 11px;">
         <div class="d-flex justify-content-between font-monospace fw-bold text-primary mb-1">
-          <span>#${idx + 1} ${escapeHTML(doc.doc_id)}</span>
-          <span class="text-success">${doc.score}%</span>
+          <span>#${idx + 1} ${escapeHTML(docName)}</span>
+          <span class="text-success">${Math.round((doc.score || 0) * 1000) / 10}%</span>
         </div>
-        <div class="text-muted text-truncate" title="${escapeHTML(doc.snippet)}">${escapeHTML(doc.snippet)}</div>
+        <div class="text-muted text-truncate" title="${escapeHTML(doc.text || '')}">${escapeHTML(doc.text || '')}</div>
       </div>
     `;
   });
@@ -370,8 +415,8 @@ function renderQueryInspector(question, result) {
 function showSourceSnippet(docId) {
   if (typeof Swal !== 'undefined') {
     Swal.fire({
-      title: `<i class="fa-solid fa-file-lines text-primary me-2"></i> ${docId}`,
-      text: `Tài liệu từ Bronze Storage.`,
+      title: `<i class="fa-solid fa-file-lines text-primary me-2"></i> ${escapeHTML(docId)}`,
+      text: `Trích xuất từ kho dữ liệu Bronze Storage.`,
       icon: 'info',
       confirmButtonText: 'Đóng'
     });
@@ -380,13 +425,13 @@ function showSourceSnippet(docId) {
   }
 }
 
-function viewRAGDocumentDetail(docIdEncoded, previewEncoded) {
-  const docId = decodeURIComponent(docIdEncoded);
+function viewRAGDocumentDetail(docTitleEncoded, previewEncoded) {
+  const title = decodeURIComponent(docTitleEncoded);
   const preview = decodeURIComponent(previewEncoded);
 
   if (typeof Swal !== 'undefined') {
     Swal.fire({
-      title: `<i class="fa-solid fa-file-lines text-primary me-2"></i> ${docId}`,
+      title: `<i class="fa-solid fa-file-lines text-primary me-2"></i> ${escapeHTML(title)}`,
       html: `<div class="text-start p-3 bg-light rounded font-monospace" style="max-height: 300px; overflow-y: auto; font-size: 13px; white-space: pre-wrap;">${escapeHTML(preview)}</div>`,
       confirmButtonText: 'Đóng',
       width: '600px'
