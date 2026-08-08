@@ -6,10 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 # Cài đặt các dependencies
 COPY requirements.txt .

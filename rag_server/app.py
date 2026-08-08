@@ -5,21 +5,25 @@ import json
 import glob
 import time
 import csv
+import math
+import logging
 import urllib.request
 import urllib.error
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 import numpy as np
-import torch
-import faiss
 from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("WorkHub-RAG")
 
 load_dotenv()
 
@@ -27,8 +31,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gqsbsqaxzpzcloaopzvv.supabase.
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_sl9uOpcIzfzN9NZ5D_ZdsQ_FQZchyUR")
 BRONZE_BUCKET = os.getenv("BRONZE_BUCKET", "general_bucket")
 LOCAL_CORPUS_DIR = os.getenv("LOCAL_CORPUS_DIR", "./data_bronze")
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "keepitreal/vietnamese-sbert")
-PORT = int(os.getenv("PORT", "8000"))
+PORT = int(os.getenv("PORT", "7860"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 try:
@@ -55,22 +58,28 @@ try:
 except ImportError:
     HAVE_OPENPYXL = False
 
+gemini_model = None
+HAVE_GEMINI = False
 if GEMINI_API_KEY:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
         gemini_model = genai.GenerativeModel("gemini-1.5-flash")
         HAVE_GEMINI = True
-    except Exception:
+        logger.info("Gemini API configured successfully.")
+    except Exception as e:
+        logger.warning(f"Failed to configure Gemini: {e}")
         HAVE_GEMINI = False
-else:
-    HAVE_GEMINI = False
 
 
 def tokenize_vietnamese(text: str) -> List[str]:
     clean_text = re.sub(r'[^\w\s]', " ", text).lower()
     if HAVE_UNDERTHESEA:
-        return word_tokenize(clean_text, format="text").split()
+        try:
+            tokens = word_tokenize(clean_text, format="text").split()
+            return tokens
+        except Exception:
+            pass
     return clean_text.split()
 
 
@@ -92,8 +101,8 @@ def extract_text_from_file(file_path: str) -> List[Dict[str, Any]]:
                         "page": page_idx + 1,
                         "text": text
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading PDF {file_path}: {e}")
 
     elif ext in [".docx", ".doc"] and HAVE_DOCX:
         try:
@@ -116,8 +125,8 @@ def extract_text_from_file(file_path: str) -> List[Dict[str, Any]]:
                     "chunk_id": f"{doc_id}#Toàn_văn",
                     "text": combined
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading DOCX {file_path}: {e}")
 
     elif ext in [".xlsx", ".xls"] and HAVE_OPENPYXL:
         try:
@@ -135,8 +144,8 @@ def extract_text_from_file(file_path: str) -> List[Dict[str, Any]]:
                         "chunk_id": f"{doc_id}#Sheet_{sheet}",
                         "text": f"Bảng tính {sheet}:\n" + "\n".join(rows_text)
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading Excel {file_path}: {e}")
 
     elif ext == ".csv":
         try:
@@ -149,8 +158,8 @@ def extract_text_from_file(file_path: str) -> List[Dict[str, Any]]:
                         "chunk_id": f"{doc_id}#CSV",
                         "text": "\n".join(rows)
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading CSV {file_path}: {e}")
 
     elif ext == ".json":
         try:
@@ -169,8 +178,8 @@ def extract_text_from_file(file_path: str) -> List[Dict[str, Any]]:
                         elif isinstance(v, dict):
                             t = v.get("passage") or v.get("content") or v.get("text") or json.dumps(v, ensure_ascii=False)
                             chunks.append({"doc_id": doc_id, "chunk_id": str(k), "text": str(t)})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading JSON {file_path}: {e}")
 
     else:
         try:
@@ -182,123 +191,108 @@ def extract_text_from_file(file_path: str) -> List[Dict[str, Any]]:
                         "chunk_id": f"{doc_id}#Raw",
                         "text": text
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading text {file_path}: {e}")
 
     return chunks
 
 
 def adaptive_chunking(doc_id: str, text: str, chunk_size: int = 700, chunk_overlap: int = 150) -> List[Dict[str, str]]:
     legal_segments = re.split(r'(?i)\n(Điều\s+\d+.*?)(?=\nĐiều\s+\d+|$)', text)
-    legal_segments = [seg.strip() for seg in legal_segments if seg.strip()]
-
-    if len(legal_segments) > 1:
-        return [
-            {"id": f"{doc_id}_{idx}", "doc_id": doc_id, "doc_text": seg}
-            for idx, seg in enumerate(legal_segments)
-        ]
+    if len(legal_segments) > 2:
+        chunks = []
+        for seg in legal_segments:
+            seg = seg.strip()
+            if len(seg) > 30:
+                chunks.append({
+                    "doc_id": doc_id,
+                    "doc_text": seg
+                })
+        if chunks:
+            return chunks
 
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-    if not paragraphs:
-        paragraphs = [text]
-
     chunks = []
-    current_chunk = ""
-    chunk_index = 0
+    curr_chunk = []
+    curr_len = 0
 
-    for para in paragraphs:
-        if len(current_chunk) + len(para) <= chunk_size:
-            current_chunk += ("\n\n" + para if current_chunk else para)
+    for p in paragraphs:
+        p_len = len(p)
+        if curr_len + p_len > chunk_size and curr_chunk:
+            combined = "\n\n".join(curr_chunk)
+            chunks.append({
+                "doc_id": doc_id,
+                "doc_text": combined
+            })
+            curr_chunk = [p]
+            curr_len = p_len
         else:
-            if current_chunk:
-                chunks.append({
-                    "id": f"{doc_id}_chunk_{chunk_index}",
-                    "doc_id": doc_id,
-                    "doc_text": current_chunk.strip()
-                })
-                chunk_index += 1
-                current_chunk = current_chunk[-chunk_overlap:] + "\n\n" + para
-            else:
-                for i in range(0, len(para), chunk_size - chunk_overlap):
-                    sub = para[i:i + chunk_size].strip()
-                    if sub:
-                        chunks.append({
-                            "id": f"{doc_id}_chunk_{chunk_index}",
-                            "doc_id": doc_id,
-                            "doc_text": sub
-                        })
-                        chunk_index += 1
-                current_chunk = ""
+            curr_chunk.append(p)
+            curr_len += p_len
 
-    if current_chunk.strip():
+    if curr_chunk:
         chunks.append({
-            "id": f"{doc_id}_chunk_{chunk_index}",
             "doc_id": doc_id,
-            "doc_text": current_chunk.strip()
+            "doc_text": "\n\n".join(curr_chunk)
         })
 
-    return chunks
+    return chunks if chunks else [{"doc_id": doc_id, "doc_text": text}]
 
 
 def split_sentences(text: str) -> List[str]:
-    text = re.sub(r'\s+', ' ', text).strip()
-    parts = re.split(r'(?<=[.!?])\s+(?=[A-ZĐ0-9])', text)
-    return [p.strip() for p in parts if p.strip()]
-
-
-def get_bigrams(tokens: List[str]):
-    return set(zip(tokens, tokens[1:])) if len(tokens) >= 2 else set()
-
-
-def extract_numbers_and_codes(text: str):
-    return set(re.findall(r'\d+(?:[./]\d+)*[A-ZĐ\-]*', text))
+    raw_sentences = re.split(r'(?<=[.!?\n])\s+', text)
+    sentences = [s.strip() for s in raw_sentences if len(s.strip()) > 15]
+    return sentences
 
 
 def build_global_idf(corpus_tokens: List[List[str]]) -> Dict[str, float]:
-    doc_freq = {}
-    for doc_toks in corpus_tokens:
-        for token in set(doc_toks):
-            doc_freq[token] = doc_freq.get(token, 0) + 1
-    n_docs = len(corpus_tokens)
-    return {token: float(np.log(n_docs / (1 + freq))) for token, freq in doc_freq.items()}
+    num_docs = len(corpus_tokens)
+    if num_docs == 0:
+        return {}
+    df = {}
+    for doc in corpus_tokens:
+        seen = set(doc)
+        for token in seen:
+            df[token] = df.get(token, 0) + 1
+
+    idf = {}
+    for token, freq in df.items():
+        idf[token] = math.log((num_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+    return idf
 
 
-def extract_best_sentences(question: str, context: str, idf_table: Dict[str, float], top_k: int = 8, max_chars: int = 1500) -> str:
-    if not question.strip() or not context.strip():
-        return ""
-    sentences = split_sentences(context)
+def extract_best_sentences(query: str, document_text: str, global_idf: Dict[str, float], top_k: int = 8, max_chars: int = 1500) -> str:
+    sentences = split_sentences(document_text)
     if not sentences:
-        return context[:max_chars]
+        return document_text[:max_chars]
 
-    question_tokens_list = tokenize_vietnamese(question)
-    question_tokens = set(question_tokens_list)
-    question_bigrams = get_bigrams(question_tokens_list)
-    question_numbers = extract_numbers_and_codes(question)
+    q_tokens = tokenize_vietnamese(query)
+    q_token_set = set(q_tokens)
+    if not q_token_set:
+        return document_text[:max_chars]
 
-    scored = []
-    for idx, sentence in enumerate(sentences):
-        sentence_tokens_list = tokenize_vietnamese(sentence)
-        sentence_tokens = set(sentence_tokens_list)
+    sent_scores = []
+    for idx, sent in enumerate(sentences):
+        s_tokens = tokenize_vietnamese(sent)
+        score = sum(global_idf.get(t, 1.0) for t in s_tokens if t in q_token_set)
+        sent_scores.append((score, idx, sent))
 
-        unigram_score = sum(idf_table.get(t, 0) for t in question_tokens & sentence_tokens)
+    sent_scores.sort(key=lambda x: x[0], reverse=True)
+    selected_indices = sorted([item[1] for item in sent_scores[:top_k] if item[0] > 0])
 
-        sentence_bigrams = get_bigrams(sentence_tokens_list)
-        bigram_score = 4.0 * len(question_bigrams & sentence_bigrams)
+    if not selected_indices:
+        return "\n".join(sentences[:top_k])[:max_chars]
 
-        sentence_numbers = extract_numbers_and_codes(sentence)
-        num_score = 3.0 * len(question_numbers & sentence_numbers)
+    result = []
+    cur_len = 0
+    for idx in selected_indices:
+        s = sentences[idx]
+        if cur_len + len(s) > max_chars:
+            break
+        result.append(s)
+        cur_len += len(s)
 
-        total_score = unigram_score + bigram_score + num_score
-        scored.append((total_score, idx, sentence))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:top_k]
-    top.sort(key=lambda x: x[1])
-
-    answer = " ".join(s[2] for s in top)
-    if len(answer) > max_chars:
-        answer = answer[:max_chars].rsplit(" ", 1)[0] + "..."
-    return answer or context[:max_chars]
+    return "\n\n".join(result) if result else document_text[:max_chars]
 
 
 class BronzeStorageManager:
@@ -314,6 +308,7 @@ class BronzeStorageManager:
     def sync_from_supabase(self, bucket_name: str = BRONZE_BUCKET) -> List[str]:
         downloaded = []
         if not SUPABASE_URL or not SUPABASE_KEY:
+            logger.warning("Supabase URL or Key missing.")
             return downloaded
 
         target_buckets = ["general_bucket", "finance_bucket", "science_bucket", "bronze_storage"]
@@ -361,8 +356,9 @@ class BronzeStorageManager:
                                 out_f.write(file_bytes)
                             if fname not in downloaded:
                                 downloaded.append(fname)
-                except Exception:
-                    pass
+                                logger.info(f"Downloaded: {fname} ({len(file_bytes)} bytes)")
+                except Exception as ex:
+                    logger.warning(f"Error scanning {b_name}/{prefix}: {ex}")
 
         try:
             tbl_url = f"{SUPABASE_URL}/rest/v1/files?select=*"
@@ -386,6 +382,7 @@ class BronzeStorageManager:
                             out_f.write(data)
                         if safe_name not in downloaded:
                             downloaded.append(safe_name)
+                            logger.info(f"Downloaded from files table: {safe_name}")
                 except Exception:
                     pass
         except Exception:
@@ -402,26 +399,21 @@ class BronzeStorageManager:
             for c in extracted_chunks:
                 corpus[c["chunk_id"]] = c["text"]
 
+        logger.info(f"Loaded {len(corpus)} document chunks from {len(all_files)} files.")
         return corpus
 
 
 class RAGEngine:
-    def __init__(self, model_name: str = EMBEDDING_MODEL_NAME):
-        self.model_name = model_name
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.embedder: Optional[SentenceTransformer] = None
+    def __init__(self):
         self.corpus: Dict[str, str] = {}
         self.doc_ids: List[str] = []
         self.article_chunks: List[Dict[str, str]] = []
         self.bm25_index: Optional[BM25Okapi] = None
-        self.dense_index: Optional[faiss.IndexFlatIP] = None
+        self.tfidf_vectorizer: Optional[TfidfVectorizer] = None
+        self.tfidf_matrix = None
         self.global_idf: Dict[str, float] = {}
         self.is_ready = False
         self.last_indexed_time = None
-
-    def load_model(self):
-        if self.embedder is None:
-            self.embedder = SentenceTransformer(self.model_name, device=self.device)
 
     def build_index(self, corpus: Dict[str, str]):
         if not corpus:
@@ -430,30 +422,24 @@ class RAGEngine:
 
         self.corpus = corpus
         self.doc_ids = list(corpus.keys())
-        self.load_model()
 
         self.article_chunks = []
         for doc_id, doc_text in self.corpus.items():
             self.article_chunks.extend(adaptive_chunking(doc_id, doc_text))
 
+        # 1. Build Okapi BM25 index with Vietnamese tokenization
         corpus_tokens = [tokenize_vietnamese(text) for text in self.corpus.values()]
         self.bm25_index = BM25Okapi(corpus_tokens)
         self.global_idf = build_global_idf(corpus_tokens)
-        del corpus_tokens
-        gc.collect()
 
+        # 2. Build TF-IDF Semantic n-gram index (Ultra lightweight < 20MB RAM)
         chunk_texts = [c["doc_text"] for c in self.article_chunks]
-        embeddings = self.embedder.encode(chunk_texts, convert_to_numpy=True, show_progress_bar=False)
-        faiss.normalize_L2(embeddings)
-
-        dim = embeddings.shape[1]
-        self.dense_index = faiss.IndexFlatIP(dim)
-        self.dense_index.add(embeddings)
-        del embeddings
-        gc.collect()
+        self.tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2), max_features=25000)
+        self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(chunk_texts)
 
         self.is_ready = True
         self.last_indexed_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        logger.info(f"RAG Index ready: {len(self.corpus)} docs, {len(self.article_chunks)} chunks.")
 
     def query(self, question: str, top_k_docs: int = 3, use_llm: bool = False) -> Dict[str, Any]:
         if not self.is_ready or not self.corpus:
@@ -463,6 +449,7 @@ class RAGEngine:
                 "retrieved_docs": []
             }
 
+        # BM25 scores
         q_tokens = tokenize_vietnamese(question)
         bm25_scores = self.bm25_index.get_scores(q_tokens)
         bm25_ranks = {
@@ -470,21 +457,23 @@ class RAGEngine:
             for rank, i in enumerate(np.argsort(bm25_scores)[::-1][:20])
         }
 
-        q_embed = self.embedder.encode([question], convert_to_numpy=True)
-        faiss.normalize_L2(q_embed)
-        sim_scores, top_chunk_indices = self.dense_index.search(q_embed, min(20, len(self.article_chunks)))
+        # TF-IDF Cosine similarity
+        q_vec = self.tfidf_vectorizer.transform([question])
+        cos_sim = cosine_similarity(q_vec, self.tfidf_matrix)[0]
+        top_chunk_indices = np.argsort(cos_sim)[::-1][:20]
 
-        dense_ranks = {}
-        for rank, chunk_idx in enumerate(top_chunk_indices[0]):
+        tfidf_ranks = {}
+        for rank, chunk_idx in enumerate(top_chunk_indices):
             parent_doc_id = self.article_chunks[chunk_idx]["doc_id"]
-            if parent_doc_id not in dense_ranks:
-                dense_ranks[parent_doc_id] = rank + 1
+            if parent_doc_id not in tfidf_ranks:
+                tfidf_ranks[parent_doc_id] = rank + 1
 
+        # Reciprocal Rank Fusion (RRF)
         fused_score = {}
-        for doc_id in set(bm25_ranks) | set(dense_ranks):
+        for doc_id in set(bm25_ranks) | set(tfidf_ranks):
             fused_score[doc_id] = (
                 1.0 / (60.0 + bm25_ranks.get(doc_id, 999)) +
-                1.0 / (60.0 + dense_ranks.get(doc_id, 999))
+                1.0 / (60.0 + tfidf_ranks.get(doc_id, 999))
             )
 
         ranked_doc_ids = [
@@ -505,40 +494,38 @@ class RAGEngine:
         extracted_answer = extract_best_sentences(question, context_text, self.global_idf, top_k=8, max_chars=1500)
 
         final_answer = extracted_answer
-        if use_llm and HAVE_GEMINI:
+        if use_llm and HAVE_GEMINI and gemini_model:
             try:
-                prompt = f"""Bạn là trợ lý tài liệu thông minh. Dựa vào nội dung trích xuất từ tài liệu sau đây, hãy trả lời câu hỏi một cách chính xác, rõ ràng và đầy đủ:
+                prompt = f"""Bạn là trợ lý tài liệu thông minh WorkHub. Dựa vào nội dung trích xuất từ tài liệu sau đây, hãy trả lời câu hỏi một cách chính xác, chi tiết, logic và đầy đủ:
 
 [Nội dung tài liệu trích xuất]:
-{extracted_answer or context_text[:2000]}
+{extracted_answer or context_text[:2500]}
 
 [Câu hỏi]: {question}
 
-Hãy trả lời bằng tiếng Việt, định dạng Markdown đẹp mắt."""
+Hãy trả lời bằng tiếng Việt chuyên nghiệp, định dạng Markdown đẹp mắt (dùng tiêu đề, gạch đầu dòng, bảng số liệu nếu có)."""
                 resp = gemini_model.generate_content(prompt)
-                if resp.text:
+                if resp and resp.text:
                     final_answer = resp.text
-            except Exception:
-                final_answer = extracted_answer
+            except Exception as e:
+                logger.warning(f"Gemini LLM error: {e}")
 
         retrieved_details = []
         for d_id in ranked_doc_ids:
-            snippet = self.corpus.get(d_id, "")[:300] + "..."
             retrieved_details.append({
                 "doc_id": d_id,
-                "score": round(float(fused_score.get(d_id, 0.0)) * 100, 3),
-                "snippet": snippet
+                "text": self.corpus.get(d_id, "")[:400] + "...",
+                "score": float(fused_score.get(d_id, 0.0))
             })
 
         return {
             "answer": final_answer,
-            "best_doc_id": best_doc_id,
             "sources": ranked_doc_ids,
             "retrieved_docs": retrieved_details
         }
 
 
-app = FastAPI(title="WorkHub Universal RAG API", version="2.5.0")
+app = FastAPI(title="WorkHub Universal RAG API", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -556,8 +543,8 @@ rag_engine = RAGEngine()
 def startup_event():
     try:
         storage_mgr.sync_from_supabase()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Startup sync error: {e}")
     corpus = storage_mgr.load_all_documents()
     if corpus:
         rag_engine.build_index(corpus)
@@ -589,8 +576,8 @@ def home():
 def get_status():
     return {
         "status": "ready" if rag_engine.is_ready else "empty",
-        "model": EMBEDDING_MODEL_NAME,
-        "device": rag_engine.device,
+        "model": "BM25 + TF-IDF + Gemini",
+        "device": "cpu",
         "documents_indexed": len(rag_engine.corpus),
         "chunks_indexed": len(rag_engine.article_chunks),
         "have_gemini": HAVE_GEMINI,
@@ -640,6 +627,7 @@ def sync_bronze_storage(req: SyncRequest = SyncRequest()):
                 "downloaded_files": downloaded
             }
     except Exception as e:
+        logger.error(f"Sync error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
