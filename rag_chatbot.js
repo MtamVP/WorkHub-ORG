@@ -151,7 +151,7 @@ function renderDynamicPrompts(items) {
   if (!items || items.length === 0) {
     container.innerHTML = `
       <span class="text-muted small align-self-center me-1"><i class="fa-solid fa-lightbulb text-warning"></i> Gợi ý:</span>
-      <span class="text-muted small align-self-center fst-italic">Chưa có tài liệu. Nhấn <b>"Đồng bộ dữ liệu"</b> để tạo câu hỏi gợi ý từ kho Bronze.</span>
+      <span class="text-muted small align-self-center fst-italic">Chưa có tài liệu. Nhấn <b>"Đồng bộ dữ liệu"</b> để tạo câu hỏi gợi ý.</span>
     `;
     return;
   }
@@ -177,7 +177,7 @@ function renderDynamicPrompts(items) {
     const question = `Tóm tắt nội dung chính và các điểm quan trọng trong tài liệu ${doc.cleanName}?`;
     html += `
       <button type="button" class="rag-prompt-pill" onclick="sendQuickPrompt('${escapeHTML(question)}')">
-        📄 ${escapeHTML(doc.cleanName)}
+        ${escapeHTML(doc.cleanName)}
       </button>
     `;
   });
@@ -330,7 +330,7 @@ function clearRAGChat() {
       <div class="rag-msg-avatar"><i class="fa-solid fa-robot"></i></div>
       <div class="rag-msg-bubble">
         Xin chào! Tôi là Trợ lý AI của WorkHub.<br><br>
-        Tôi có thể hỗ trợ bạn tra cứu văn bản, quy định, dữ liệu và báo cáo lưu trữ trên hệ thống. Hãy nhập câu hỏi hoặc chọn các gợi ý bên dưới để bắt đầu.
+        Hãy lấp đầy tôi bằng những câu hỏi đen tối của bạn đi hehe!
       </div>
     </div>
   `;
