@@ -21,9 +21,9 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-BRONZE_BUCKET = os.getenv("BRONZE_BUCKET", "bronze_storage")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gqsbsqaxzpzcloaopzvv.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_sl9uOpcIzfzN9NZ5D_ZdsQ_FQZchyUR")
+BRONZE_BUCKET = os.getenv("BRONZE_BUCKET", "general_bucket")
 LOCAL_CORPUS_DIR = os.getenv("LOCAL_CORPUS_DIR", "./data_bronze")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "keepitreal/vietnamese-sbert")
 PORT = int(os.getenv("PORT", "8000"))
@@ -317,19 +317,58 @@ class BronzeStorageManager:
             return downloaded
 
         try:
-            files = self.supabase_client.storage.from_(bucket_name).list()
-            for f in files:
-                fname = f.get("name")
-                if not fname or fname.startswith("."):
+            res = self.supabase_client.from_("files").select("*").execute()
+            rows = res.data if res and hasattr(res, "data") else []
+            for row in rows:
+                name = row.get("name")
+                storage_path = row.get("storage_path") or ""
+                if not storage_path or not name:
                     continue
                 
-                local_path = os.path.join(self.local_dir, fname)
-                data = self.supabase_client.storage.from_(bucket_name).download(fname)
-                with open(local_path, "wb") as out_f:
-                    out_f.write(data)
-                downloaded.append(fname)
+                parts = storage_path.split("/", 1)
+                b_name = parts[0]
+                inner_path = parts[1] if len(parts) > 1 else name
+
+                try:
+                    data = self.supabase_client.storage.from_(b_name).download(inner_path)
+                    safe_name = name.replace("/", "_").replace("\\", "_")
+                    local_path = os.path.join(self.local_dir, safe_name)
+                    with open(local_path, "wb") as out_f:
+                        out_f.write(data)
+                    if safe_name not in downloaded:
+                        downloaded.append(safe_name)
+                except Exception:
+                    pass
         except Exception:
             pass
+
+        target_buckets = ["general_bucket", "finance_bucket", "science_bucket", "bronze_storage"]
+        if bucket_name and bucket_name not in target_buckets:
+            target_buckets.append(bucket_name)
+
+        for b_name in target_buckets:
+            for prefix in ["bronze", ""]:
+                try:
+                    file_list = self.supabase_client.storage.from_(b_name).list(prefix)
+                    for f in file_list:
+                        fname = f.get("name")
+                        if not fname or fname.startswith("."):
+                            continue
+                        
+                        full_storage_key = f"{prefix}/{fname}".strip("/") if prefix else fname
+                        if f.get("id") is not None or "." in fname:
+                            try:
+                                data = self.supabase_client.storage.from_(b_name).download(full_storage_key)
+                                local_path = os.path.join(self.local_dir, fname)
+                                with open(local_path, "wb") as out_f:
+                                    out_f.write(data)
+                                if fname not in downloaded:
+                                    downloaded.append(fname)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
         return downloaded
 
     def load_all_documents(self) -> Dict[str, str]:
@@ -493,6 +532,10 @@ rag_engine = RAGEngine()
 
 @app.on_event("startup")
 def startup_event():
+    try:
+        storage_mgr.sync_from_supabase()
+    except Exception:
+        pass
     corpus = storage_mgr.load_all_documents()
     if corpus:
         rag_engine.build_index(corpus)
