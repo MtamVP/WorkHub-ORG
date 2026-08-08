@@ -860,6 +860,18 @@ const API = {
         delete: async (fileId, groupKey) => {
             const { data, error } = await sbClient.from('files').update({ deleted_at: new Date().toISOString() }).eq('id', fileId).select('name').maybeSingle();
             if (error) throw error;
+
+            // Kích hoạt đồng bộ ngầm sang server AI
+            try {
+                const ragServer = localStorage.getItem('rag_server_url') || 'https://workhub-org.onrender.com';
+                fetch(`${ragServer}/api/sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bucket_name: 'general_bucket' })
+                }).catch(() => {});
+                window.dispatchEvent(new CustomEvent('workhub_files_changed'));
+            } catch (e) {}
+
             return `Đã đưa ${data.name} vào thùng rác!`;
         },
         share: async (fileId, groupKey) => {
@@ -899,6 +911,18 @@ const API = {
             });
 
             if (dbError) throw dbError;
+
+            // Kích hoạt đồng bộ ngầm sang server AI
+            try {
+                const ragServer = localStorage.getItem('rag_server_url') || 'https://workhub-org.onrender.com';
+                fetch(`${ragServer}/api/sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bucket_name: bucketName })
+                }).catch(() => {});
+                window.dispatchEvent(new CustomEvent('workhub_files_changed'));
+            } catch (e) {}
+
             return `File "${fileName}" đã được tải lên thành công!`;
         }
     },

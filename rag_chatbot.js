@@ -33,6 +33,16 @@ function initRAGChatbot() {
   }
 
   checkRAGServerStatus();
+  
+  // Tự động đồng bộ ngầm sau 1s khi mở trang / F5 để luôn khớp danh sách file với Supabase
+  setTimeout(() => {
+    syncBronzeStorage({ silent: true });
+  }, 1000);
+
+  // Lắng nghe sự kiện khi có file được upload hoặc xóa ở các tab khác
+  window.addEventListener('workhub_files_changed', () => {
+    syncBronzeStorage({ silent: true });
+  });
 }
 
 function cleanDocumentTitle(rawName) {
@@ -112,11 +122,12 @@ function updateRAGServerUrl() {
   }
 }
 
-async function syncBronzeStorage() {
+async function syncBronzeStorage(options = {}) {
+  const isSilent = Boolean(options && options.silent);
   const syncBtn = document.getElementById('rag-sync-storage-btn');
   const originalText = syncBtn ? syncBtn.innerHTML : '';
   
-  if (syncBtn) {
+  if (syncBtn && !isSilent) {
     syncBtn.disabled = true;
     syncBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Đang tải...`;
   }
@@ -131,17 +142,17 @@ async function syncBronzeStorage() {
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.message || data.detail || 'Lỗi không xác định');
 
-    if (typeof showToast === 'function') {
+    if (!isSilent && typeof showToast === 'function') {
       showToast(data.message || 'Đã đồng bộ dữ liệu Bronze Storage', 'success');
     }
     
-    checkRAGServerStatus();
+    await checkRAGServerStatus();
   } catch (err) {
-    if (typeof showToast === 'function') {
+    if (!isSilent && typeof showToast === 'function') {
       showToast(`Lỗi: ${err.message}`, 'error');
     }
   } finally {
-    if (syncBtn) {
+    if (syncBtn && !isSilent) {
       syncBtn.disabled = false;
       syncBtn.innerHTML = originalText;
     }
