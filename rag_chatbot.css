@@ -229,6 +229,70 @@
   color: var(--text-secondary);
 }
 
+.rag-input-controls .form-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 0;
+  margin-bottom: 0;
+  user-select: none;
+  cursor: pointer;
+}
+
+.rag-input-controls .form-check-input {
+  cursor: pointer;
+  float: none;
+  margin-left: 0;
+  width: 38px;
+  height: 20px;
+  background-color: var(--hover-bg, #2a2520);
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23a1a1aa'/%3e%3c/svg%3e");
+  background-position: left 2px center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: 20px;
+  transition: background-position 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.25s ease,
+              border-color 0.25s ease,
+              box-shadow 0.25s ease;
+  outline: none !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.rag-input-controls .form-check-input:hover {
+  border-color: var(--gold, #d4af37);
+}
+
+.rag-input-controls .form-check-input:focus {
+  border-color: var(--gold, #d4af37);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold, #d4af37) 25%, transparent) !important;
+}
+
+.rag-input-controls .form-check-input:checked {
+  background-color: var(--gold, #d4af37);
+  border-color: var(--gold, #d4af37);
+  background-position: right 2px center;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23120f0a'/%3e%3c/svg%3e");
+}
+
+.rag-input-controls .form-check-label {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.rag-input-controls .form-select {
+  background-color: var(--card-bg, #1a1612);
+  color: var(--text-primary);
+  border-color: var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+}
+
 .rag-input-box {
   display: flex;
   gap: 10px;
