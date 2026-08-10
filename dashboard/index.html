@@ -29,81 +29,6 @@
 
 <body>
 
-  <script>
-    let MY_PERMISSION = null;
-
-    let pendingTargetPage = null;
-
-    document.addEventListener('DOMContentLoaded', async function () {
-      try {
-        const storedEmail = localStorage.getItem('userEmail') || localStorage.getItem('currentUser') || "";
-
-        if (!storedEmail) {
-          MY_PERMISSION = 'guest';
-          return;
-        }
-
-        const response = await callGAS('getUserGroup', { email: storedEmail });
-
-        if (response.status === 'success') {
-          MY_PERMISSION = response.data;
-          console.log(`Đã nhận quyền: ${MY_PERMISSION}`);
-        } else {
-          MY_PERMISSION = 'guest';
-        }
-
-      } catch (error) {
-        console.error("Lỗi:", error);
-        MY_PERMISSION = 'guest';
-      } finally {
-        if (pendingTargetPage !== null) {
-          console.log("Tự động thực thi...");
-          checkAccessAndGo(pendingTargetPage);
-          pendingTargetPage = null;
-        }
-      }
-    });
-
-    function checkAccessAndGo(targetPage) {
-      if (MY_PERMISSION === null) {
-        pendingTargetPage = targetPage;
-
-        if (typeof Swal !== 'undefined') {
-          Swal.fire({
-            title: 'Đang kiểm tra quyền...',
-            text: 'Vui lòng đợi trong giây lát',
-            allowOutsideClick: false,
-            didOpen: () => { Swal.showLoading() }
-          });
-        } else if (typeof showToast === 'function') {
-          showToast('Đang kiểm tra quyền, vui lòng đợi...', 'info');
-        } else {
-          console.log('Đang kiểm tra quyền...');
-        }
-
-        return;
-      }
-
-
-      if (typeof Swal !== 'undefined' && Swal.isVisible()) {
-        Swal.close();
-      }
-
-      if (MY_PERMISSION === 'all' || MY_PERMISSION === 'admin' || MY_PERMISSION === targetPage) {
-        window.top.location.href = `/${targetPage}`;
-      } else {
-        const msg = `Bạn không có quyền truy cập nhóm ${targetPage.toUpperCase()}!`;
-        if (typeof Swal !== 'undefined') {
-          Swal.fire('Truy cập bị từ chối', msg, 'error');
-        } else if (typeof showToast === 'function') {
-          showToast(msg, 'error');
-        } else {
-          alert(msg);
-        }
-      }
-    }
-  </script>
-
   <header id="app-header">
     <div class="logo">WorkHub ORG</div>
     <div class="user-info">
@@ -166,14 +91,6 @@
       <ul>
         <li class="nav-item active" data-section="dashboard">
           <i class="fa-solid fa-house-chimney-user"></i><span> Dashboard</span>
-        </li>
-
-        <li class="nav-item nav-item-finance" onclick="checkAccessAndGo('finance')">
-          <img src="/financelogo.png" alt="Finance Icon" class="custom-finance-icon"><span> Nhóm Tài Chính</span>
-        </li>
-
-        <li class="nav-item nav-item-science" onclick="checkAccessAndGo('science')">
-          <i class="fa-solid fa-flask"></i><span> Nhóm Khoa Học</span>
         </li>
 
         <hr style="border-color: var(--border-color); margin: 10px 0;">
@@ -781,8 +698,8 @@
                 <label class="form-label small">Quyền</label>
                 <select id="provision-group" class="form-select">
                   <option value="guest">Guest</option>
-                  <option value="finance">Finance</option>
-                  <option value="science">Science</option>
+                  <option value="workhub-fin">Finance (WorkHub Fin)</option>
+                  <option value="workhub-sci">Science (WorkHub Sci)</option>
                   <option value="all">All</option>
                 </select>
               </div>

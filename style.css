@@ -32,9 +32,6 @@
      the accounting app's own amber/blue tokens (not invented). */
   --sage: #2F6AE0;
   --terracotta: #9A6B0D;
-  --finance-accent: #9A6B0D;
-  --science-accent: #2F6AE0;
-  --science-accent-text: #2358B8;
 
   /* Semantic status — accounting app's green/red/amber/blue */
   --success-color: #1C8F5A;
@@ -130,9 +127,6 @@
 
   --sage: #5B8FF9;
   --terracotta: #E0A64C;
-  --finance-accent: #E0A64C;
-  --science-accent: #5B8FF9;
-  --science-accent-text: #86AEFF;
 
   --success-color: #3DBA87;
   --danger-color: #E05C5C;
@@ -207,8 +201,6 @@ html { scroll-behavior: smooth; }
 /* Loading spinners (fa-spin) were unstyled everywhere — picked up the browser's default
    icon color instead of the module accent, reading as unfinished during every data fetch. */
 .fa-spin { color: var(--text-muted); opacity: 0.85; }
-body[data-module="finance"] .fa-spin { color: var(--finance-accent); }
-body[data-module="science"] .fa-spin { color: var(--science-accent); }
 
 /* Skeleton loading — replaces the blank-then-spinner flash on first load of a section
    (Task/Progress/Calendar/File/Trash) with shimmering placeholders shaped like the
@@ -351,28 +343,14 @@ a { color: inherit; }
   border-left-color: var(--gold);
 }
 .nav-item i { font-size: 17px; min-width: 24px; text-align: center; }
-.nav-item .custom-finance-icon { width: 18px; height: 18px; min-width: 24px; object-fit: contain; }
 
 #app-sidebar.expanded .nav-item { justify-content: flex-start; }
 #app-sidebar.expanded .nav-item span { display: inline-block; margin-left: 14px; }
 #app-sidebar:not(.expanded) .nav-item span { display: none; }
 
-/* Module accent: Finance / Science cross-links get a subtle colored hint, not a full takeover */
-.nav-item-finance:hover { border-left-color: var(--finance-accent); background: color-mix(in srgb, var(--finance-accent) 12%, transparent); color: var(--text-primary); }
-.nav-item-finance i, .nav-item-finance img { filter: none; }
-.nav-item-science:hover { border-left-color: var(--science-accent); background: color-mix(in srgb, var(--science-accent) 14%, transparent); color: var(--text-primary); }
-
 /* Back-to-dashboard link inside a module sidebar */
 .nav-back-btn { border: 1px solid var(--border-color); margin-bottom: 12px; }
 .nav-back-btn:hover { transform: translateX(3px); }
-
-/* Module-scoped active nav state (finance/science shells set data-module on <body>) */
-body[data-module="finance"] .nav-item.active { background: color-mix(in srgb, var(--finance-accent) 12%, transparent); color: var(--finance-accent); border-left-color: var(--finance-accent); }
-body[data-module="science"] .nav-item.active { background: color-mix(in srgb, var(--science-accent) 14%, transparent); color: var(--science-accent-text); border-left-color: var(--science-accent); }
-body[data-module="finance"] .content-section h2 { border-bottom-color: color-mix(in srgb, var(--finance-accent) 40%, transparent); }
-body[data-module="science"] .content-section h2 { border-bottom-color: color-mix(in srgb, var(--science-accent-text) 55%, transparent); }
-body[data-module="finance"] .text-primary { color: var(--finance-accent) !important; }
-body[data-module="science"] .text-primary { color: var(--science-accent-text) !important; }
 
 #hamburger-menu {
   text-align: center; padding: 10px; margin-bottom: 10px; cursor: pointer;

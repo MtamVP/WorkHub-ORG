@@ -4,8 +4,6 @@
 //  CẤU HÌNH ĐƯỜNG DẪN (CLOUDFLARE PAGES) 
 const BASE_URL = window.location.origin;
 const URL_DASHBOARD = BASE_URL + "/";              // Trang chủ
-const URL_FINANCE = BASE_URL + "/finance/";      // Vào thư mục finance (tự chạy index.html)
-const URL_SCIENCE = BASE_URL + "/science/";      // Vào thư mục science (tự chạy index.html)
 
 function goToLogin() {
     window.location.href = BASE_URL + "/";
@@ -42,12 +40,6 @@ let taskProjectSelect, taskForm;
 /**
  * 2. HÀM CHUNG DÙNG CHO NHIỀU MODULE
  */
-
-function switchGroup(groupName) {
-    if (groupName === 'finance') window.location.href = URL_FINANCE;
-    else if (groupName === 'science') window.location.href = URL_SCIENCE;
-    else window.location.href = URL_DASHBOARD;
-}
 
 //  2.1 Hàm tải dữ liệu Dashboard
 async function loadDashboardDataSecurely() {
