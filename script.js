@@ -2248,12 +2248,12 @@ function renderProjectManagerList() {
         return `
         <tr class="${isSelected ? 'table-active' : ''}">
             <td class="fw-bold">${escapeHtml(p.name)}</td>
-            <td>${p.status ? `<span class="badge bg-secondary" style="font-size:10px;">${escapeHtml(p.status)}</span>` : ''}</td>
+            <td>${p.status ? `<span class="badge ${getProjectStatusBadgeClass(p.status)}" style="font-size:10px;">${escapeHtml(p.status)}</span>` : ''}</td>
             <td>
-                <div class="progress" style="height: 10px;">
-                    <div class="progress-bar ${getProgressBarColor(p.percent)}" style="width: ${p.percent}%;"></div>
+                <div class="progress" style="height: 8px; border-radius: var(--radius-pill);">
+                    <div class="progress-bar ${getProgressBarColor(p.percent)}" style="width: ${p.percent}%; border-radius: var(--radius-pill);"></div>
                 </div>
-                <div class="small text-muted">${p.percent || 0}%</div>
+                <div class="small text-muted mt-1">${p.percent || 0}%</div>
             </td>
             <td class="small text-muted">${escapeHtml(p.lastUpdated || '')}</td>
             <td class="text-center">
@@ -4012,6 +4012,16 @@ function getProgressBarColor(percent) {
     return 'bg-secondary';
 }
 
+function getProjectStatusBadgeClass(status) {
+    switch (status) {
+        case 'Completed': return 'bg-success';
+        case 'In Progress': return 'bg-primary';
+        case 'On Hold': return 'bg-warning text-dark';
+        case 'Planning': return 'bg-info text-dark';
+        default: return 'bg-secondary';
+    }
+}
+
 
 
 //  hàm tải danh sách checkbox thành viên
@@ -5172,14 +5182,11 @@ function renderChatPresenceList(dataList) {
         const isMe = (member.email || '').toLowerCase() === (chatUser && chatUser.email ? chatUser.email.toLowerCase() : '');
 
         return `
-      <div class="d-flex align-items-center gap-2 border rounded px-2 py-2" title="${escapeHtml(member.email || '')}">
-        <div class="member-avatar" style="position:relative; width:36px; height:36px; flex-shrink:0;">
-          <img src="${escapeHtml(member.photo_url || 'https://www.w3schools.com/howto/img_avatar.png')}" onerror="this.src='https://www.w3schools.com/howto/img_avatar.png'" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">
-          <div class="status-indicator ${member.isOnline ? 'status-online' : 'status-offline'}"></div>
-        </div>
-        <div style="min-width:0; flex:1;">
-          <div class="small fw-bold text-truncate">${escapeHtml(member.display_name || member.email)}${isMe ? ' <span class="badge bg-secondary">Bạn</span>' : ''}</div>
-          <div class="small text-muted text-truncate">${escapeHtml(statusText)}</div>
+      <div class="chat-presence-item" title="${escapeHtml(member.email || '')}">
+        <div class="chat-presence-avatar">${escapeHtml(initials)}<span class="chat-presence-dot ${statusDotClass}"></span></div>
+        <div class="chat-presence-info">
+          <div class="chat-presence-name"><span class="text-truncate">${escapeHtml(member.display_name || member.email)}</span>${isMe ? '<span class="chat-presence-name-badge">Bạn</span>' : ''}</div>
+          <div class="chat-presence-status ${statusDotClass}">${escapeHtml(statusText)}</div>
         </div>
       </div>`;
     }).join('');

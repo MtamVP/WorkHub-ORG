@@ -1493,6 +1493,24 @@ body.auth-page .custom-toast { min-width: 300px; }
 .reaction-bar { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; }
 .reaction-bubble { background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: var(--radius-pill); padding: 1px 8px; font-size: 12px; cursor: pointer; }
 
+/* Danh sách thành viên panel "Trò Chuyện" — thẻ vòng tròn chữ cái đầu (khớp kiểu
+   .chat-mention-avatar) thay vì <img> thô + inline style d-flex trước đây. */
+.chat-presence-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); transition: var(--transition-fast); }
+.chat-presence-item:hover { background: var(--hover-bg); }
+.chat-presence-avatar {
+  position: relative; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  background: var(--primary-color); color: var(--on-gold);
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;
+}
+.chat-presence-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--card-bg); }
+.chat-presence-dot.online { background: var(--success-color); }
+.chat-presence-dot.offline { background: var(--text-muted); }
+.chat-presence-info { min-width: 0; flex: 1; }
+.chat-presence-name { font-size: 13px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-presence-name-badge { background: var(--hover-bg); color: var(--text-muted); border-radius: var(--radius-pill); padding: 0 7px; font-size: 10.5px; font-weight: 600; flex-shrink: 0; }
+.chat-presence-status { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-presence-status.online { color: var(--success-color); }
+
 @media (max-width: 960px) {
   .chat-layout { flex-direction: column; }
   .chat-presence-panel { width: 100%; height: 220px; }
