@@ -3310,7 +3310,7 @@ function goToTaskInProject(projectId) {
 //  QUẢN LÝ NGƯỜI DÙNG (ADMIN) — chỉ quản lý hồ sơ quyền (public.users), không tạo/xóa được
 // tài khoản đăng nhập Firebase Auth thật. Gate quyền chỉ ở client (cùng mức bảo mật hiện có
 // của cả app — chưa có RLS thật sự trên Supabase).
-const USER_GROUP_LABELS = { guest: 'Guest', finance: 'Finance', science: 'Science', all: 'All (Toàn quyền)' };
+const USER_GROUP_LABELS = { guest: 'Guest', finance: 'Finance', science: 'Science', admin: 'Admin' };
 
 async function loadAdminUsers() {
     const guard = document.getElementById('admin-users-guard');
@@ -3329,7 +3329,7 @@ async function loadAdminUsers() {
     try {
         const groupResp = await callGAS('getUserGroup', { email });
         const myGroup = groupResp.status === 'success' ? groupResp.data : 'guest';
-        if (myGroup !== 'all') {
+        if (myGroup !== 'admin') {
             guard.innerHTML = '<div class="text-center text-danger py-5"><i class="fa-solid fa-lock fa-2x mb-2"></i><br>Bạn không có quyền truy cập trang này.</div>';
             return;
         }
