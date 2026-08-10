@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
-  <link rel="stylesheet" href="/style.css?v=3.1.0">
+  <link rel="stylesheet" href="/style.css?v=3.2.0">
   <link rel="stylesheet" href="/rag_chatbot.css">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#120F0A">
@@ -88,24 +88,36 @@
 
     <nav id="app-sidebar">
       <div id="hamburger-menu"><i class="fa-solid fa-bars"></i> Menu</div>
-      <ul>
+
+      <ul class="nav-group">
         <li class="nav-item active" data-section="dashboard">
           <i class="fa-solid fa-house-chimney-user"></i><span> Dashboard</span>
         </li>
-
-        <hr style="border-color: var(--border-color); margin: 10px 0;">
-
-        <li class="nav-item" data-section="drive"><i class="fa-solid fa-file-import"></i><span> UploadFile</span></li>
-        <li class="nav-item" data-section="calendar"><i class="fa-solid fa-calendar-check"></i><span> Calendar</span>
+        <li class="nav-item" data-section="chat">
+          <i class="fa-solid fa-comments"></i><span> Trò Chuyện</span>
         </li>
+      </ul>
+
+      <div class="nav-group-label"><span>Dự Án</span></div>
+      <ul class="nav-group">
         <li class="nav-item" data-section="progress"><i class="fa-solid fa-chart-line"></i><span> Progress</span></li>
         <li class="nav-item" data-section="mytasks"><i class="fa-solid fa-user-check"></i><span> Việc của tôi</span></li>
         <li class="nav-item" data-section="task"><i class="fa-solid fa-list-check"></i><span> Task</span></li>
+      </ul>
+
+      <div class="nav-group-label"><span>Công Cụ</span></div>
+      <ul class="nav-group">
+        <li class="nav-item" data-section="drive"><i class="fa-solid fa-file-import"></i><span> UploadFile</span></li>
+        <li class="nav-item" data-section="calendar"><i class="fa-solid fa-calendar-check"></i><span> Calendar</span>
+        </li>
         <li class="nav-item" onclick="window.top.location.href='../tools'"><i
             class="fa-solid fa-toolbox"></i><span>Tools</span></li>
         <li class="nav-item" data-section="ai"><i class="fa-solid fa-robot"></i><span> AI</span></li>
-        <li class="nav-item" data-section="admin-users"><i class="fa-solid fa-user-gear"></i><span> Quản lý người dùng</span></li>
+      </ul>
 
+      <div class="nav-group-label"><span>Quản Trị</span></div>
+      <ul class="nav-group">
+        <li class="nav-item" data-section="admin-users"><i class="fa-solid fa-user-gear"></i><span> Quản lý người dùng</span></li>
       </ul>
     </nav>
 
@@ -355,6 +367,20 @@
             </div>
             <div style="flex: 1 1 200px;"><label for="progress-project-filter">Dự án:</label><select
                 id="progress-project-filter" class="text-input"></select></div>
+            <div style="flex: 1 1 200px;">
+              <label for="progress-status-filter">Trạng thái:</label>
+              <select id="progress-status-filter" class="text-input">
+                <option value="">-- Tất cả trạng thái --</option>
+                <option value="Planning">Planning</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="On Hold">On Hold</option>
+              </select>
+            </div>
+            <div style="flex: 1 1 200px;">
+              <label for="progress-name-search">Tìm kiếm:</label>
+              <input type="text" id="progress-name-search" class="text-input" placeholder="Tên hoặc mô tả dự án...">
+            </div>
             <div style="flex: 1 1 200px;"><label for="progress-sort-select">Sắp xếp:</label><select
                 id="progress-sort-select" class="text-input">
                 <option value="date_desc">Mới nhất</option>
@@ -401,6 +427,69 @@
           <h2 class="m-0 text-primary"><i class="fa-solid fa-list-check"></i> Quản Lý Công Việc</h2>
           <button class="primary-btn" onclick="openAddTask()"><i class="fa-solid fa-plus"></i> New
             Task</button>
+        </div>
+
+        <div class="card p-3 mb-3 glass-panel" id="task-project-manager-card">
+          <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="toggleProjectManagerPanel()">
+            <h6 class="m-0 fw-bold"><i class="fa-solid fa-diagram-project text-primary me-2"></i>Quản Lý Dự Án
+              <span id="task-project-manager-count" class="badge bg-secondary ms-1">0</span>
+            </h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary border-0" id="task-project-manager-toggle-btn" title="Thu gọn/Mở rộng" onclick="event.stopPropagation(); toggleProjectManagerPanel();">
+              <i class="fa-solid fa-chevron-up"></i>
+            </button>
+          </div>
+          <div id="task-project-manager-body" class="mt-3">
+            <div class="row g-2 align-items-end mb-2">
+              <div class="col-6 col-md-4">
+                <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Trạng thái dự án</label>
+                <select id="task-project-status-filter" class="form-select form-select-sm" onchange="renderProjectManagerList()">
+                  <option value="">-- Tất cả trạng thái --</option>
+                  <option value="Planning">Planning</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                  <option value="On Hold">On Hold</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Tìm kiếm dự án</label>
+                <input type="text" id="task-project-search" class="form-control form-control-sm" placeholder="Tên dự án..." oninput="renderProjectManagerList()">
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table align-middle mb-0 table-hover table-sm">
+                <thead class="glass-panel">
+                  <tr>
+                    <th style="width: 34%;">Dự án</th>
+                    <th style="width: 16%;">Trạng thái</th>
+                    <th style="width: 16%;">Tiến độ</th>
+                    <th style="width: 20%;">Cập nhật</th>
+                    <th style="width: 14%; text-align:center;">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="task-project-manager-body-list">
+                  <tr><td colspan="5" class="text-center text-muted">Đang tải...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card p-3 mb-3 glass-panel" id="task-project-files-card" style="display:none;">
+          <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="toggleProjectFilesPanel()">
+            <h6 class="m-0 fw-bold"><i class="fa-solid fa-folder-open text-primary me-2"></i>Tệp Của Dự Án
+              <span id="task-project-files-count" class="badge bg-secondary ms-1">0</span>
+            </h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary border-0" id="task-project-files-toggle-btn" title="Thu gọn/Mở rộng" onclick="event.stopPropagation(); toggleProjectFilesPanel();">
+              <i class="fa-solid fa-chevron-up"></i>
+            </button>
+          </div>
+          <div id="task-project-files-body" class="mt-3">
+            <input type="file" id="task-project-file-input" style="display:none;" onchange="handleProjectFileUpload()">
+            <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="task-project-file-upload-btn" onclick="document.getElementById('task-project-file-input').click()">
+              <i class="fa-solid fa-upload"></i> Tải file lên dự án
+            </button>
+            <div id="task-project-files-list" class="d-flex flex-column gap-2"></div>
+          </div>
         </div>
 
         <div class="card p-2 mb-3 glass-panel">
@@ -727,6 +816,44 @@
         </div>
       </section>
 
+      <section id="chat-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary mb-3"><i class="fa-solid fa-comments"></i> Trò Chuyện Nhóm</h2>
+
+        <div class="chat-layout">
+          <div class="chat-panel card">
+            <div id="chat-pinned-bar" class="chat-pinned-bar" style="display:none;">
+              <i class="fa-solid fa-thumbtack"></i>
+              <div id="chat-pinned-list" class="chat-pinned-list"></div>
+            </div>
+            <div id="chat-messages-list" class="chat-messages-list">
+              <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải tin nhắn...</div>
+            </div>
+            <div id="chat-reply-preview" class="chat-reply-preview" style="display:none;">
+              <div class="chat-reply-preview-body">
+                <span class="chat-reply-name" id="chat-reply-name"></span>
+                <div class="chat-reply-text" id="chat-reply-text"></div>
+              </div>
+              <button type="button" class="btn btn-sm border-0" onclick="cancelReply()" title="Huỷ trả lời"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="chat-input-row">
+              <div id="chat-mention-dropdown" class="chat-mention-dropdown" style="display:none;"></div>
+              <input type="text" id="chat-msg-input" class="form-control" placeholder="Nhập tin nhắn... (gõ @ để nhắc ai đó)" autocomplete="off" disabled>
+              <button type="button" id="chat-send-btn" title="Gửi tin nhắn" disabled><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+          </div>
+
+          <aside class="chat-presence-panel card">
+            <div class="chat-presence-header">
+              <span><i class="fa-solid fa-users"></i> Thành viên</span>
+              <span class="chat-presence-count" id="chat-presence-online-count">0</span>
+            </div>
+            <div class="chat-presence-list" id="chat-presence-list">
+              <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -960,25 +1087,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
 
-  <div id="workhub-chat-widget" class="chat-widget-container" style="display: none;">
-    <button id="chat-toggle-btn" class="chat-btn"><i class="fa-solid fa-comments"></i><span id="unread-badge"
-        class="chat-badge" style="display: none;">0</span></button>
-    <div id="chat-box" class="chat-box hidden">
-      <div class="chat-header"><span><i class="fa-solid fa-comments"></i>General Chat</span><button id="close-chat"
-          class="close-chat-btn" aria-label="Thu nhỏ khung chat"><i class="fa-solid fa-minus"></i></button></div>
-      <div id="messages-list" class="messages-list">
-        <div style="text-align:center; color: var(--text-muted); margin-top: 20px;">Đang tải tin nhắn...</div>
-      </div>
-      <div id="reply-preview-bar">
-        <div><span class="fw-bold text-primary" id="reply-to-name">Đang trả lời...</span>
-          <div class="text-truncate small text-muted" id="reply-to-text" style="max-width: 250px;">Nội dung...</div>
-        </div><button onclick="cancelReply()" class="btn btn-sm text-danger" aria-label="Hủy trả lời"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-      <div class="chat-input-area"><input type="text" id="msg-input" placeholder="Nhập tin nhắn..." disabled><button
-          id="send-btn" disabled><i class="fa-solid fa-paper-plane"></i></button></div>
-    </div>
-  </div>
-
   <div id="toast-container"></div>
 
   <div class="modal fade" id="fileModal" tabindex="-1" aria-hidden="true">
@@ -1107,7 +1215,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1786178129444"></script>
+  <script src="/api.js?v=1786351126923"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -1135,7 +1243,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1786178129444"></script>
+  <script src="/script.js?v=1786351126923"></script>
   <script src="/rag_chatbot.js?v=1786178129444"></script>
 
   <script>

@@ -1446,6 +1446,7 @@ async function loadProjectOverview(options) {
             if (!globalAllProjects.length) {
                 if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-center text-muted">Chưa có dự án nào.</td></tr>`;
                 if (typeof loadMemberCheckboxes === 'function') loadMemberCheckboxes();
+                if (typeof renderProjectManagerList === 'function') renderProjectManagerList();
                 return;
             }
 
@@ -1494,6 +1495,7 @@ async function loadProjectOverview(options) {
 
             // Vẽ bảng theo filter/sort hiện tại của UI
             renderProgressTable();
+            if (typeof renderProjectManagerList === 'function') renderProjectManagerList();
 
         } else if (!quiet) {
             if (tableBody) tableBody.innerHTML = `<tr><td colspan="${colSpanCount}" class="text-danger text-center">Lỗi Server: ${response.message}</td></tr>`;
@@ -1522,16 +1524,24 @@ function renderProgressTable() {
 
     const filterOwnerDropdown = document.getElementById('progress-search-input');
     const filterProjectDropdown = document.getElementById('progress-project-filter');
+    const filterStatusDropdown = document.getElementById('progress-status-filter');
+    const nameSearchInput = document.getElementById('progress-name-search');
     const sortSelect = document.getElementById('progress-sort-select');
 
     const filterOwner = filterOwnerDropdown ? filterOwnerDropdown.value : "";
     const filterProject = filterProjectDropdown ? filterProjectDropdown.value : "";
+    const filterStatus = filterStatusDropdown ? filterStatusDropdown.value : "";
+    const nameSearch = nameSearchInput ? nameSearchInput.value.trim().toLowerCase() : "";
     const sortVal = sortSelect ? sortSelect.value : "date_desc";
 
     let projects = (globalAllProjects || []).filter(p => {
         const matchOwner = !filterOwner || p.owner === filterOwner;
         const matchProject = !filterProject || p.name === filterProject;
-        return matchOwner && matchProject;
+        const matchStatus = !filterStatus || p.status === filterStatus;
+        const matchSearch = !nameSearch
+            || (p.name || '').toLowerCase().includes(nameSearch)
+            || (p.description || '').toLowerCase().includes(nameSearch);
+        return matchOwner && matchProject && matchStatus && matchSearch;
     });
 
     if (sortVal === 'percent_desc') {
@@ -2127,6 +2137,8 @@ async function loadTasksForProject(projectId, options) {
     if (!projectId) {
         if (tableBody) tableBody.innerHTML = '';
         if (cardContainer) cardContainer.innerHTML = '<p class="text-center text-muted w-100 mt-5">Vui lòng chọn dự án để xem công việc.</p>';
+        const filesCard = document.getElementById('task-project-files-card');
+        if (filesCard) filesCard.style.display = 'none';
         return;
     }
 
@@ -2164,6 +2176,7 @@ async function loadTasksForProject(projectId, options) {
             // Phải chạy sau khi các dropdown đã có option, trước khi lọc
             applyPendingTaskFilterRestore();
             applyTaskFilters();
+            loadProjectFiles(projectId);
 
         } else {
             // Ở chế độ quiet thì giữ nguyên nội dung đang hiển thị, chỉ báo lỗi bằng toast —
@@ -2189,7 +2202,201 @@ async function loadTasksForProject(projectId, options) {
     }
 }
 
-//  HÀM CẬP NHẬT GIAO DIỆN 
+// -------------------- Quản lý dự án (trong section Task) --------------------
+// Danh sách toàn bộ dự án (không chỉ dự án đang chọn), lọc theo trạng thái/tên,
+// để tìm nhanh các dự án đã hoàn thành (Completed) v.v. Đọc từ cache globalAllProjects
+// đã được loadProjectOverview() nạp sẵn — không gọi API riêng.
+// (Cùng tính năng vừa port cho WorkHub-Sci/WorkHub-Fin, chuyển sang class Bootstrap
+// cho khớp giao diện org thay vì copy nguyên class của Sci/Fin.)
+
+let projectManagerPanelCollapsed = false;
+
+function toggleProjectManagerPanel() {
+    projectManagerPanelCollapsed = !projectManagerPanelCollapsed;
+    const body = document.getElementById('task-project-manager-body');
+    const btn = document.getElementById('task-project-manager-toggle-btn');
+    if (body) body.style.display = projectManagerPanelCollapsed ? 'none' : 'block';
+    if (btn) btn.innerHTML = `<i class="fa-solid ${projectManagerPanelCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>`;
+}
+
+function renderProjectManagerList() {
+    const tbody = document.getElementById('task-project-manager-body-list');
+    const countBadge = document.getElementById('task-project-manager-count');
+    if (!tbody) return;
+
+    const statusFilter = document.getElementById('task-project-status-filter');
+    const searchInput = document.getElementById('task-project-search');
+    const filterStatus = statusFilter ? statusFilter.value : '';
+    const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    const projects = (globalAllProjects || []).filter(p => {
+        const matchStatus = !filterStatus || p.status === filterStatus;
+        const matchSearch = !search || (p.name || '').toLowerCase().includes(search);
+        return matchStatus && matchSearch;
+    });
+
+    if (countBadge) countBadge.textContent = String((globalAllProjects || []).length);
+
+    if (projects.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Không tìm thấy dự án phù hợp.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = projects.map(p => {
+        const isSelected = p.id === currentTaskProjectID;
+        const safeIdArg = escapeHtml(escapeJs(p.id));
+        return `
+        <tr class="${isSelected ? 'table-active' : ''}">
+            <td class="fw-bold">${escapeHtml(p.name)}</td>
+            <td>${p.status ? `<span class="badge bg-secondary" style="font-size:10px;">${escapeHtml(p.status)}</span>` : ''}</td>
+            <td>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar ${getProgressBarColor(p.percent)}" style="width: ${p.percent}%;"></div>
+                </div>
+                <div class="small text-muted">${p.percent || 0}%</div>
+            </td>
+            <td class="small text-muted">${escapeHtml(p.lastUpdated || '')}</td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm ${isSelected ? 'btn-secondary' : 'btn-outline-primary'}" onclick="selectProjectFromManager('${safeIdArg}')">
+                    ${isSelected ? 'Đang xem' : 'Chọn'}
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function selectProjectFromManager(projectId) {
+    const select = document.getElementById('task-project-select');
+    if (select) select.value = projectId;
+    loadTasksForProject(projectId);
+}
+
+// -------------------- Tệp của dự án (upload trực tiếp vào dự án, files.project_id) --------------------
+
+let projectFilesPanelCollapsed = false;
+
+function toggleProjectFilesPanel() {
+    projectFilesPanelCollapsed = !projectFilesPanelCollapsed;
+    const body = document.getElementById('task-project-files-body');
+    const btn = document.getElementById('task-project-files-toggle-btn');
+    if (body) body.style.display = projectFilesPanelCollapsed ? 'none' : 'block';
+    if (btn) btn.innerHTML = `<i class="fa-solid ${projectFilesPanelCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>`;
+}
+
+let projectFilesCache = [];
+
+async function loadProjectFiles(projectId) {
+    const card = document.getElementById('task-project-files-card');
+    const list = document.getElementById('task-project-files-list');
+    if (!card || !list) return;
+
+    if (!projectId) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    list.innerHTML = '<div class="text-muted small">Đang tải...</div>';
+
+    try {
+        projectFilesCache = await API.file.list(activeGroup, { projectId });
+        renderProjectFilesList();
+    } catch (err) {
+        list.innerHTML = `<div class="text-danger small">Lỗi tải file: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function renderProjectFilesList() {
+    const list = document.getElementById('task-project-files-list');
+    const countBadge = document.getElementById('task-project-files-count');
+    if (!list) return;
+
+    const items = projectFilesCache || [];
+    if (countBadge) countBadge.textContent = String(items.length);
+
+    if (items.length === 0) {
+        list.innerHTML = '<div class="text-muted small">Chưa có file nào được tải lên dự án này.</div>';
+        return;
+    }
+
+    list.innerHTML = items.map(f => {
+        const relatedTask = f.taskId ? (globalAllTasks || []).find(t => t.id === f.taskId) : null;
+        const taskLabel = relatedTask ? `Công việc: ${escapeHtml(relatedTask.name)} · ` : '';
+        return `
+        <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+            <div style="min-width:0; flex:1; overflow:hidden;">
+                <a href="${escapeHtml(f.url || '#')}" target="_blank" rel="noopener" class="text-decoration-none"><i class="fa-solid fa-paperclip"></i> ${escapeHtml(f.name || 'Không tên')}</a>
+                <div class="small text-muted">${taskLabel}${escapeHtml((f.uploader || '').split('@')[0])} · ${escapeHtml(f.date || '')}</div>
+            </div>
+            <button type="button" class="btn btn-sm text-danger border-0" title="Xóa file" onclick="deleteProjectFileAction('${escapeHtml(escapeJs(f.id))}', '${escapeHtml(escapeJs(f.name || ''))}')">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        </div>
+    `;
+    }).join('');
+}
+
+async function handleProjectFileUpload() {
+    const input = document.getElementById('task-project-file-input');
+    const btn = document.getElementById('task-project-file-upload-btn');
+    if (!input || !input.files || input.files.length === 0) return;
+    if (!currentTaskProjectID) { if (typeof showToast === 'function') showToast('Vui lòng chọn dự án trước.', 'error'); return; }
+
+    const file = input.files[0];
+    if (file.size > 5 * 1024 * 1024) { if (typeof showToast === 'function') showToast('Tệp quá lớn! Vui lòng chọn tệp < 5MB.', 'error'); input.value = ''; return; }
+
+    const originalText = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang tải...'; }
+
+    const reader = new FileReader();
+    reader.onload = async function (e) {
+        const base64Data = e.target.result.split(',')[1];
+        try {
+            const response = await callGAS('uploadFile', {
+                fileData: base64Data,
+                fileName: file.name,
+                mimeType: file.type || 'application/octet-stream',
+                groupKey: activeGroup,
+                description: '',
+                email: CURRENT_USER.email,
+                folderPath: '',
+                projectId: currentTaskProjectID
+            });
+            if (response.status !== 'success') throw new Error(response.message);
+            if (typeof showToast === 'function') showToast('Tải file lên thành công!', 'success');
+            loadProjectFiles(currentTaskProjectID);
+        } catch (err) {
+            if (typeof showToast === 'function') showToast('Lỗi: ' + err.message, 'error');
+            else alert('Lỗi: ' + err.message);
+        } finally {
+            input.value = '';
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+function deleteProjectFileAction(fileId, fileName) {
+    Swal.fire({
+        title: 'Xóa File?',
+        text: `Bạn có chắc muốn xóa file "${fileName}"?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Xóa',
+        cancelButtonText: 'Hủy'
+    }).then(async (result) => {
+        if (!result.isConfirmed) return;
+        try {
+            const response = await callGAS('deleteFile', { fileId, groupKey: activeGroup });
+            if (response.status !== 'success') throw new Error(response.message);
+            if (typeof showToast === 'function') showToast(response.message, 'success');
+            loadProjectFiles(currentTaskProjectID);
+        } catch (err) {
+            if (typeof showToast === 'function') showToast('Lỗi: ' + err.message, 'error');
+            else alert('Lỗi: ' + err.message);
+        }
+    });
+}
+
+//  HÀM CẬP NHẬT GIAO DIỆN
 function renderTasks(tasks) {
     const tableBody = document.getElementById('task-table-body');
     const cardContainer = document.getElementById('task-card-container');
@@ -4534,23 +4741,20 @@ function deleteTaskFile(fileId, fileName) {
 
 
 /**
- * 7: CHAT WIDGET TRONG DASHBOARD
+ * 7: CHAT — trang Trò Chuyện riêng (xem chat-section)
  */
-//  7.1. Khai báo biến DOM 
+//  7.1. Khai báo biến DOM
 var rightSidebar, toggleRightSidebarBtn, closeRightSidebarBtn, memberListContainer;
-var chatWidget, chatBox, toggleChatBtn, closeChatBtn;
 var msgInput, sendBtn, msgList, pinViewDashboard;
-var unreadBadge, replyPreviewBar, replyToName, replyToText;
+var replyPreviewBar, replyToName, replyToText;
 
-//  7.2. Khai báo biến Trạng thái 
+//  7.2. Khai báo biến Trạng thái
 var unsubscribeChat = null;
 var unsubscribeMembers = null;
 var unsubscribePinned = null;
 var chatUser = null;
 var onlineInterval = null;
 
-var unreadCount = 0;
-var isFirstLoad = true;
 var currentReplyData = null; // Biến lưu tin nhắn đang trả lời
 
 //  7.3. Các hàm Tiện ích 
@@ -4652,17 +4856,6 @@ window.togglePinMessage = async function (docId, currentStatus) {
 };
 
 //  7.5. các hàm chính xử lý Chat
-function updateUnreadBadge() {
-    if (unreadCount > 0) {
-        unreadBadge.style.display = 'block';
-        unreadBadge.innerText = unreadCount > 99 ? '99+' : unreadCount;
-        unreadBadge.classList.remove('shake-animation');
-        void unreadBadge.offsetWidth;
-        unreadBadge.classList.add('shake-animation');
-    } else {
-        unreadBadge.style.display = 'none';
-    }
-}
 
 function renderMessage(docId, data) {
     if (!data.text) return;
@@ -4847,6 +5040,12 @@ async function loadChatMessages() {
         msgList.scrollTop = msgList.scrollHeight;
     }
 
+    loadChatPinnedBar();
+    if (typeof loadChatMentionRoster === 'function') loadChatMentionRoster();
+
+    if (msgInput) msgInput.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+
     if (chatChannel) sbClient.removeChannel(chatChannel);
     chatChannel = sbClient.channel('chat-channel')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: 'group_key=eq.' + activeGroup }, payload => {
@@ -4854,6 +5053,7 @@ async function loadChatMessages() {
             if (payload.eventType === 'DELETE') {
                 const el = document.getElementById('msg-' + payload.old.id);
                 if (el) el.remove();
+                loadChatPinnedBar();
                 return;
             }
             msg.uid = msg.uid;
@@ -4863,21 +5063,39 @@ async function loadChatMessages() {
             msg.replyTo = msg.reply_to;
 
             const existingEl = document.getElementById('msg-' + msg.id);
+            const wasAtBottom = msgList ? (msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight) < 80 : false;
 
             renderMessage(msg.id, msg);
+            loadChatPinnedBar();
 
-            if (payload.eventType === 'INSERT') {
-                if (chatBox && chatBox.classList.contains('hidden')) {
-                    if (chatUser && msg.uid !== chatUser.id) {
-                        unreadCount++;
-                        updateUnreadBadge();
-                    }
-                } else if (!existingEl) {
-                    msgList.scrollTop = msgList.scrollHeight;
-                }
+            if (payload.eventType === 'INSERT' && !existingEl && wasAtBottom) {
+                msgList.scrollTop = msgList.scrollHeight;
             }
         })
         .subscribe();
+}
+
+// -------------------- Trò Chuyện: thanh ghim (riêng cho trang chat, khác với card
+// "Tin nhắn được ghim" ở Dashboard vốn dùng #chat-pin-view/loadPinnedMessages) --------------------
+
+async function loadChatPinnedBar() {
+    const bar = document.getElementById('chat-pinned-bar');
+    const list = document.getElementById('chat-pinned-list');
+    if (!bar || !list) return;
+
+    const { data } = await sbClient.from('messages')
+        .select('*')
+        .eq('is_pinned', true)
+        .eq('group_key', activeGroup)
+        .order('created_at', { ascending: true });
+
+    const pinned = data || [];
+    if (!pinned.length) { bar.style.display = 'none'; list.innerHTML = ''; return; }
+    bar.style.display = 'flex';
+    list.innerHTML = pinned.map(m =>
+        '<div class="chat-pinned-item"><span><strong>' + escapeHtml(m.display_name || '') + ':</strong> ' + escapeHtml(m.text || '') + '</span>' +
+        '<button type="button" class="btn btn-sm border-0" title="Bỏ ghim" onclick="window.togglePinMessage(\'' + m.id + '\', true)"><i class="fa-solid fa-xmark"></i></button></div>'
+    ).join('');
 }
 
 
@@ -4912,6 +5130,59 @@ async function loadPresence() {
         .eq('current_group', activeGroup)
         .order('last_changed', { ascending: false });
     renderMemberSidebar(data || []);
+    renderChatPresenceList(data || []);
+}
+
+// Panel "Thành viên" bên phải trang Trò Chuyện — cùng nguồn dữ liệu (user_status) với
+// renderMemberSidebar() dùng cho drawer chung của Dashboard, nhưng vẽ vào #chat-presence-list
+// riêng nên không đụng tới drawer đó.
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = String(name).trim().split(/\s+/);
+    const first = parts[0] ? parts[0][0] : '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase();
+}
+
+function renderChatPresenceList(dataList) {
+    const list = document.getElementById('chat-presence-list');
+    const countEl = document.getElementById('chat-presence-online-count');
+    if (!list) return;
+
+    const now = new Date();
+    const ONLINE_THRESHOLD = 2 * 60 * 1000;
+    const withStatus = (dataList || []).map(m => {
+        const lastSeen = m.last_changed ? new Date(m.last_changed) : new Date(0);
+        return Object.assign({}, m, { isOnline: (now - lastSeen) < ONLINE_THRESHOLD, lastSeen });
+    });
+
+    if (!withStatus.length) {
+        list.innerHTML = '<div class="text-center text-muted small py-3">Chưa có dữ liệu thành viên</div>';
+        if (countEl) countEl.textContent = '0';
+        return;
+    }
+
+    const sorted = withStatus.slice().sort((a, b) => (b.isOnline ? 1 : 0) - (a.isOnline ? 1 : 0));
+    if (countEl) countEl.textContent = String(sorted.filter(m => m.isOnline).length);
+
+    list.innerHTML = sorted.map(member => {
+        const initials = getInitials(member.display_name || member.email);
+        const statusDotClass = member.isOnline ? 'online' : 'offline';
+        const statusText = member.isOnline ? 'Đang hoạt động' : 'Hoạt động ' + timeSince(member.lastSeen);
+        const isMe = (member.email || '').toLowerCase() === (chatUser && chatUser.email ? chatUser.email.toLowerCase() : '');
+
+        return `
+      <div class="d-flex align-items-center gap-2 border rounded px-2 py-2" title="${escapeHtml(member.email || '')}">
+        <div class="member-avatar" style="position:relative; width:36px; height:36px; flex-shrink:0;">
+          <img src="${escapeHtml(member.photo_url || 'https://www.w3schools.com/howto/img_avatar.png')}" onerror="this.src='https://www.w3schools.com/howto/img_avatar.png'" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">
+          <div class="status-indicator ${member.isOnline ? 'status-online' : 'status-offline'}"></div>
+        </div>
+        <div style="min-width:0; flex:1;">
+          <div class="small fw-bold text-truncate">${escapeHtml(member.display_name || member.email)}${isMe ? ' <span class="badge bg-secondary">Bạn</span>' : ''}</div>
+          <div class="small text-muted text-truncate">${escapeHtml(statusText)}</div>
+        </div>
+      </div>`;
+    }).join('');
 }
 
 function setupPresenceSystem(user) {
@@ -4942,6 +5213,117 @@ function setupPresenceSystem(user) {
             loadPresence();
         })
         .subscribe();
+}
+
+// -------------------- Trò Chuyện: gợi ý @mention khi gõ --------------------
+// Roster đầy đủ của nhóm (không phải chỉ người đang online như user_status) — lấy 1 lần
+// qua getAllUsers, cùng nguồn với danh sách gán người thực hiện task (loadMemberCheckboxes).
+
+let CHAT_MENTION_ROSTER = [];
+let chatMentionMatches = [];
+let chatMentionActiveIndex = -1;
+let chatMentionAtPos = -1;
+
+async function loadChatMentionRoster() {
+    try {
+        const response = await callGAS('getAllUsers', { groupKey: activeGroup });
+        if (response.status === 'success' && Array.isArray(response.data)) {
+            CHAT_MENTION_ROSTER = response.data.map(u => u.name).filter(Boolean);
+        }
+    } catch (err) {
+        console.error('Lỗi tải danh sách @mention:', err);
+    }
+}
+
+function chatMentionCandidates() {
+    const list = CHAT_MENTION_ROSTER.map(name => ({ label: name }));
+    list.unshift({ label: 'All' });
+    return list;
+}
+
+function isChatMentionDropdownOpen() {
+    const dropdown = document.getElementById('chat-mention-dropdown');
+    return !!(dropdown && dropdown.style.display === 'block');
+}
+
+function updateChatMentionDropdown() {
+    const input = document.getElementById('chat-msg-input');
+    const dropdown = document.getElementById('chat-mention-dropdown');
+    if (!input || !dropdown) return;
+
+    const text = input.value;
+    const caret = input.selectionStart;
+    const at = text.lastIndexOf('@', caret - 1);
+
+    if (at === -1) { closeChatMentionDropdown(); return; }
+    const fragment = text.slice(at + 1, caret);
+    if (fragment.includes('\n') || fragment.length > 24) { closeChatMentionDropdown(); return; }
+
+    const query = fragment.toLowerCase();
+    const matches = chatMentionCandidates().filter(c => c.label.toLowerCase().includes(query));
+    if (!matches.length) { closeChatMentionDropdown(); return; }
+
+    chatMentionMatches = matches;
+    chatMentionActiveIndex = 0;
+    chatMentionAtPos = at;
+
+    dropdown.innerHTML = matches.map((c, i) =>
+        '<div class="chat-mention-item' + (i === 0 ? ' active' : '') + '" onmousedown="event.preventDefault(); pickChatMention(' + i + ')">' +
+        '<span class="chat-mention-avatar">' + escapeHtml(getInitials(c.label)) + '</span>' +
+        '<span>' + escapeHtml(c.label) + '</span>' +
+        '</div>'
+    ).join('');
+    dropdown.style.display = 'block';
+}
+
+function closeChatMentionDropdown() {
+    const dropdown = document.getElementById('chat-mention-dropdown');
+    if (dropdown) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; }
+    chatMentionMatches = [];
+    chatMentionActiveIndex = -1;
+    chatMentionAtPos = -1;
+}
+
+function highlightChatMentionActive() {
+    document.querySelectorAll('#chat-mention-dropdown .chat-mention-item').forEach((el, i) => {
+        el.classList.toggle('active', i === chatMentionActiveIndex);
+    });
+}
+
+function pickChatMention(index) {
+    const input = document.getElementById('chat-msg-input');
+    const match = chatMentionMatches[index];
+    if (!input || !match || chatMentionAtPos === -1) { closeChatMentionDropdown(); return; }
+
+    const caret = input.selectionStart;
+    const before = input.value.slice(0, chatMentionAtPos);
+    const after = input.value.slice(caret);
+    const insertion = '@' + match.label + ' ';
+    input.value = before + insertion + after;
+
+    const newCaret = (before + insertion).length;
+    input.setSelectionRange(newCaret, newCaret);
+    input.focus();
+    closeChatMentionDropdown();
+}
+
+function handleChatMentionKeydown(e) {
+    if (!isChatMentionDropdownOpen() || !chatMentionMatches.length) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        chatMentionActiveIndex = (chatMentionActiveIndex + 1) % chatMentionMatches.length;
+        highlightChatMentionActive();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        chatMentionActiveIndex = (chatMentionActiveIndex - 1 + chatMentionMatches.length) % chatMentionMatches.length;
+        highlightChatMentionActive();
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        pickChatMention(chatMentionActiveIndex);
+    } else if (e.key === 'Escape') {
+        closeChatMentionDropdown();
+    }
 }
 
 async function sendChatMessage() {
@@ -5286,10 +5668,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const user = session?.user;
             const userDisplay = document.getElementById('user-display');
             const userEmailDisplay = document.getElementById('user-email-display');
-            const chatWidgetEl = document.getElementById('workhub-chat-widget');
-            const chatBoxEl = document.getElementById('chat-box');
-            const msgInput = document.getElementById('msg-input');
-            const sendBtn = document.getElementById('send-btn');
+            const msgInput = document.getElementById('chat-msg-input');
+            const sendBtn = document.getElementById('chat-send-btn');
             const navItems = document.querySelectorAll('.nav-item');
 
             if (user) {
@@ -5303,12 +5683,6 @@ document.addEventListener('DOMContentLoaded', function () {
             if (userEmailDisplay) userEmailDisplay.innerHTML = `<i class="fa-solid fa-at me-2"></i> ${displayName}`;
 
             // 2. Mở khóa Chat & Input
-            if (chatWidgetEl) {
-                chatWidgetEl.style.display = 'block';
-                chatWidgetEl.style.opacity = '1';
-                chatWidgetEl.style.pointerEvents = 'auto';
-                chatWidgetEl.style.zIndex = '9999';
-            }
             if (msgInput) {
                 msgInput.disabled = false;
                 msgInput.placeholder = "Nhập tin nhắn...";
@@ -5357,12 +5731,6 @@ document.addEventListener('DOMContentLoaded', function () {
             if (userDisplay) userDisplay.innerHTML = `<i class="fa-solid fa-user-circle"></i> Khách`;
             if (userEmailDisplay) userEmailDisplay.innerHTML = `<i class="fa-solid fa-at me-2"></i> Chưa đăng nhập`;
 
-            if (chatWidgetEl) {
-                chatWidgetEl.style.display = 'block';
-                chatWidgetEl.style.opacity = '0.5';
-                chatWidgetEl.style.pointerEvents = 'none';
-                if (chatBoxEl) chatBoxEl.classList.add('hidden');
-            }
             if (msgInput) msgInput.disabled = true;
             if (sendBtn) sendBtn.disabled = true;
 
@@ -5505,6 +5873,12 @@ document.addEventListener('DOMContentLoaded', function () {
             progressSortSelect.addEventListener('change', () => renderProgressTable());
         }
 
+        // 4. Dropdown Trạng thái + ô Tìm kiếm
+        const progressStatusFilterEl = document.getElementById('progress-status-filter');
+        if (progressStatusFilterEl) progressStatusFilterEl.addEventListener('change', () => renderProgressTable());
+        const progressNameSearchEl = document.getElementById('progress-name-search');
+        if (progressNameSearchEl) progressNameSearchEl.addEventListener('input', () => renderProgressTable());
+
     }
 
     if (expanded && container && !container.contains(e.target)) {
@@ -5591,6 +5965,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // D4. Tab AI Assistant (RAG)
                 if (sectionName === 'ai') {
                     if (typeof checkRAGServerStatus === 'function') checkRAGServerStatus();
+                }
+
+                // D5. Tab Trò Chuyện
+                if (sectionName === 'chat') {
+                    if (typeof loadChatMessages === 'function') loadChatMessages();
                 }
             }
         });
@@ -6177,39 +6556,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 
-    //8.10 LOGIC CHAT WIDGET
+    //8.10 LOGIC CHAT (trang Trò Chuyện riêng — xem chat-section)
     rightSidebar = document.getElementById('right-sidebar');
     toggleRightSidebarBtn = document.getElementById('toggle-right-sidebar-btn');
     closeRightSidebarBtn = document.getElementById('close-right-sidebar');
     memberListContainer = document.getElementById('member-list-container');
 
-    chatWidget = document.getElementById('workhub-chat-widget');
-    chatBox = document.getElementById('chat-box');
-    toggleChatBtn = document.getElementById('chat-toggle-btn');
-    closeChatBtn = document.getElementById('close-chat');
-
-    msgInput = document.getElementById('msg-input');
-    sendBtn = document.getElementById('send-btn');
-    msgList = document.getElementById('messages-list');
+    msgInput = document.getElementById('chat-msg-input');
+    sendBtn = document.getElementById('chat-send-btn');
+    msgList = document.getElementById('chat-messages-list');
     pinViewDashboard = document.getElementById('chat-pin-view');
 
-    unreadBadge = document.getElementById('unread-badge');
-    replyPreviewBar = document.getElementById('reply-preview-bar');
-    replyToName = document.getElementById('reply-to-name');
-    replyToText = document.getElementById('reply-to-text');
-
-    if (toggleChatBtn) {
-        toggleChatBtn.addEventListener('click', function () {
-            chatBox.classList.toggle('hidden');
-            if (!chatBox.classList.contains('hidden')) {
-                unreadCount = 0;
-                updateUnreadBadge();
-                setTimeout(function () { msgList.scrollTop = msgList.scrollHeight; }, 100);
-            }
-        });
-    }
-
-    if (closeChatBtn) closeChatBtn.addEventListener('click', () => chatBox.classList.add('hidden'));
+    replyPreviewBar = document.getElementById('chat-reply-preview');
+    replyToName = document.getElementById('chat-reply-name');
+    replyToText = document.getElementById('chat-reply-text');
 
     if (toggleRightSidebarBtn) {
         toggleRightSidebarBtn.addEventListener('click', (e) => {
@@ -6230,9 +6590,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
     if (msgInput) {
+        // keydown chạy trước keypress: bắt phím mũi tên/Enter/Tab/Escape cho dropdown @mention
+        // trước, nếu dropdown không mở thì mới để keypress bên dưới gửi tin nhắn như bình thường.
+        msgInput.addEventListener('keydown', handleChatMentionKeydown);
         msgInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') sendChatMessage();
+            if (e.key === 'Enter' && !isChatMentionDropdownOpen()) sendChatMessage();
         });
+        msgInput.addEventListener('input', updateChatMentionDropdown);
+        msgInput.addEventListener('blur', () => setTimeout(closeChatMentionDropdown, 150));
     }
 
 

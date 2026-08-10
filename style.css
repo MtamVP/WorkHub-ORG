@@ -325,6 +325,19 @@ a { color: inherit; }
 #app-sidebar.expanded { width: var(--sidebar-width); }
 #app-sidebar ul { list-style: none; padding: 0 12px; margin: 0; }
 
+/* Nhãn nhóm chức năng (Dự Án / Công Cụ / Quản Trị) — nhỏ, mảnh, không in đậm,
+   thu lại thành một gạch chia mảnh khi sidebar ở chế độ icon-only. */
+.nav-group-label {
+  padding: 14px 14px 6px; margin: 0;
+  font-size: 10px; font-weight: 400; letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap; overflow: hidden;
+}
+#app-sidebar:not(.expanded) .nav-group-label {
+  padding: 10px 16px; margin: 6px 0 2px;
+  border-top: 1px solid var(--border-color);
+}
+#app-sidebar:not(.expanded) .nav-group-label span { display: none; }
+
 .nav-item {
   display: flex; align-items: center; padding: 11px 14px; margin-bottom: 2px;
   cursor: pointer; border-radius: var(--radius-sm);
@@ -1385,6 +1398,109 @@ body.has-custom-bg .auth-card { background: rgba(253, 250, 246, 0.96); }
 /* Auth pages reuse the shared toast component but need it centered top for this dark hero layout */
 body.auth-page #toast-container { left: 50%; right: auto; top: 20px; transform: translateX(-50%); }
 body.auth-page .custom-toast { min-width: 300px; }
+
+/* ==========================================================================
+   CHAT (Trò Chuyện) — trang riêng thay cho khung chat nổi cũ.
+   Bong bóng tin nhắn/reaction/ghim/trả lời tái dùng renderMessage() + CSS
+   .msg-bubble/.reaction-bar/.reply-quote đã có sẵn, không đụng vào ở đây.
+   ========================================================================== */
+
+.chat-layout { display: flex; gap: 20px; align-items: flex-start; }
+
+.chat-panel {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  height: 640px; padding: 0; overflow: hidden;
+}
+
+.chat-presence-panel {
+  width: 260px; flex-shrink: 0; height: 640px; padding: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+.chat-presence-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg); font-size: 13px; font-weight: 700;
+}
+.chat-presence-header i { color: var(--primary-color); margin-right: 6px; }
+.chat-presence-count {
+  background: color-mix(in srgb, var(--success-color) 18%, transparent);
+  color: var(--success-color); border-radius: var(--radius-pill);
+  padding: 1px 9px; font-size: 12px;
+}
+.chat-presence-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+
+.chat-pinned-bar {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 18px;
+  background: var(--card-bg); border-bottom: 1px solid var(--border-color);
+  color: var(--primary-color); font-size: 13px;
+}
+.chat-pinned-list { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.chat-pinned-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--hover-bg); border-radius: var(--radius-sm); padding: 6px 10px;
+}
+.chat-pinned-item span { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-pinned-item strong { color: var(--text-primary); }
+
+.chat-messages-list { flex: 1; padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+
+.chat-reply-preview {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 18px; background: var(--card-bg); border-top: 1px solid var(--border-color);
+}
+.chat-reply-preview-body { min-width: 0; }
+.chat-reply-name { display: block; font-size: 12.5px; font-weight: 700; color: var(--primary-color); }
+.chat-reply-text { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 480px; }
+
+.chat-input-row { position: relative; display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border-color); background: var(--card-bg); align-items: center; }
+.chat-input-row input {
+  flex: 1; padding: 10px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-pill);
+  outline: none; background: var(--hover-bg); transition: var(--transition-fast); font-size: var(--text-base);
+}
+.chat-input-row input:focus { background: var(--card-bg); border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 28%, transparent); }
+.chat-input-row button {
+  background: var(--primary-color); color: var(--on-gold); border: none; width: 42px; height: 42px;
+  border-radius: 50%; cursor: pointer; transition: var(--transition-fast);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0;
+}
+.chat-input-row button:hover:not(:disabled) { background: var(--primary-hover); }
+.chat-input-row button:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+.chat-mention-dropdown {
+  position: absolute; bottom: 100%; left: 18px; right: 18px; margin-bottom: 8px;
+  background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hover); max-height: 220px; overflow-y: auto; z-index: 6;
+}
+.chat-mention-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; font-size: 13.5px; }
+.chat-mention-item:hover, .chat-mention-item.active { background: var(--hover-bg); }
+.chat-mention-avatar {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+  background: var(--primary-color); color: var(--on-gold);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+}
+
+/* @mention và reaction đều chưa có CSS riêng trước đây (chỉ render text trần) — thêm màu ở
+   đây, cố tình KHÁC màu nhau (mention: info/xanh dương, reaction: gold/primary) để tránh lặp
+   lại lỗi trùng màu đã gặp và sửa ở WorkHub-Sci trước đó (mention tag từng trùng màu với
+   reaction bubble/pin/reply-quote vì cả 3 cùng dùng chung 1 biến accent). */
+.mention-tag {
+  background: color-mix(in srgb, var(--info-color) 16%, transparent);
+  color: var(--info-color); padding: 1px 5px; border-radius: var(--radius-xs); font-weight: 600;
+}
+.msg-me .mention-tag { background: rgba(26, 20, 7, 0.14); color: rgba(26, 20, 7, 0.9); }
+
+.reaction-bar { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; }
+.reaction-bubble { background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: var(--radius-pill); padding: 1px 8px; font-size: 12px; cursor: pointer; }
+
+@media (max-width: 960px) {
+  .chat-layout { flex-direction: column; }
+  .chat-presence-panel { width: 100%; height: 220px; }
+}
+
+@media (max-width: 768px) {
+  .chat-panel { height: 72vh; }
+}
 
 @media (max-width: 480px) {
   .auth-card { max-width: calc(100vw - 32px); padding: 32px 22px; }
