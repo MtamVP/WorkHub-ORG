@@ -132,6 +132,41 @@ const API = {
             return "Đã cập nhật ảnh nền";
         }
     },
+    presence: {
+        // Danh sách thành viên panel Chat: roster THẬT lấy từ public.users (giống getAllUsers),
+        // chỉ dùng user_status để LÀM GIÀU trạng thái online/offline -- KHÔNG lấy roster trực tiếp
+        // từ user_status, vì bảng đó chỉ có mặt những ai từng mở app (ping presence thành công),
+        // nên roster sẽ thiếu người nếu lấy thẳng từ đó (đây chính là lý do panel Thành viên từng
+        // chỉ hiện 2 người dù group có nhiều người hơn).
+        getMembersWithPresence: async (groupKey) => {
+            if (!sbClient) return [];
+            let usersQuery = sbClient.from('users').select('email, nickname, group_key, created_at');
+            if (groupKey && groupKey !== 'all') usersQuery = usersQuery.eq('group_key', groupKey);
+            const { data: usersData, error: userErr } = await usersQuery.order('created_at', { ascending: false });
+            if (userErr) console.warn('Lỗi lấy users:', userErr);
+
+            const { data: statusData, error: statusErr } = await sbClient
+                .from('user_status').select('*').order('last_changed', { ascending: false });
+            if (statusErr) console.warn('Lỗi lấy user_status:', statusErr);
+
+            const statusMap = {};
+            (statusData || []).forEach(st => {
+                if (st.email) statusMap[st.email.toLowerCase()] = st;
+            });
+
+            return (usersData || []).map(u => {
+                const email = (u.email || '').toLowerCase();
+                const st = statusMap[email];
+                return {
+                    email: u.email,
+                    display_name: u.nickname || (st ? st.display_name : '') || email.split('@')[0],
+                    group_key: u.group_key,
+                    last_changed: st ? st.last_changed : null,
+                    photo_url: st ? st.photo_url : null
+                };
+            });
+        }
+    },
     // Quản lý người dùng trong app. LƯU Ý QUAN TRỌNG: đây chỉ quản lý hồ sơ QUYỀN (bảng
     // public.users: email/nickname/group_key), KHÔNG tạo/xóa được tài khoản đăng nhập Firebase Auth
     // thật sự — việc đó cần Firebase Admin SDK ở backend mà app này (frontend tĩnh) không có, và
@@ -1700,6 +1735,7 @@ window.callGAS = async function(action, params = {}) {
         switch (action) {
             case 'updateNickname': result = await API.auth.updateNickname(params.email, params.newNickname); break;
             case 'getAllUsers': result = await API.auth.getAllUsers(params.groupKey); break;
+            case 'getMembersWithPresence': result = await API.presence.getMembersWithPresence(params.groupKey); break;
             case 'getUserGroup': result = await API.auth.getUserGroup(params.email); break;
             case 'listAllUsers': result = await API.user.listAll(); break;
             case 'provisionUser': result = await API.user.provision(params.email, params.nickname, params.groupKey); break;

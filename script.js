@@ -5135,12 +5135,18 @@ async function loadPinnedMessages() {
 }
 
 async function loadPresence() {
-    const { data } = await sbClient.from('user_status')
-        .select('*')
-        .eq('current_group', activeGroup)
-        .order('last_changed', { ascending: false });
-    renderMemberSidebar(data || []);
-    renderChatPresenceList(data || []);
+    // Roster thật lấy từ public.users (qua getMembersWithPresence), không lấy thẳng từ
+    // user_status -- xem ghi chú trong api.js. Trước đây lấy thẳng từ user_status nên panel
+    // chỉ hiện đúng những ai từng ping presence thành công (có khi chỉ 1-2 người).
+    let data = [];
+    try {
+        const response = await callGAS('getMembersWithPresence', { groupKey: activeGroup });
+        if (response.status === 'success') data = response.data || [];
+    } catch (e) {
+        console.error('Lỗi tải danh sách thành viên:', e);
+    }
+    renderMemberSidebar(data);
+    renderChatPresenceList(data);
 }
 
 // Panel "Thành viên" bên phải trang Trò Chuyện — cùng nguồn dữ liệu (user_status) với
