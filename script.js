@@ -1387,6 +1387,13 @@ let showArchivedProjects = false;
 // Cache toàn bộ dự án đã fetch lần gần nhất — để lọc/sắp xếp ở client mà không cần
 // gọi lại API mỗi khi đổi dropdown filter/sort (trước đây loadProgressList() tự fetch riêng).
 let globalAllProjects = [];
+// Cache toàn bộ task của dự án đang mở (gán thật ở loadTasksForProject). Fin/Sci đều khai
+// báo biến này ở top-level; ORG thì không -- nên bất kỳ chỗ nào đọc globalAllTasks TRƯỚC
+// khi loadTasksForProject chạy lần đầu (vd: applyTaskFilters, kéo-thả task, badge "bị chặn")
+// đều ném ReferenceError, kể cả những chỗ tưởng đã có fallback dạng `globalAllTasks || []`
+// -- fallback đó chỉ cứu được giá trị falsy của một biến ĐÃ khai báo, không cứu được biến
+// chưa từng khai báo. Khai báo ở đây để mọi lượt đọc đều an toàn ngay từ đầu, giống Fin/Sci.
+let globalAllTasks = [];
 
 // quiet = true: tải lại dữ liệu Progress sau một thao tác (lưu/xóa task, sửa project...)
 // mà KHÔNG xóa trắng bảng + 4 dropdown ra placeholder "Đang tải" — cùng lý do như
