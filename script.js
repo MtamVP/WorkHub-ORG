@@ -2355,7 +2355,7 @@ async function handleProjectFileUpload() {
                 mimeType: file.type || 'application/octet-stream',
                 groupKey: activeGroup,
                 description: '',
-                email: CURRENT_USER.email,
+                email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null,
                 folderPath: '',
                 projectId: currentTaskProjectID
             });
@@ -5791,7 +5791,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (resetPasswordLink) {
         resetPasswordLink.addEventListener('click', (e) => {
             e.preventDefault();
-            goToResetPassword();
+            // Trước đây gọi goToResetPassword(), một hàm không tồn tại ở đâu cả --
+            // nếu phần tử #reset-password-link được thêm vào HTML thì nút sẽ chết.
+            window.location.href = '/reset/';
         });
     }
 
@@ -5894,10 +5896,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
     }
 
-    if (expanded && container && !container.contains(e.target)) {
-        document.getElementById("checkboxes").style.display = "none";
+    // Đóng dropdown chọn nhiều khi bấm ra ngoài. Trước đây đoạn này nằm trực tiếp
+    // trong thân DOMContentLoaded (không có handler bọc ngoài), nên nó chỉ chạy
+    // đúng một lần lúc tải trang -- khi `expanded` còn false -- và vì vậy tính năng
+    // này chưa bao giờ hoạt động; `e` cũng không tồn tại ở scope đó.
+    document.addEventListener('click', function (e) {
+        if (!expanded || !container || container.contains(e.target)) return;
+        const box = document.getElementById('checkboxes');
+        if (box) box.style.display = 'none';
         expanded = false;
-    }
+    });
 
     if (typeof loadAssigneeDropdown === 'function') {
         loadAssigneeDropdown();

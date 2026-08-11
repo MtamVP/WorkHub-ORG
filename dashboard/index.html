@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
-  <link rel="stylesheet" href="/style.css?v=3.2.1">
+  <link rel="stylesheet" href="/style.css?v=3.3.0">
   <link rel="stylesheet" href="/rag_chatbot.css">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#120F0A">
@@ -67,10 +67,10 @@
               danh</a></li>
           <li><a class="dropdown-item" href="/reset/"><i class="fa-solid fa-key me-2"></i> Đổi Mật khẩu</a></li>
           <li><hr class="dropdown-divider"></li>
-          <li><a class="dropdown-item" href="#" onclick="document.getElementById('login-bg-input').click()"><i class="fa-solid fa-image me-2 text-info"></i> Đổi Ảnh nền</a></li>
-          <li><a class="dropdown-item" href="#" onclick="confirmResetTheme()"><i class="fa-solid fa-eraser me-2 text-danger"></i> Reset Ảnh nền</a></li>
+          <li><a class="dropdown-item" href="#" onclick="document.getElementById('global-bg-input').click()"><i class="fa-solid fa-image me-2 text-info"></i> Đổi Ảnh nền</a></li>
+          <li><a class="dropdown-item" href="#" onclick="resetBackground()"><i class="fa-solid fa-eraser me-2 text-danger"></i> Reset Ảnh nền</a></li>
         </ul>
-        <input type="file" id="login-bg-input" accept="image/*" style="display: none;" onchange="handleLoginBgUpload(this)">
+        <input type="file" id="global-bg-input" accept="image/*" style="display: none;" onchange="handleBackgroundUpload(this)">
       </div>
       <button type="button" class="btn btn-link text-decoration-none" onclick="goToLounge('in-lounge')"
         title="Vào phòng nghỉ" style="color: var(--text-color);">
@@ -1225,7 +1225,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=1786352929364"></script>
+  <script src="/script.js?v=3.3.0"></script>
   <script src="/rag_chatbot.js?v=1786178129444"></script>
 
   <script>

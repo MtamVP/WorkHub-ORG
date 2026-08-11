@@ -1254,9 +1254,9 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 .kanban-column-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
 .kanban-card {
   background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm);
-  padding: 10px 12px; cursor: grab; box-shadow: var(--shadow-1); transition: var(--transition-fast);
+  padding: 10px 12px; cursor: grab; box-shadow: var(--shadow-soft); transition: var(--transition-fast);
 }
-.kanban-card:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.kanban-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
 .kanban-card:active { cursor: grabbing; }
 .kanban-card-title { font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
 .kanban-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
