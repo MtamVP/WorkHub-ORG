@@ -2206,8 +2206,9 @@ async function loadTasksForProject(projectId, options) {
 // Danh sách toàn bộ dự án (không chỉ dự án đang chọn), lọc theo trạng thái/tên,
 // để tìm nhanh các dự án đã hoàn thành (Completed) v.v. Đọc từ cache globalAllProjects
 // đã được loadProjectOverview() nạp sẵn — không gọi API riêng.
-// (Cùng tính năng vừa port cho WorkHub-Sci/WorkHub-Fin, chuyển sang class Bootstrap
-// cho khớp giao diện org thay vì copy nguyên class của Sci/Fin.)
+// (Cùng tính năng đã port cho WorkHub-Sci/WorkHub-Fin; markup giờ dùng cùng bộ class
+// dùng chung -filter-bar/.data-table/.icon-btn/... thay vì Bootstrap riêng của org,
+// để Task section có layout khớp Fin/Sci, chỉ khác màu theo theme gold của org.)
 
 let projectManagerPanelCollapsed = false;
 
@@ -2656,6 +2657,9 @@ function handleTaskDragEnd(e) {
     draggedTaskId = null;
     document.querySelectorAll('.dragging-task').forEach(el => el.classList.remove('dragging-task'));
 }
+
+// switchTaskView() sống trong <script> cuối dashboard/index.html (không phải ở đây) --
+// xem ghi chú tại đó.
 
 //  BOARD KANBAN (kéo thẻ giữa các cột = đổi status)
 const KANBAN_STATUSES = ['Not Started', 'Working on it', 'Stuck', 'Done'];
@@ -4133,10 +4137,10 @@ function taskViewStateKey() {
 
 function saveTaskViewState() {
     try {
-        const checked = document.querySelector('input[name="viewMode"]:checked');
+        const activeViewBtn = document.querySelector('.view-toggle-btn.active');
         const val = id => { const el = document.getElementById(id); return el ? el.value : ''; };
         localStorage.setItem(taskViewStateKey(), JSON.stringify({
-            view: checked ? checked.id.replace('view-', '') : 'table',
+            view: activeViewBtn ? activeViewBtn.dataset.view : 'table',
             projectId: currentTaskProjectID || '',
             name: val('filter-task-name'),
             status: val('filter-status'),
@@ -4162,11 +4166,7 @@ function restoreSavedTaskProject(taskDropdown) {
     if (!state) return;
 
     // Chế độ xem khôi phục được ngay vì không phụ thuộc dữ liệu
-    const radio = document.getElementById('view-' + state.view);
-    if (radio && !radio.checked) {
-        radio.checked = true;
-        if (typeof switchTaskView === 'function') switchTaskView(state.view);
-    }
+    if (state.view && typeof switchTaskView === 'function') switchTaskView(state.view);
 
     pendingTaskFilterRestore = state;
 

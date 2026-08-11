@@ -1119,6 +1119,61 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color) 22%, transparent);
 }
 
+/* --- Section header / filter bar / table wrapper / icon buttons / pills / buttons ---
+   Ported from Fin/Sci's shared component set so ORG's own sections (starting with Task)
+   reach the same finish, using ORG's own tokens (gold, not Fin's blue/Sci's cyan). --- */
+.section-hero-card {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 16px; padding: 20px 24px; border-left: 4px solid var(--gold);
+}
+.section-hero-info h3 { font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.section-hero-info p { color: var(--text-secondary); font-size: 14px; max-width: 850px; }
+.section-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+
+.filter-bar { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.filter-bar .form-group { margin-bottom: 0; min-width: 160px; flex: 1 1 160px; }
+
+.table-container { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--card-bg); }
+
+.icon-btn {
+  width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: transparent; color: var(--text-secondary); transition: var(--transition-fast); font-size: 13px;
+  border: none;
+}
+.icon-btn:hover { background: var(--hover-bg); color: var(--text-primary); }
+.icon-btn.danger:hover { background: color-mix(in srgb, var(--danger-color) 14%, transparent); color: var(--danger-color); }
+
+.task-view-toggle { display: flex; border: 1px solid var(--border-color); border-radius: var(--radius-sm); overflow: hidden; }
+.task-view-toggle .icon-btn { border-radius: 0; }
+.view-toggle-btn.active, .view-toggle-btn.active:hover { background: var(--gold); color: var(--on-gold); }
+
+.status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; font-family: var(--font-mono); }
+.pill-success { background: color-mix(in srgb, var(--success-color) 14%, transparent); color: var(--success-color); border: 1px solid color-mix(in srgb, var(--success-color) 30%, transparent); }
+.pill-warning { background: color-mix(in srgb, var(--warning-color) 14%, transparent); color: var(--warning-color); border: 1px solid color-mix(in srgb, var(--warning-color) 30%, transparent); }
+.pill-danger { background: color-mix(in srgb, var(--danger-color) 14%, transparent); color: var(--danger-color); border: 1px solid color-mix(in srgb, var(--danger-color) 30%, transparent); }
+.pill-info { background: color-mix(in srgb, var(--info-color) 14%, transparent); color: var(--info-color); border: 1px solid color-mix(in srgb, var(--info-color) 30%, transparent); }
+.pill-neutral { background: var(--hover-bg); color: var(--text-muted); border: 1px solid var(--border-color); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; padding: 9px 18px; border-radius: var(--radius-sm); transition: var(--transition-fast); border: none; }
+.btn-primary { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-gold); box-shadow: var(--shadow-gold); }
+.btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.btn-secondary { background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); }
+.btn-secondary:hover { background: var(--border-color); color: var(--text-primary); }
+.btn-outline { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); }
+.btn-outline:hover { border-color: var(--gold); color: var(--gold); background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.btn-outline.active { border-color: var(--gold); color: var(--gold); background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.btn-danger { background: color-mix(in srgb, var(--danger-color) 14%, transparent); color: var(--danger-color); border: 1px solid color-mix(in srgb, var(--danger-color) 30%, transparent); }
+.btn-danger:hover { background: var(--danger-color); color: #FFF; }
+
+.loading-state, .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px 20px; color: var(--text-muted); text-align: center; font-size: 13.5px; }
+
+.task-attachment-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.task-attachment-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.task-attachment-item a { color: var(--gold); font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-attachment-meta { font-size: 11px; color: var(--text-muted); }
+
 /* --- Bulk select toolbar (Task) --- */
 .bulk-action-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;

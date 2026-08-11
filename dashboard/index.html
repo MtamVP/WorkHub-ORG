@@ -423,26 +423,31 @@
       </section>
 
       <section id="task-section" class="content-section" style="display:none;">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h2 class="m-0 text-primary"><i class="fa-solid fa-list-check"></i> Quản Lý Công Việc</h2>
-          <button class="primary-btn" onclick="openAddTask()"><i class="fa-solid fa-plus"></i> New
-            Task</button>
+        <div class="section-hero-card card">
+          <div class="section-hero-info">
+            <h3><i class="fa-solid fa-list-check" style="color: var(--gold);"></i> Quản Lý Công Việc</h3>
+            <p>Danh sách công việc theo từng dự án của ORG.</p>
+          </div>
+          <div class="section-actions">
+            <button type="button" class="btn btn-primary" onclick="openAddTask()"><i class="fa-solid fa-plus"></i> Công việc mới</button>
+          </div>
         </div>
 
-        <div class="card p-3 mb-3 glass-panel" id="task-project-manager-card">
+        <div class="card" id="task-project-manager-card" style="padding: 16px 20px; margin-top: 16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="toggleProjectManagerPanel()">
-            <h6 class="m-0 fw-bold"><i class="fa-solid fa-diagram-project text-primary me-2"></i>Quản Lý Dự Án
-              <span id="task-project-manager-count" class="badge bg-secondary ms-1">0</span>
-            </h6>
-            <button type="button" class="btn btn-sm btn-outline-secondary border-0" id="task-project-manager-toggle-btn" title="Thu gọn/Mở rộng" onclick="event.stopPropagation(); toggleProjectManagerPanel();">
+            <h4 style="margin:0; font-size:14px; display:flex; align-items:center; gap:8px;">
+              <i class="fa-solid fa-diagram-project"></i> Quản Lý Dự Án
+              <span id="task-project-manager-count" class="status-pill pill-info" style="font-size:10px;">0</span>
+            </h4>
+            <button type="button" class="icon-btn" id="task-project-manager-toggle-btn" title="Thu gọn/Mở rộng" onclick="event.stopPropagation(); toggleProjectManagerPanel();">
               <i class="fa-solid fa-chevron-up"></i>
             </button>
           </div>
-          <div id="task-project-manager-body" class="mt-3">
-            <div class="row g-2 align-items-end mb-2">
-              <div class="col-6 col-md-4">
-                <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Trạng thái dự án</label>
-                <select id="task-project-status-filter" class="form-select form-select-sm" onchange="renderProjectManagerList()">
+          <div id="task-project-manager-body" style="margin-top: 14px;">
+            <div class="filter-bar">
+              <div class="form-group">
+                <label class="form-label">Trạng thái dự án</label>
+                <select id="task-project-status-filter" class="form-select" onchange="renderProjectManagerList()">
                   <option value="">-- Tất cả trạng thái --</option>
                   <option value="Planning">Planning</option>
                   <option value="In Progress">In Progress</option>
@@ -450,14 +455,14 @@
                   <option value="On Hold">On Hold</option>
                 </select>
               </div>
-              <div class="col-6 col-md-4">
-                <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Tìm kiếm dự án</label>
-                <input type="text" id="task-project-search" class="form-control form-control-sm" placeholder="Tên dự án..." oninput="renderProjectManagerList()">
+              <div class="form-group">
+                <label class="form-label">Tìm kiếm dự án</label>
+                <input type="text" id="task-project-search" class="form-control" placeholder="Tên dự án..." oninput="renderProjectManagerList()">
               </div>
             </div>
-            <div class="table-responsive">
-              <table class="table align-middle mb-0 table-hover table-sm">
-                <thead class="glass-panel">
+            <div class="table-container" style="margin-top: 12px;">
+              <table class="data-table">
+                <thead>
                   <tr>
                     <th style="width: 34%;">Dự án</th>
                     <th style="width: 16%;">Trạng thái</th>
@@ -467,160 +472,137 @@
                   </tr>
                 </thead>
                 <tbody id="task-project-manager-body-list">
-                  <tr><td colspan="5" class="text-center text-muted">Đang tải...</td></tr>
+                  <tr><td colspan="5" class="empty-state">Đang tải...</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
-        <div class="card p-3 mb-3 glass-panel" id="task-project-files-card" style="display:none;">
-          <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="toggleProjectFilesPanel()">
-            <h6 class="m-0 fw-bold"><i class="fa-solid fa-folder-open text-primary me-2"></i>Tệp Của Dự Án
-              <span id="task-project-files-count" class="badge bg-secondary ms-1">0</span>
-            </h6>
-            <button type="button" class="btn btn-sm btn-outline-secondary border-0" id="task-project-files-toggle-btn" title="Thu gọn/Mở rộng" onclick="event.stopPropagation(); toggleProjectFilesPanel();">
-              <i class="fa-solid fa-chevron-up"></i>
-            </button>
-          </div>
-          <div id="task-project-files-body" class="mt-3">
-            <input type="file" id="task-project-file-input" style="display:none;" onchange="handleProjectFileUpload()">
-            <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="task-project-file-upload-btn" onclick="document.getElementById('task-project-file-input').click()">
-              <i class="fa-solid fa-upload"></i> Tải file lên dự án
-            </button>
-            <div id="task-project-files-list" class="d-flex flex-column gap-2"></div>
-          </div>
-        </div>
-
-        <div class="card p-2 mb-3 glass-panel">
-          <div class="row g-2 align-items-end">
-
-            <div class="col-6 col-md-4 col-xl-3">
-              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Dự án</label>
-              <select id="task-project-select" class="form-select form-select-sm border-primary"
-                onchange="onProjectChange()">
+        <div class="card" style="padding: 18px 20px; margin-top: 16px;">
+          <div class="filter-bar">
+            <div class="form-group">
+              <label class="form-label">Dự án</label>
+              <select id="task-project-select" class="form-select" onchange="onProjectChange()">
                 <option value="">-- Đang tải... --</option>
               </select>
             </div>
-
-            <div class="col-6 col-md-3 col-xl-2">
-              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Tên Task</label>
-              <select id="filter-task-name" class="form-select form-select-sm" onchange="applyTaskFilters()">
+            <div class="form-group">
+              <label class="form-label">Tên công việc</label>
+              <select id="filter-task-name" class="form-select" onchange="applyTaskFilters()">
                 <option value="">-- Tất cả --</option>
               </select>
             </div>
-
-            <div class="col-4 col-md-2 col-xl-1">
-              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Status</label>
-              <select id="filter-status" class="form-select form-select-sm" onchange="applyTaskFilters()">
-                <option value="all">All</option>
+            <div class="form-group">
+              <label class="form-label">Trạng thái</label>
+              <select id="filter-status" class="form-select" onchange="applyTaskFilters()">
+                <option value="all">Tất cả</option>
                 <option value="Not Started">Not Started</option>
                 <option value="Working on it">Working on it</option>
                 <option value="Stuck">Stuck</option>
                 <option value="Done">Done</option>
-
               </select>
             </div>
-
-            <div class="col-4 col-md-2 col-xl-1">
-              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Priority</label>
-              <select id="filter-priority" class="form-select form-select-sm" onchange="applyTaskFilters()">
-                <option value="all">All</option>
+            <div class="form-group">
+              <label class="form-label">Ưu tiên</label>
+              <select id="filter-priority" class="form-select" onchange="applyTaskFilters()">
+                <option value="all">Tất cả</option>
                 <option value="Critical">Critical</option>
                 <option value="High">High</option>
                 <option value="Medium">Medium</option>
                 <option value="Low">Low</option>
               </select>
             </div>
-
-            <div class="col-4 col-md-3 col-xl-2">
-              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Người thực hiện</label>
-              <select id="filter-assignee" class="form-select form-select-sm" onchange="applyTaskFilters()">
+            <div class="form-group">
+              <label class="form-label">Người thực hiện</label>
+              <select id="filter-assignee" class="form-select" onchange="applyTaskFilters()">
                 <option value="all">Tất cả</option>
               </select>
             </div>
-
-            <div class="col-4 col-md-2 col-xl-1">
-              <label class="form-label fw-bold small text-muted mb-0" style="font-size: 11px;">Nhãn</label>
-              <select id="filter-label" class="form-select form-select-sm" onchange="applyTaskFilters()">
+            <div class="form-group">
+              <label class="form-label">Nhãn</label>
+              <select id="filter-label" class="form-select" onchange="applyTaskFilters()">
                 <option value="all">Tất cả nhãn</option>
               </select>
             </div>
+          </div>
 
-            <div class="col-12 col-md-auto ms-auto">
-              <div class="btn-group w-100" role="group">
-                <input type="radio" class="btn-check" name="viewMode" id="view-table" autocomplete="off" checked
-                  onchange="switchTaskView('table')">
-                <label class="btn btn-outline-primary btn-sm px-3" for="view-table" aria-label="Xem dạng bảng"><i
-                    class="fa-solid fa-table"></i></label>
-
-                <input type="radio" class="btn-check" name="viewMode" id="view-card" autocomplete="off"
-                  onchange="switchTaskView('card')">
-                <label class="btn btn-outline-primary btn-sm px-3" for="view-card" aria-label="Xem dạng thẻ"><i
-                    class="fa-solid fa-grip"></i></label>
-
-                <input type="radio" class="btn-check" name="viewMode" id="view-kanban" autocomplete="off"
-                  onchange="switchTaskView('kanban')">
-                <label class="btn btn-outline-primary btn-sm px-3" for="view-kanban" aria-label="Xem dạng Kanban"><i
-                    class="fa-solid fa-columns"></i></label>
-              </div>
-              <button type="button" id="bulk-select-toggle" class="btn btn-outline-secondary btn-sm px-3 ms-2" onclick="toggleBulkSelectMode()" title="Chọn nhiều">
-                <i class="fa-regular fa-square-check"></i>
-              </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm px-3 ms-2" onclick="exportTasksCsv()" title="Xuất công việc ra CSV">
-                <i class="fa-solid fa-file-csv"></i>
-              </button>
+          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 14px;">
+            <div class="task-view-toggle">
+              <button type="button" class="icon-btn view-toggle-btn active" data-view="table" onclick="switchTaskView('table')" title="Xem dạng bảng"><i class="fa-solid fa-table"></i></button>
+              <button type="button" class="icon-btn view-toggle-btn" data-view="card" onclick="switchTaskView('card')" title="Xem dạng thẻ"><i class="fa-solid fa-grip"></i></button>
+              <button type="button" class="icon-btn view-toggle-btn" data-view="kanban" onclick="switchTaskView('kanban')" title="Xem dạng Kanban"><i class="fa-solid fa-columns"></i></button>
             </div>
+            <button type="button" class="icon-btn" id="bulk-select-toggle" onclick="toggleBulkSelectMode()" title="Chọn nhiều"><i class="fa-regular fa-square-check"></i></button>
+            <button type="button" class="icon-btn" onclick="exportTasksCsv()" title="Xuất công việc ra CSV"><i class="fa-solid fa-file-csv"></i></button>
+          </div>
+        </div>
+
+        <div class="card" id="task-project-files-card" style="padding: 16px 20px; margin-top: 16px; display: none;">
+          <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="toggleProjectFilesPanel()">
+            <h4 style="margin:0; font-size:14px; display:flex; align-items:center; gap:8px;">
+              <i class="fa-solid fa-folder-open"></i> Tệp Của Dự Án
+              <span id="task-project-files-count" class="status-pill pill-info" style="font-size:10px;">0</span>
+            </h4>
+            <button type="button" class="icon-btn" id="task-project-files-toggle-btn" title="Thu gọn/Mở rộng" onclick="event.stopPropagation(); toggleProjectFilesPanel();">
+              <i class="fa-solid fa-chevron-up"></i>
+            </button>
+          </div>
+          <div id="task-project-files-body" style="margin-top: 12px;">
+            <input type="file" id="task-project-file-input" style="display:none;" onchange="handleProjectFileUpload()">
+            <button type="button" class="btn btn-outline" id="task-project-file-upload-btn" onclick="document.getElementById('task-project-file-input').click()" style="margin-bottom: 12px;">
+              <i class="fa-solid fa-upload"></i> Tải file lên dự án
+            </button>
+            <div id="task-project-files-list" class="task-attachment-list"></div>
           </div>
         </div>
 
         <div id="bulk-action-bar" class="bulk-action-bar" style="display:none;">
-          <span id="bulk-selected-count" class="fw-bold">0 đã chọn</span>
+          <span id="bulk-selected-count" style="font-weight: 700;">0 đã chọn</span>
 
-          <select id="bulk-status-select" class="form-select form-select-sm" style="width:auto;">
+          <select id="bulk-status-select" class="form-select" style="width: auto; padding: 6px 10px;">
             <option value="Not Started">Not Started</option>
             <option value="Working on it">Working on it</option>
             <option value="Stuck">Stuck</option>
             <option value="Done">Done</option>
           </select>
-          <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkStatusChange()">Đổi trạng thái</button>
+          <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="applyBulkStatusChange()">Đổi trạng thái</button>
 
-          <div class="multiselect-container bulk-assignee-picker">
-            <div class="selectBox" onclick="showBulkAssigneeCheckboxes()">
-              <select class="form-select form-select-sm" style="width:auto;"><option>Chọn người...</option></select>
-              <div class="overSelect"></div>
-            </div>
-            <div id="bulk-assignee-checkboxes"></div>
+          <div class="multiselect-container bulk-assignee-picker" style="position: relative;">
+            <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="showBulkAssigneeCheckboxes()">Chọn người...</button>
+            <div id="bulk-assignee-checkboxes" style="display: none; position: absolute; z-index: 20; top: 110%; left: 0; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px; min-width: 200px; max-height: 220px; overflow-y: auto; box-shadow: var(--shadow-hover);"></div>
           </div>
-          <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkAssign()">Gán người</button>
+          <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="applyBulkAssign()">Gán người</button>
 
-          <input type="date" id="bulk-duedate-input" class="form-control form-control-sm" style="width:auto;">
-          <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkDueDate()">Đặt hạn</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="applyBulkClearDueDate()">Xóa hạn</button>
+          <input type="date" id="bulk-duedate-input" class="form-select" style="width: auto; padding: 6px 10px;">
+          <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="applyBulkDueDate()">Đặt hạn</button>
+          <button type="button" class="btn btn-outline" style="padding: 6px 12px;" onclick="applyBulkClearDueDate()">Xóa hạn</button>
 
-          <input type="text" id="bulk-label-input" class="form-control form-control-sm" style="width:120px;" placeholder="Nhãn...">
-          <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyBulkAddLabel()">Gắn nhãn</button>
+          <input type="text" id="bulk-label-input" class="form-select" style="width: 120px; padding: 6px 10px;" placeholder="Nhãn...">
+          <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="applyBulkAddLabel()">Gắn nhãn</button>
 
-          <button type="button" class="btn btn-sm btn-outline-danger" onclick="applyBulkDelete()">Xóa đã chọn</button>
+          <button type="button" class="btn btn-danger" style="padding: 6px 12px;" onclick="applyBulkDelete()">Xóa đã chọn</button>
         </div>
 
-        <div id="task-view-table" style="display: block; overflow-x: auto;">
-          <table class="monday-table">
-            <thead class="table-light">
-              <tr>
-                <th class="bulk-select-col" style="width: 3%; display:none;"><input type="checkbox" id="bulk-select-all" onchange="toggleSelectAllTasks(this.checked)"></th>
-                <th style="width: 25%;">Task Name</th>
-                <th style="width: 15%;">Thành viên</th>
-                <th class="text-center" style="width: 5%;">File</th>
-                <th style="width: 20%;">Mô tả</th>
-                <th style="width: 10%;">Status</th>
-                <th style="width: 10%;">Due Date</th>
-                <th style="width: 10%;">Priority</th>
-                <th style="width: 5%;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="task-table-body"></tbody>
-          </table>
+        <div id="task-view-table" style="display: block;">
+          <div class="table-container" style="margin-top: 16px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th class="bulk-select-col" style="width: 3%; display: none;"><input type="checkbox" id="bulk-select-all" onchange="toggleSelectAllTasks(this.checked)"></th>
+                  <th style="width: 23%;">Công việc</th>
+                  <th style="width: 13%;">Thành viên</th>
+                  <th class="text-center" style="width: 5%;">File</th>
+                  <th style="width: 19%;">Mô tả</th>
+                  <th style="width: 10%;">Trạng thái</th>
+                  <th style="width: 10%;">Hạn chót</th>
+                  <th style="width: 10%;">Ưu tiên</th>
+                  <th style="width: 10%;">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="task-table-body"></tbody>
+            </table>
+          </div>
         </div>
 
         <div id="task-view-card" style="display: none;">
@@ -1260,6 +1242,11 @@
       if (kanbanView) {
         kanbanView.style.display = (view === 'kanban') ? 'block' : 'none';
       }
+      // Nút .view-toggle-btn giờ thay cho radio Bootstrap cũ nên tự set active ở đây
+      // (trước đây .btn-check lo việc này qua CSS, giờ không còn radio nữa).
+      document.querySelectorAll('.view-toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === view);
+      });
       if (typeof applyTaskFilters === 'function') {
         applyTaskFilters();
       }
