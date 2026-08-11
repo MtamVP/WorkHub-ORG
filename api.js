@@ -493,7 +493,12 @@ const API = {
             if (!sbClient) return [];
 
             let projectQuery = sbClient.from('projects').select('id').is('deleted_at', null).is('archived_at', null);
-            if (groupKey && groupKey !== 'all') projectQuery = projectQuery.eq('group_key', groupKey);
+            // ORG chỉ nên thấy khối lượng công việc của dự án CỦA ORG cộng với dự án Fin/Sci
+            // đã share -- cùng quy tắc app-scoped visibility như project.list, không kéo hết mọi
+            // dự án riêng của Fin/Sci vào đây.
+            projectQuery = groupKey === 'all'
+                ? projectQuery.or('group_key.eq.all,is_shared.eq.true')
+                : projectQuery.eq('group_key', groupKey);
             const { data: projects } = await projectQuery;
             if (!projects || projects.length === 0) return [];
             const projectIds = projects.map(p => p.id);
