@@ -1,4 +1,4 @@
-let RAG_API_BASE = 'https://workhub-org.onrender.com';
+let RAG_API_BASE = 'https://workhub-org-git-946071183528.europe-west1.run.app';
 let isRAGConnected = false;
 let isGenerating = false;
 let ragChatHistory = [];
