@@ -17,11 +17,9 @@ COPY . .
 # Tạo thư mục lưu data_bronze
 RUN mkdir -p data_bronze
 
-# Mở port
-EXPOSE 7860
-EXPOSE 8000
+# Mở port (Cloud Run sẽ ghi đè biến này, mặc định là 8080)
+ENV PORT=8080
+EXPOSE $PORT
 
-ENV PORT=7860
-
-# Lệnh khởi chạy server
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+# Lệnh khởi chạy server (sử dụng shell form để nhận diện biến môi trường $PORT)
+CMD uvicorn app:app --host 0.0.0.0 --port $PORT
