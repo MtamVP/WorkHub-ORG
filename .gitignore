@@ -5,3 +5,6 @@ rag_server/data_bronze/
 __pycache__/
 *.pyc
 *.log
+
+node_modules/
+tauri-dist/

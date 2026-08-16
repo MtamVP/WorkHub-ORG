@@ -1,0 +1,24 @@
+{
+  "name": "wh-org",
+  "version": "1.0.0",
+  "description": "",
+  "main": "api.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MtamVP/WorkHub-ORG.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MtamVP/WorkHub-ORG/issues"
+  },
+  "homepage": "https://github.com/MtamVP/WorkHub-ORG#readme",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4"
+  }
+}
