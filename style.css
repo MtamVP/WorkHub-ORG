@@ -323,12 +323,13 @@ a { color: inherit; }
   display: flex; flex-direction: column; overflow-x: hidden;
 }
 #app-sidebar.expanded { width: var(--sidebar-width); }
-#app-sidebar ul { list-style: none; padding: 0 12px; margin: 0; }
+#app-sidebar ul { list-style: none; padding: 0 10px; margin: 0; }
 
 /* Nhãn nhóm chức năng (Dự Án / Công Cụ / Quản Trị) — nhỏ, mảnh, không in đậm,
-   thu lại thành một gạch chia mảnh khi sidebar ở chế độ icon-only. */
+   thu lại thành một gạch chia mảnh khi sidebar ở chế độ icon-only.
+   Mật độ đồng bộ với web Fin để 3 app nhìn cùng một hệ, không lệch cỡ. */
 .nav-group-label {
-  padding: 14px 14px 6px; margin: 0;
+  padding: 14px 12px 6px; margin: 0;
   font-size: 10px; font-weight: 400; letter-spacing: 1.4px; text-transform: uppercase;
   color: var(--text-muted); white-space: nowrap; overflow: hidden;
 }
@@ -339,26 +340,26 @@ a { color: inherit; }
 #app-sidebar:not(.expanded) .nav-group-label span { display: none; }
 
 .nav-item {
-  display: flex; align-items: center; padding: 11px 14px; margin-bottom: 2px;
-  cursor: pointer; border-radius: var(--radius-sm);
-  color: var(--text-secondary); font-weight: 500; font-size: 14px;
-  transition: var(--transition-fast);
+  display: flex; align-items: center; gap: 11px; padding: 9px 12px; margin-bottom: 1px;
+  cursor: pointer; border-radius: var(--radius-sm); position: relative;
+  color: var(--text-secondary); font-weight: 500; font-size: 13.5px;
+  transition: var(--transition-fast), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   justify-content: center; white-space: nowrap;
-  border-left: 2px solid transparent;
 }
 /* --font-body, not --font-display: nav labels are Vietnamese on the finance/science shells. */
-.nav-item span { font-family: var(--font-body); font-size: 15.5px; font-weight: 500; }
+.nav-item span { font-family: var(--font-body); font-size: 13.5px; font-weight: 500; }
 .nav-item:hover { background-color: var(--hover-bg); color: var(--text-primary); }
+.nav-item:hover i { transform: translateX(1px); }
 .nav-item.active {
   background: color-mix(in srgb, var(--gold) 12%, transparent);
   color: var(--gold-light);
   font-weight: 600;
-  border-left-color: var(--gold);
+  box-shadow: inset 3px 0 0 var(--gold);
 }
-.nav-item i { font-size: 17px; min-width: 24px; text-align: center; }
+.nav-item i { font-size: 18px; width: 20px; text-align: center; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
 
 #app-sidebar.expanded .nav-item { justify-content: flex-start; }
-#app-sidebar.expanded .nav-item span { display: inline-block; margin-left: 14px; }
+#app-sidebar.expanded .nav-item span { display: inline-block; }
 #app-sidebar:not(.expanded) .nav-item span { display: none; }
 
 /* Back-to-dashboard link inside a module sidebar */
