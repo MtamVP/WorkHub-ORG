@@ -1172,6 +1172,8 @@ async function loadEventAttendeeCheckboxes() {
 // hàm khôi phục modal về trạng thái "Tạo mới" (xóa dấu vết lần sửa trước đó)
 function resetEventModalUI() {
     document.getElementById('event-id').value = '';
+    const expectedVersionEl = document.getElementById('event-expected-version');
+    if (expectedVersionEl) expectedVersionEl.value = '';
 
     const modalTitle = document.getElementById('event-modal-title');
     if (modalTitle && eventModalDefaultTitleHTML !== null) modalTitle.innerHTML = eventModalDefaultTitleHTML;
@@ -1197,6 +1199,8 @@ window.openEditEvent = function (id, e) {
     const toTimeStr = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
     document.getElementById('event-id').value = event.id;
+    const expectedVersionEl = document.getElementById('event-expected-version');
+    if (expectedVersionEl) expectedVersionEl.value = event.version != null ? event.version : '';
     document.getElementById('event-title').value = event.title || '';
     document.getElementById('start-date').value = toDateStr(start);
     document.getElementById('start-time').value = toTimeStr(start);
@@ -1951,11 +1955,13 @@ async function handleProjectCreationOrUpdate() {
             }
         }
         else if (selectedProjectId) {
+            const currentProject = (globalAllProjects || []).find(p => p.id === selectedProjectId);
             const response = await callGAS("updateProject", {
                 projectId: selectedProjectId,
                 status: status,
                 description: note,
-                groupKey: activeGroup
+                groupKey: activeGroup,
+                expectedVersion: currentProject ? currentProject.version : undefined
             });
 
             if (response.status === 'success') {
@@ -3135,6 +3141,7 @@ function initRealtimeSync() {
         },
         (status) => {
             setRealtimeIndicator(status === 'SUBSCRIBED');
+            if (window.WorkHubSync) window.WorkHubSync.onRealtimeStatus(status);
         }
     );
 }
@@ -6452,6 +6459,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const editingId = document.getElementById('event-id').value;
             const isEditing = !!editingId;
+            const expectedVersionRaw = document.getElementById('event-expected-version') ? document.getElementById('event-expected-version').value : '';
+            const expectedVersion = expectedVersionRaw !== '' ? Number(expectedVersionRaw) : undefined;
 
             formBtn.disabled = true;
             const originalBtnText = formBtn.innerHTML;
@@ -6463,7 +6472,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     eventId: editingId,
                     calendarType: currentCalendarType,
                     groupKey: activeGroup,
-                    email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
+                    email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null,
+                    expectedVersion: isEditing ? expectedVersion : undefined
                 });
 
                 showToast(msg, "success");

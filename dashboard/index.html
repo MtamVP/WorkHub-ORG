@@ -839,11 +839,22 @@
     </main>
   </div>
 
+  <div id="sync-conflict-modal" class="custom-modal">
+    <div class="modal-content card">
+      <h3><i class="fa-solid fa-triangle-exclamation me-2"></i> Thay đổi ngoại tuyến không đồng bộ được</h3>
+      <div id="sync-conflict-list"></div>
+      <div class="text-end mt-3">
+        <button type="button" class="secondary-btn" onclick="hideModal('sync-conflict-modal')">Đóng</button>
+      </div>
+    </div>
+  </div>
+
   <div id="add-event-modal" class="custom-modal">
     <div class="modal-content card">
       <h3 id="event-modal-title"><i class="fa-solid fa-plus me-2"></i> Thêm Sự Kiện Lịch Mới</h3>
       <form id="event-form">
         <input type="hidden" id="event-id" value="">
+        <input type="hidden" id="event-expected-version" value="">
         <div class="form-group mb-3"><label for="event-title" class="form-label">Tên Sự kiện</label><input type="text"
             id="event-title" name="title" class="text-input w-100" required></div>
         <div class="row">
@@ -1198,6 +1209,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/api.js?v=1786944616193"></script>
+  <script src="/sync-config.js?v=1"></script>
+  <script src="/sync-engine.js?v=1"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
   <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="notiOffcanvas" aria-labelledby="notiOffcanvasLabel" style="width: 450px;">
     <div class="offcanvas-header border-bottom bg-light">
@@ -1226,6 +1239,11 @@
   </div>
 
   <script src="/script.js?v=3.3.1"></script>
+  <script src="/tray-hotkey.js?v=1"></script>
+  <script src="/sync-conflict-ui.js?v=1"></script>
+  <script src="/notify-deadlines.js?v=1"></script>
+  <script src="/backup-config.js?v=1"></script>
+  <script src="/local-backup.js?v=1"></script>
   <script src="/rag_chatbot.js?v=1786178129444"></script>
 
   <script>
