@@ -3087,7 +3087,7 @@ function activateSearchResult(idx) {
     closeSearchPalette();
 
     if (item.type === 'file') {
-        if (item.url) window.open(item.url, '_blank', 'noopener');
+        if (item.url) openExternalUrl(item.url);
         return;
     }
     if (item.type === 'task') {
@@ -5546,7 +5546,7 @@ function handleNotiClick(el) {
         link.includes('calendar.google.com') ||
         link.includes('script.google.com')) { // Link về file gốc hoặc script
 
-        window.open(link, '_blank');
+        openExternalUrl(link);
     }
     // Nếu là link nội bộ trang web (ví dụ chuyển sang trang /finance) -> MỞ TAB HIỆN TẠI
     else {
