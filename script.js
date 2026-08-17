@@ -3319,8 +3319,9 @@ function goToTaskInProject(projectId) {
 }
 
 //  QUẢN LÝ NGƯỜI DÙNG (ADMIN) — chỉ quản lý hồ sơ quyền (public.users), không tạo/xóa được
-// tài khoản đăng nhập Firebase Auth thật. Gate quyền chỉ ở client (cùng mức bảo mật hiện có
-// của cả app — chưa có RLS thật sự trên Supabase).
+// tài khoản đăng nhập Firebase Auth thật. Check dưới đây chỉ để ẩn/hiện UI cho gọn — quyền
+// thật sự được RLS + trigger `prevent_self_group_key_escalation` trên public.users chặn ở
+// tầng DB (chặn mọi actor không phải admin đổi group_key của bất kỳ ai, kể cả chính họ).
 const USER_GROUP_LABELS = { guest: 'Guest', finance: 'Finance', science: 'Science', admin: 'Admin' };
 
 async function loadAdminUsers() {
