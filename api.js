@@ -638,22 +638,6 @@ const API = {
             const isNew = !taskData.id;
             taskData.id = taskData.id || genId("T");
 
-            // Chống ghi đè khi hai người sửa cùng lúc: client gửi kèm updated_at của bản nó
-            // đang xem; nếu bản trong DB đã mới hơn thì từ chối lưu thay vì đè âm thầm.
-            // (baseUpdatedAt rỗng = bỏ qua kiểm tra, để các luồng cũ không bị chặn oan.)
-            if (!isNew && taskData.baseUpdatedAt) {
-                const { data: current } = await sbClient.from('tasks')
-                    .select('updated_at').eq('id', taskData.id).maybeSingle();
-                if (current && current.updated_at) {
-                    const dbTime = new Date(current.updated_at).getTime();
-                    const seenTime = new Date(taskData.baseUpdatedAt).getTime();
-                    // Cho phép lệch 1 giây để tránh báo nhầm do làm tròn timestamp
-                    if (dbTime - seenTime > 1000) {
-                        throw new Error("Người khác vừa sửa công việc này. Hãy đóng cửa sổ, xem lại nội dung mới rồi sửa lại để không ghi đè lên thay đổi của họ.");
-                    }
-                }
-            }
-
             // Chống phụ thuộc vòng: nếu A chặn B mà B lại chặn A thì không bên nào Done được nữa.
             // Đi ngược đồ thị blocked_by từ các task vừa chọn; chạm lại chính task đang lưu là có vòng.
             // Task mới thì bỏ qua: id vừa sinh ra, chưa có ai trỏ tới nên không thể tạo vòng.
@@ -698,8 +682,7 @@ const API = {
                 }
             }
 
-            const { error } = await sbClient.from('tasks').upsert({
-                id: taskData.id,
+            const payload = {
                 project_id: taskData.projectId,
                 name: taskData.name,
                 status: taskData.status,
@@ -713,8 +696,26 @@ const API = {
                 parent_task_id: taskData.parentTaskId || null,
                 blocked_by: taskData.blockedBy || null,
                 labels: taskData.labels || null
-            });
-            if (error) throw error;
+            };
+
+            if (isNew) {
+                const { error } = await sbClient.from('tasks').insert({ id: taskData.id, ...payload });
+                if (error) throw error;
+            } else {
+                // version = optimistic-lock token, auto-incremented server-side by a DB trigger on
+                // every UPDATE. Matching nó trong WHERE làm check-and-write atomic trong 1 câu lệnh
+                // -- không còn khoảng hở đọc-rồi-so-sánh mà một request khác có thể chen vào giữa.
+                const expectedVersion = taskData.expectedVersion;
+                let query = sbClient.from('tasks').update(payload).eq('id', taskData.id);
+                if (expectedVersion !== undefined && expectedVersion !== null) {
+                    query = query.eq('version', expectedVersion);
+                }
+                const { data, error } = await query.select('id');
+                if (error) throw error;
+                if (expectedVersion !== undefined && expectedVersion !== null && (!data || data.length === 0)) {
+                    throw new Error("Người khác vừa sửa công việc này. Hãy đóng cửa sổ, xem lại nội dung mới rồi sửa lại để không ghi đè lên thay đổi của họ.");
+                }
+            }
             await API.task._writeAssignees(taskData.id, taskData.assignees);
             if (taskData.projectId) await API.project.recalculate(taskData.projectId, groupKey);
             return `Đã lưu task "${taskData.name}"!`;
