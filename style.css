@@ -9,21 +9,25 @@
 /* 1. DESIGN TOKENS                                                        */
 /* ---------------------------------------------------------------------- */
 :root {
-  /* Neutrals — accounting app's light theme (dark navy default lives in [data-theme="dark"]) */
-  --bg-color: #ECEEF2;
-  --bg-color-2: #F3F4F7;
+  /* Neutrals — warm off-white paper, tinted toward the gold family so the light theme
+     doesn't read as a generic cool-grey SaaS default (dark near-black lives in [data-theme="dark"]) */
+  --bg-color: #F4F1EA;
+  --bg-color-2: #F8F6F0;
   --card-bg: #FFFFFF;
-  --text-primary: #15181E;
-  --text-secondary: #575A60;
-  --text-muted: #696B6F;
-  --border-color: rgba(20, 24, 33, 0.10);
-  --border-light: rgba(20, 24, 33, 0.06);
-  --hover-bg: #E8EAEF;
+  --card-bg-elevated: #FBF9F4;
+  --text-primary: #1C1710;
+  --text-secondary: rgba(28, 23, 16, 0.68);
+  --text-muted: rgba(28, 23, 16, 0.50);
+  --border-color: rgba(28, 23, 16, 0.10);
+  --border-light: rgba(28, 23, 16, 0.06);
+  --border-strong: rgba(28, 23, 16, 0.18);
+  --hover-bg: #ECE7DB;
 
   /* Gold is the one true system accent (accounting app pattern) — primary buttons/active
      states/sidebar all resolve through it instead of a separate ink-black token. */
   --gold: #B0892A;
   --gold-light: #8A6A17;
+  --gold-deep: #6E5320;
   --on-gold: #1A1407; /* fixed near-black text-on-gold, same value in both themes (accounting's .btn-gold) */
   --primary-color: var(--gold);
   --primary-hover: var(--gold-light);
@@ -39,17 +43,21 @@
   --warning-color: #9A6B0D;
   --info-color: #2F6AE0;
 
-  /* Elevation — accounting app's real two-layer shadows, replacing the old whisper-soft values */
-  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.07), 0 1px 1px rgba(15, 23, 42, 0.04);
-  --shadow-hover: 0 24px 60px rgba(15, 23, 42, 0.16);
-  --shadow-modal: 0 24px 60px rgba(15, 23, 42, 0.20);
+  /* Elevation — tinted toward the warm-neutral hue instead of generic slate/black */
+  --shadow-sm: 0 1px 3px rgba(28, 23, 16, 0.10);
+  --shadow-md: 0 8px 20px rgba(28, 23, 16, 0.12);
+  --shadow-lg: 0 24px 50px rgba(28, 23, 16, 0.16);
+  --shadow-soft: 0 1px 2px rgba(28, 23, 16, 0.07), 0 1px 1px rgba(28, 23, 16, 0.04);
+  --shadow-hover: 0 24px 60px rgba(28, 23, 16, 0.16);
+  --shadow-modal: 0 24px 60px rgba(28, 23, 16, 0.20);
   --shadow-gold: 0 8px 22px rgba(176, 137, 42, 0.18);
 
   /* Radius scale — accounting app's rounder scale */
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --radius-pill: 999px;
 
   /* Spacing scale */
@@ -101,27 +109,42 @@
   --accent-color: var(--gold);
   --accent-light: var(--hover-bg);
   --gradient-primary: var(--primary-color);
-  --shadow-sm: none;
-  --shadow-md: var(--shadow-soft);
-  --shadow-lg: var(--shadow-hover);
   --shadow-glow: none;
   --glass-blur: none;
   --main-bg-image: none;
 }
 
+/* Snapshot của light theme, không phản ứng theo data-theme -- giữ đồng bộ với wh-fin's
+   finance-shared.css nếu về sau cần dùng lại palette sáng cố định ở đây. */
+:root {
+  --wh-static-light-bg: #F4F1EA;
+  --wh-static-light-bg-2: #F8F6F0;
+  --wh-static-light-card: #FFFFFF;
+  --wh-static-light-text: #1C1710;
+  --wh-static-light-text-secondary: rgba(28, 23, 16, 0.68);
+  --wh-static-light-text-muted: rgba(28, 23, 16, 0.50);
+  --wh-static-light-border: rgba(28, 23, 16, 0.10);
+  --wh-static-light-gold: #B0892A;
+  --wh-static-light-gold-light: #8A6A17;
+  --wh-static-light-gold-dim: rgba(176, 137, 42, 0.14);
+}
+
 [data-theme="dark"] {
-  --bg-color: #0A0A0F;
-  --bg-color-2: #16161F;
-  --card-bg: #111118;
-  --text-primary: #F0EDE8;
-  --text-secondary: #B9B7B4;
-  --text-muted: #8F8E8D;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-light: rgba(255, 255, 255, 0.05);
-  --hover-bg: #1D1D28;
+  --bg-color: #0D0B08;
+  --bg-color-2: #16130D;
+  --card-bg: #19150F;
+  --card-bg-elevated: #221C13;
+  --text-primary: #F3EFE6;
+  --text-secondary: rgba(243, 239, 230, 0.68);
+  --text-muted: rgba(243, 239, 230, 0.48);
+  --border-color: rgba(243, 239, 230, 0.10);
+  --border-light: rgba(243, 239, 230, 0.06);
+  --border-strong: rgba(243, 239, 230, 0.18);
+  --hover-bg: #241D13;
 
   --gold: #C9A84C;
   --gold-light: #E8C87A;
+  --gold-deep: #8A6A2E;
   --primary-color: var(--gold);
   --primary-hover: var(--gold-light);
 
@@ -133,9 +156,12 @@
   --warning-color: #E0A64C;
   --info-color: #5B8FF9;
 
-  --shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-hover: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 3px rgba(20, 14, 4, 0.35);
+  --shadow-md: 0 8px 24px rgba(20, 14, 4, 0.45);
+  --shadow-lg: 0 24px 60px rgba(15, 10, 3, 0.55);
+  --shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(20, 14, 4, 0.45);
+  --shadow-hover: 0 24px 60px rgba(15, 10, 3, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-modal: 0 24px 60px rgba(15, 10, 3, 0.65);
   --shadow-gold: 0 8px 22px rgba(201, 168, 76, 0.22);
 }
 
@@ -144,28 +170,28 @@
    Bootstrap blue/green/black and turn unreadable in dark mode.
    (rest/ Lounge doesn't load this sheet, so its Bootstrap look is untouched.) */
 :root {
-  --bs-dark-rgb: 21, 24, 30;
+  --bs-dark-rgb: 28, 23, 16;
   --bs-secondary-rgb: 87, 90, 96;
   --bs-success-rgb: 28, 143, 90;
   --bs-danger-rgb: 189, 59, 59;
   --bs-warning-rgb: 154, 107, 13;
   --bs-info-rgb: 47, 106, 224;
-  --bs-primary-rgb: 21, 24, 30;
-  --bs-light-rgb: 243, 244, 247;
+  --bs-primary-rgb: 28, 23, 16;
+  --bs-light-rgb: 248, 246, 240;
   --bs-body-color: var(--text-primary);
   --bs-secondary-color: var(--text-muted);
 }
 [data-theme="dark"] {
-  --bs-dark-rgb: 240, 237, 232;
+  --bs-dark-rgb: 243, 239, 230;
   --bs-secondary-rgb: 185, 183, 180;
   --bs-success-rgb: 61, 186, 135;
   --bs-danger-rgb: 224, 92, 92;
   --bs-warning-rgb: 224, 166, 76;
   --bs-info-rgb: 91, 143, 249;
-  --bs-primary-rgb: 240, 237, 232;
-  --bs-light-rgb: 29, 29, 40;
-  --bs-body-bg: #0A0A0F;
-  --bs-body-color: #F0EDE8;
+  --bs-primary-rgb: 243, 239, 230;
+  --bs-light-rgb: 36, 29, 19;
+  --bs-body-bg: #0D0B08;
+  --bs-body-color: #F3EFE6;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -240,6 +266,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   transition: background-color 0.3s ease, color 0.3s ease;
+  position: relative;
+}
+
+/* Grain rất mảnh phá vỡ nền phẳng tuyệt đối -- cố định (không cuộn theo nội dung),
+   pointer-events: none để không cản tương tác, opacity cực thấp để chỉ cảm nhận được
+   như một lớp vải chứ không phải hoạ tiết rõ ràng. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -1126,6 +1167,7 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 .section-hero-card {
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
   gap: 16px; padding: 20px 24px; border-left: 4px solid var(--gold);
+  border-radius: var(--radius-xl);
 }
 .section-hero-info h3 { font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .section-hero-info p { color: var(--text-secondary); font-size: 14px; max-width: 850px; }
@@ -1160,6 +1202,7 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; padding: 9px 18px; border-radius: var(--radius-sm); transition: var(--transition-fast); border: none; }
 .btn-primary { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-gold); box-shadow: var(--shadow-gold); }
 .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.btn:active { transform: translateY(1px) scale(0.98); }
 .btn-secondary { background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); }
 .btn-secondary:hover { background: var(--border-color); color: var(--text-primary); }
 .btn-outline { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); }
