@@ -25,6 +25,10 @@ const sbClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SU
 
 // --- MinIO (TrueNAS) file storage, proxied through the Supabase Edge Function
 // "storage-proxy" so the MinIO root credential never reaches the client. ---
+// Tạm tắt (2026-08-26): storage-proxy đang treo khi upload thật (đang debug), nên
+// upload mới tạm quay lại Supabase Storage cũ. Đọc/xoá vẫn tự nhận diện đúng backend
+// theo tên bucket nên không cần đổi gì khi bật lại -- chỉ cần set true.
+const USE_MINIO_STORAGE = false;
 const STORAGE_PROXY_URL = `${SUPABASE_URL}/functions/v1/storage-proxy`;
 const NEW_MINIO_BUCKETS = new Set(['wh-fin-files', 'wh-sci-files', 'wh-org-files']);
 let _whAccessToken = null;
@@ -69,6 +73,25 @@ async function storageProxyDelete(bucket, path) {
 function storageProxyUrl(bucket, path) {
     return `${STORAGE_PROXY_URL}/download?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}&token=${encodeURIComponent(_whAccessToken || '')}`;
 }
+async function deleteFromStorage(bucket, path) {
+    if (NEW_MINIO_BUCKETS.has(bucket)) {
+        await storageProxyDelete(bucket, path);
+    } else {
+        const { error } = await sbClient.storage.from(bucket).remove([path]);
+        if (error) console.error("Lỗi xóa file storage:", error);
+    }
+}
+
+async function uploadToStorage(newBucket, oldBucket, path, blob, mimeType) {
+    if (USE_MINIO_STORAGE) {
+        await storageProxyUpload(newBucket, path, blob, mimeType);
+        return newBucket;
+    }
+    const { error } = await sbClient.storage.from(oldBucket).upload(path, blob, { contentType: mimeType });
+    if (error) throw error;
+    return oldBucket;
+}
+
 function buildFileUrl(storagePath) {
     if (!storagePath) return '';
     const parts = storagePath.split('/');
@@ -682,13 +705,12 @@ const API = {
             
             if (fileToDelete.id.startsWith("TF_")) {
                 if (fileToDelete.bucket && fileToDelete.path) {
-                    await storageProxyDelete(fileToDelete.bucket, fileToDelete.path);
+                    await deleteFromStorage(fileToDelete.bucket, fileToDelete.path);
                 } else if (fileToDelete.url) {
                     const urlParts = fileToDelete.url.split('/general_bucket/');
                     if (urlParts.length > 1) {
                         const filePath = decodeURIComponent(urlParts[1]);
-                        const { error: deleteError } = await sbClient.storage.from('general_bucket').remove([filePath]);
-                        if (deleteError) console.error("Lỗi xóa file storage:", deleteError);
+                        await deleteFromStorage('general_bucket', filePath);
                     }
                 }
             }
@@ -866,9 +888,7 @@ const API = {
             const fileId = genId("TF");
             const safeFileName = sanitizeFileName(fileName);
             const filePath = `tasks/${taskId}/${fileId}_${safeFileName}`;
-            const bucketName = 'wh-org-files';
-
-            await storageProxyUpload(bucketName, filePath, blob, mimeType);
+            const bucketName = await uploadToStorage('wh-org-files', 'general_bucket', filePath, blob, mimeType);
 
             const { data: task, error: fetchError } = await sbClient.from('tasks').select('attachments').eq('id', taskId).maybeSingle();
             if (fetchError) throw fetchError;
@@ -881,7 +901,7 @@ const API = {
                 name: fileName,
                 bucket: bucketName,
                 path: filePath,
-                url: storageProxyUrl(bucketName, filePath),
+                url: buildFileUrl(`${bucketName}/${filePath}`),
                 mimeType: mimeType,
                 uploader: uploaderEmail || "unknown",
                 date: new Date().toLocaleString('vi-VN')
@@ -968,12 +988,14 @@ const API = {
             const fileId = "F_" + Date.now() + Math.floor(Math.random()*1000);
             const safeFileName = sanitizeFileName(fileName);
             const filePath = `${fileId}_${safeFileName}`;
-            const bucketName = groupKey === 'finance' ? 'wh-fin-files' :
+            const newBucketName = groupKey === 'finance' ? 'wh-fin-files' :
                 (groupKey === 'science' ? 'wh-sci-files' : 'wh-org-files');
+            const oldBucketName = groupKey === 'finance' ? 'finance_bucket' :
+                (groupKey === 'science' ? 'science_bucket' : 'general_bucket');
 
             const fullStoragePath = `bronze/${folderPath ? folderPath + '/' : ''}${filePath}`;
 
-            await storageProxyUpload(bucketName, fullStoragePath, blob, mimeType);
+            const bucketName = await uploadToStorage(newBucketName, oldBucketName, fullStoragePath, blob, mimeType);
 
             const uploaderId = await getUserId(uploaderEmail);
             const { error: dbError } = await sbClient.from('files').insert({
@@ -1441,7 +1463,7 @@ const API = {
                     for (let file of (attachments || [])) {
                         if (file.id && file.id.startsWith("TF_")) {
                             if (file.bucket && file.path) {
-                                await storageProxyDelete(file.bucket, file.path);
+                                await deleteFromStorage(file.bucket, file.path);
                             } else if (file.url) {
                                 const urlParts = file.url.split('/general_bucket/');
                                 if (urlParts.length > 1) {
@@ -1460,7 +1482,7 @@ const API = {
                         for (let file of (attachments || [])) {
                             if (file.id && file.id.startsWith("TF_")) {
                                 if (file.bucket && file.path) {
-                                    await storageProxyDelete(file.bucket, file.path);
+                                    await deleteFromStorage(file.bucket, file.path);
                                 } else if (file.url) {
                                     const urlParts = file.url.split('/general_bucket/');
                                     if (urlParts.length > 1) {
