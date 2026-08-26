@@ -810,6 +810,9 @@
             <p>Chỉ mình bạn thấy — đồng bộ theo tài khoản trên mọi máy, dùng chung cho cả Fin / Sci / Org.</p>
           </div>
           <div class="section-actions">
+            <button type="button" class="btn btn-outline" onclick="openPersonalCustomizeModal()" title="Sắp xếp / ẩn hiện các mục">
+              <i class="fa-solid fa-sliders"></i> Tuỳ chỉnh
+            </button>
             <button type="button" class="btn btn-primary" id="personal-add-btn" onclick="openPersonalItemModal(null)">
               <i class="fa-solid fa-plus"></i> Thêm mới
             </button>
@@ -817,6 +820,7 @@
         </div>
 
         <div id="personal-hub-tabs" class="personal-hub-tabs"></div>
+        <div id="personal-tag-filter" class="personal-tag-filter" style="display:none;"></div>
         <div id="personal-hub-list" class="personal-hub-list"></div>
       </section>
 
@@ -950,11 +954,41 @@
           <input type="text" id="personal-item-url" class="text-input w-100" placeholder="https://...">
         </div>
 
+        <div class="form-group mb-3" id="personal-item-date-field" style="display:none;">
+          <label class="form-label">Ngày giờ:</label>
+          <input type="datetime-local" id="personal-item-start" class="text-input w-100">
+          <label class="form-label mt-2">Nhắc trước:</label>
+          <select id="personal-item-reminder" class="text-input w-100">
+            <option value="0">Đúng giờ</option>
+            <option value="10">10 phút</option>
+            <option value="30" selected>30 phút</option>
+            <option value="60">1 giờ</option>
+            <option value="1440">1 ngày</option>
+          </select>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label">Thẻ (cách nhau bằng dấu phẩy):</label>
+          <input type="text" id="personal-item-tags" class="text-input w-100" placeholder="Ví dụ: quan-trong, Q3-report">
+        </div>
+
         <div class="d-flex justify-content-end pt-3">
           <button type="button" class="secondary-btn me-2" onclick="hideModal('personal-item-modal')">Hủy</button>
           <button type="submit" class="primary-btn">Lưu</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="personal-customize-modal" class="custom-modal">
+    <div class="modal-content card" style="max-width: 460px;">
+      <h3><i class="fa-solid fa-sliders me-2"></i> Tuỳ chỉnh Không Gian Riêng</h3>
+      <p class="small text-muted mb-3">Kéo để sắp xếp, tắt để ẩn — chỉ ảnh hưởng đến giao diện của riêng bạn.</p>
+      <div id="personal-customize-list" class="personal-customize-list"></div>
+      <div class="d-flex justify-content-end pt-3">
+        <button type="button" class="secondary-btn me-2" onclick="hideModal('personal-customize-modal')">Hủy</button>
+        <button type="button" class="primary-btn" onclick="submitPersonalCustomize()">Lưu bố cục</button>
+      </div>
     </div>
   </div>
 
@@ -1260,7 +1294,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1787643600000"></script>
+  <script src="/api.js?v=1787650800000"></script>
   <script src="/sync-config.js?v=2"></script>
   <script src="/sync-engine.js?v=1"></script>
   <!-- OFFCANVAS THÔNG BÁO HOÀNH TRÁNG -->
@@ -1290,10 +1324,10 @@
     </div>
   </div>
 
-  <script src="/script.js?v=3.3.2"></script>
+  <script src="/script.js?v=3.3.3"></script>
   <script src="/tray-hotkey.js?v=1"></script>
   <script src="/sync-conflict-ui.js?v=1"></script>
-  <script src="/notify-deadlines.js?v=1"></script>
+  <script src="/notify-deadlines.js?v=2"></script>
   <script src="/backup-config.js?v=2"></script>
   <script src="/local-backup.js?v=1"></script>
   <script src="/rag_chatbot.js?v=1786178129444"></script>

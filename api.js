@@ -1608,7 +1608,7 @@ const API = {
     // không phải nhớ thứ mình cần đang nằm ở mục nào.
     search: {
         global: async (query, groupKey) => {
-            const EMPTY = { projects: [], tasks: [], files: [], events: [], comments: [], milestones: [] };
+            const EMPTY = { projects: [], tasks: [], files: [], events: [], comments: [], milestones: [], personal: [] };
             if (!sbClient) return EMPTY;
             const q = String(query || '').trim();
             if (q.length < 2) return EMPTY;
@@ -1617,6 +1617,23 @@ const API = {
             const safe = q.replace(/[%_,()]/g, ' ').trim();
             if (!safe) return EMPTY;
             const pattern = `%${safe}%`;
+
+            const PERSONAL_TYPE_LABEL = { note: 'Ghi chú', pin: 'Đã ghim', checklist: 'Việc riêng', shortcut: 'Lối tắt', calendar_event: 'Lịch riêng' };
+            const [{ data: personalTextRows }, { data: personalTagRows }] = await Promise.all([
+                sbClient.from('personal_items').select('id, type, title, data, tags').eq('archived', false)
+                    .or(`title.ilike.${pattern},data->>text.ilike.${pattern}`).limit(8),
+                sbClient.from('personal_items').select('id, type, title, data, tags').eq('archived', false)
+                    .contains('tags', [safe]).limit(8)
+            ]);
+            const personalRowsById = {};
+            [...(personalTextRows || []), ...(personalTagRows || [])].forEach(p => { personalRowsById[p.id] = p; });
+            const personal = Object.values(personalRowsById).slice(0, 8).map(p => ({
+                id: p.id,
+                title: p.title || '(không tiêu đề)',
+                subtitle: PERSONAL_TYPE_LABEL[p.type] || p.type,
+                personalType: p.type,
+                type: 'personal'
+            }));
 
             let projQuery = sbClient.from('projects').select('id, name, description, group_key').is('deleted_at', null);
             projQuery = groupKey === 'all'
@@ -1727,7 +1744,7 @@ const API = {
                 }));
             }
 
-            return { projects, tasks, files, events, comments, milestones };
+            return { projects, tasks, files, events, comments, milestones, personal };
         }
     },
     // Realtime: một kênh duy nhất nghe thay đổi trên các bảng lõi. Không tự vẽ lại gì —
@@ -1787,6 +1804,7 @@ const API = {
                 title: item.title || null,
                 data: item.data || {},
                 pinned: !!item.pinned,
+                tags: Array.isArray(item.tags) ? item.tags : [],
                 source_app: 'org'
             };
             if (item.id) {
