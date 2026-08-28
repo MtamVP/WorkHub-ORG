@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "WorkHub-ORG",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.workhub.org",
   "build": {
     "frontendDist": "../tauri-dist",
@@ -27,6 +27,7 @@
     }
   },
   "bundle": {
+    "createUpdaterArtifacts": true,
     "resources": ["WebView2Loader.dll"],
     "active": true,
     "targets": "all",
