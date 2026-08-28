@@ -87,6 +87,11 @@ async function checkForAppUpdates() {
         }
     } catch (error) {
         console.error('Lỗi khi kiểm tra cập nhật:', error);
+        Swal.fire({
+            title: 'Lỗi cập nhật',
+            text: String(error),
+            icon: 'error'
+        });
     }
 }
 
