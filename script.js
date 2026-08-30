@@ -1864,6 +1864,10 @@ async function openBurndownModal(projectId, projectName) {
 
 // hàm xóa dự án
 function deleteProjectAction(projectId, projectName) {
+    if (!isGroupAdminRole()) {
+        showToast('Chỉ Admin của nhóm mới có quyền xóa dự án.', 'error');
+        return;
+    }
     Swal.fire({
         title: 'CẢNH BÁO XÓA DỰ ÁN!',
         html: `Bạn đang chọn xóa dự án: <b>"${projectName}"</b><br><br>
@@ -1918,6 +1922,10 @@ function deleteProjectAction(projectId, projectName) {
 
 // HÀM TẠO DỰ ÁN HOẶC CẬP NHẬT NOTE 
 async function handleProjectCreationOrUpdate() {
+    if (isViewerRole()) {
+        showToast('Bạn chỉ có quyền xem (Viewer) — không thể tạo/cập nhật dự án.', 'warning');
+        return;
+    }
     const btn = document.getElementById('update-progress-btn');
     const nameInput = document.getElementById('progress-project-name');
     const noteInput = document.getElementById('progress-note-input');
@@ -3377,27 +3385,33 @@ async function loadAdminUsers() {
 async function loadAdminUsersTable() {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
-    tbody.innerHTML = skeletonTableRows(5, 5);
+    tbody.innerHTML = skeletonTableRows(6, 5);
 
     try {
-        const response = await callGAS('listAllUsers', {});
-        if (response.status !== 'success') throw new Error(response.message);
-        renderAdminUsersTable(response.data || []);
+        const [usersResp, rolesResp] = await Promise.all([
+            callGAS('listAllUsers', {}),
+            callGAS('listMemberRoles', {})
+        ]);
+        if (usersResp.status !== 'success') throw new Error(usersResp.message);
+        renderAdminUsersTable(usersResp.data || [], rolesResp.status === 'success' ? (rolesResp.data || []) : []);
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-4">Lỗi: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">Lỗi: ${err.message}</td></tr>`;
     }
 }
 
-function renderAdminUsersTable(users) {
+const ROLE_LABELS = { viewer: 'Viewer', editor: 'Editor', admin: 'Admin' };
+
+function renderAdminUsersTable(users, roles) {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
 
     if (!users || users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Chưa có hồ sơ người dùng nào.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Chưa có hồ sơ người dùng nào.</td></tr>';
         return;
     }
 
     const myEmail = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+    const roleMap = new Map((roles || []).map(r => [`${r.user_id}:${r.group_key}`, r.role]));
 
     tbody.innerHTML = users.map(u => {
         const safeEmail = escapeHtml(escapeJs(u.email));
@@ -3406,6 +3420,15 @@ function renderAdminUsersTable(users) {
         ).join('');
         const createdStr = u.created_at ? new Date(u.created_at).toLocaleDateString('vi-VN') : '--';
         const isSelf = !!(myEmail && myEmail.toLowerCase() === (u.email || '').toLowerCase());
+
+        // Org-wide admins (group_key='admin') always resolve to role 'admin' everywhere
+        // (see current_user_role() in rbac-migration.sql) — no member_roles row needed or
+        // meaningful for them, so the dropdown is disabled and pinned to Admin.
+        const isOrgAdmin = u.group_key === 'admin';
+        const effectiveRole = isOrgAdmin ? 'admin' : (roleMap.get(`${u.id}:${u.group_key}`) || 'editor');
+        const roleOptions = Object.keys(ROLE_LABELS).map(r =>
+            `<option value="${r}" ${r === effectiveRole ? 'selected' : ''}>${ROLE_LABELS[r]}</option>`
+        ).join('');
 
         return `
             <tr>
@@ -3416,6 +3439,11 @@ function renderAdminUsersTable(users) {
                         ${groupOptions}
                     </select>
                 </td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:110px;" onchange="updateMemberRoleAction('${escapeHtml(escapeJs(u.id))}', '${escapeHtml(escapeJs(u.group_key))}', this.value)" ${isOrgAdmin ? 'disabled title="Org-wide admin luôn là Admin"' : ''}>
+                        ${roleOptions}
+                    </select>
+                </td>
                 <td class="small text-muted">${createdStr}</td>
                 <td class="text-center">
                     <button class="btn btn-sm text-danger border-0" title="Thu hồi quyền" onclick="removeUserAction('${safeEmail}', ${isSelf})">
@@ -3424,6 +3452,17 @@ function renderAdminUsersTable(users) {
                 </td>
             </tr>`;
     }).join('');
+}
+
+async function updateMemberRoleAction(userId, groupKey, newRole) {
+    try {
+        const response = await callGAS('updateMemberRole', { userId, groupKey, role: newRole });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        loadAdminUsersTable();
+    }
 }
 
 async function updateUserGroupAction(email, newGroup) {
@@ -3459,6 +3498,15 @@ function removeUserAction(email, isSelf) {
             showToast('Lỗi: ' + err.message, 'error');
         }
     });
+}
+
+// -------------------- Phase B RBAC: role-gated UI (cosmetic — RLS is the real backstop) --------------------
+function isViewerRole() { return !!(typeof chatUser !== 'undefined' && chatUser && chatUser.role === 'viewer'); }
+function isGroupAdminRole() { return !!(typeof chatUser !== 'undefined' && chatUser && chatUser.role === 'admin'); }
+
+function updateRoleGatedUI() {
+  const newTaskBtn = document.getElementById('new-task-btn');
+  if (newTaskBtn) newTaskBtn.style.display = isViewerRole() ? 'none' : '';
 }
 
 // -------------------- Audit log (compliance) --------------------
@@ -4042,6 +4090,10 @@ function resetTaskModalUI() {
 
 // hàm mở modal để thêm task mới (top-level)
 function openAddTask() {
+    if (isViewerRole()) {
+        showToast('Bạn chỉ có quyền xem (Viewer) — không thể tạo công việc mới.', 'warning');
+        return;
+    }
     resetTaskModalUI();
     if (typeof currentTaskProjectID !== 'undefined' && currentTaskProjectID) {
         document.getElementById('new-task-project-id').value = currentTaskProjectID;
@@ -4121,6 +4173,10 @@ function openEditTask(id, name, status, priority, dueDate, assigneesStr, descrip
 
 async function handleTaskFormSubmit(e) {
     if (e) e.preventDefault();
+    if (isViewerRole()) {
+        showToast('Bạn chỉ có quyền xem (Viewer) — không thể tạo/sửa công việc.', 'warning');
+        return;
+    }
 
     const form = document.getElementById('task-form');
     const submitBtn = form.querySelector('button[type="submit"]');
@@ -6034,7 +6090,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     //  8.2 LOGIC SUPABASE AUTH 
     if (auth) {
-        auth.onAuthStateChange(function (event, session) {
+        auth.onAuthStateChange(async function (event, session) {
             const user = session?.user;
             const userDisplay = document.getElementById('user-display');
             const userEmailDisplay = document.getElementById('user-email-display');
@@ -6045,7 +6101,14 @@ document.addEventListener('DOMContentLoaded', function () {
             if (user) {
                 // case1: đã đăng nhập
                 chatUser = user;
+                chatUser.role = 'editor'; // safe default until fetched (Phase B RBAC)
                 window.__currentUserId = user.id; // real auth.uid(), used by client-driven audit-log writes
+                try {
+                    chatUser.role = await API.auth.getMyRole(activeGroup);
+                } catch (e) {
+                    console.warn('Không lấy được vai trò người dùng, mặc định Editor:', e);
+                }
+                if (typeof updateRoleGatedUI === 'function') updateRoleGatedUI();
                 const displayName = user.user_metadata?.display_name || user.email;
                 const shortName = displayName.split('@')[0];
 
@@ -6098,6 +6161,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // case2: chưa đăng nhập
             chatUser = null;
             window.__currentUserId = null;
+            if (typeof updateRoleGatedUI === 'function') updateRoleGatedUI();
             if (typeof stopRealtimeSync === 'function') stopRealtimeSync();
 
             if (userDisplay) userDisplay.innerHTML = `<i class="fa-solid fa-user-circle"></i> Khách`;
