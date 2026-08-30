@@ -3461,6 +3461,113 @@ function removeUserAction(email, isSelf) {
     });
 }
 
+// -------------------- Audit log (compliance) --------------------
+// Same cosmetic-gate-then-load pattern as loadAdminUsers() right above — real
+// enforcement is the audit_log RLS policy (current_user_group() = 'admin'); a
+// non-admin session gets zero rows back from getAuditLog regardless of this check.
+let auditLogOffset = 0;
+const AUDIT_LOG_PAGE_SIZE = 50;
+
+function getAuditLogFilters() {
+    return {
+        actorEmail: (document.getElementById('audit-log-filter-email')?.value || '').trim(),
+        entityType: document.getElementById('audit-log-filter-entity')?.value || '',
+        groupKey: document.getElementById('audit-log-filter-group')?.value || '',
+        from: document.getElementById('audit-log-filter-from')?.value || '',
+        to: document.getElementById('audit-log-filter-to')?.value || ''
+    };
+}
+
+async function loadAuditLog() {
+    const guard = document.getElementById('audit-log-guard');
+    const body = document.getElementById('audit-log-body');
+    if (!guard || !body) return;
+
+    body.style.display = 'none';
+    guard.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra quyền...</div>';
+
+    const email = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+    if (!email) {
+        guard.innerHTML = '<div class="text-center text-muted py-5">Chưa đăng nhập.</div>';
+        return;
+    }
+
+    try {
+        const groupResp = await callGAS('getUserGroup', { email });
+        const myGroup = groupResp.status === 'success' ? groupResp.data : 'guest';
+        if (myGroup !== 'admin') {
+            guard.innerHTML = '<div class="text-center text-danger py-5"><i class="fa-solid fa-lock fa-2x mb-2"></i><br>Bạn không có quyền truy cập trang này.</div>';
+            return;
+        }
+        guard.innerHTML = '';
+        body.style.display = 'block';
+
+        auditLogOffset = 0;
+        const list = document.getElementById('audit-log-list');
+        if (list) list.innerHTML = '<div style="padding:8px; color:var(--text-muted); font-size:12.5px;">Đang tải...</div>';
+        await fetchAuditLogPage({ reset: true });
+    } catch (err) {
+        guard.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
+    }
+}
+
+async function loadMoreAuditLog() {
+    await fetchAuditLogPage({ reset: false });
+}
+
+async function fetchAuditLogPage({ reset }) {
+    const list = document.getElementById('audit-log-list');
+    const moreBtn = document.getElementById('audit-log-load-more-btn');
+    if (!list) return;
+    try {
+        const filters = { ...getAuditLogFilters(), limit: AUDIT_LOG_PAGE_SIZE, offset: auditLogOffset };
+        const response = await callGAS('getAuditLog', filters);
+        if (response.status !== 'success') throw new Error(response.message);
+        const rows = response.data || [];
+
+        if (reset) list.innerHTML = '';
+        if (rows.length === 0 && reset) {
+            list.innerHTML = '<div style="padding:8px; color:var(--text-muted); font-size:12.5px;">Không có bản ghi nào.</div>';
+        } else {
+            list.insertAdjacentHTML('beforeend', rows.map(renderAuditLogRow).join(''));
+        }
+
+        auditLogOffset += rows.length;
+        if (moreBtn) moreBtn.style.display = rows.length === AUDIT_LOG_PAGE_SIZE ? '' : 'none';
+    } catch (err) {
+        if (reset) list.innerHTML = `<div style="color:var(--danger-color); font-size:12.5px; padding:8px;">Lỗi: ${escapeHtml(err.message)}</div>`;
+        else showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+const AUDIT_LOG_ENTITY_LABELS = {
+    tasks: 'Công việc', projects: 'Dự án', events: 'Sự kiện', project_milestones: 'Cột mốc',
+    messages: 'Tin nhắn', users: 'Người dùng', fin_roles: 'Vai trò Finance',
+    finance_transactions: 'Giao dịch', finance_cash_flows: 'Dòng tiền',
+    finance_corporate_actions: 'Hành động doanh nghiệp'
+};
+const AUDIT_LOG_OP_LABELS = { INSERT: 'Tạo mới', UPDATE: 'Cập nhật', DELETE: 'Xóa' };
+
+function renderAuditLogRow(row) {
+    const entityLabel = AUDIT_LOG_ENTITY_LABELS[row.entity_type] || row.entity_type;
+    const opLabel = AUDIT_LOG_OP_LABELS[row.operation] || row.operation;
+    const opClass = row.operation === 'DELETE' ? 'trash-age is-old' : '';
+    const when = row.occurred_at ? new Date(row.occurred_at).toLocaleString('vi-VN') : '';
+    const changed = (row.changed_fields || []).map(f => `<span class="trash-age">${escapeHtml(f)}</span>`).join(' ');
+    const detailId = 'audit-log-detail-' + row.id;
+    const hasDetail = row.before_data || row.after_data;
+    return `<div class="trash-item" style="flex-direction:column; align-items:stretch;">
+    <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; ${hasDetail ? 'cursor:pointer;' : ''}" ${hasDetail ? `onclick="document.getElementById('${detailId}').style.display = document.getElementById('${detailId}').style.display === 'none' ? 'block' : 'none';"` : ''}>
+      <div class="trash-item-info">
+        <div class="trash-item-name">${escapeHtml(row.actor_email || 'unknown')} · <span class="${opClass}">${escapeHtml(opLabel)}</span> ${escapeHtml(entityLabel)}${row.entity_id ? ' #' + escapeHtml(row.entity_id) : ''}</div>
+        <div class="trash-item-sub">${escapeHtml(when)} ${row.actor_group_key ? '· ' + escapeHtml(row.actor_group_key) : ''} ${row.result === 'error' ? '· <span class="trash-age is-old">lỗi</span>' : ''} ${changed}</div>
+      </div>
+      ${hasDetail ? '<i class="fa-solid fa-chevron-down" style="color:var(--text-muted);"></i>' : ''}
+    </div>
+    ${hasDetail ? `<div id="${detailId}" style="display:none; margin-top:8px; font-size:11.5px; font-family:monospace; background:var(--bg-secondary); padding:8px; border-radius:6px; max-height:220px; overflow:auto; white-space:pre-wrap;">${escapeHtml(JSON.stringify({ before: row.before_data, after: row.after_data }, null, 2))}</div>` : ''}
+  </div>`;
+}
+
 let blockersExpanded = false;
 function showBlockerCheckboxes() {
     const box = document.getElementById('blocker-checkboxes');
@@ -5718,6 +5825,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (user) {
                 // case1: đã đăng nhập
                 chatUser = user;
+                window.__currentUserId = user.id; // real auth.uid(), used by client-driven audit-log writes
                 const displayName = user.user_metadata?.display_name || user.email;
                 const shortName = displayName.split('@')[0];
 
@@ -5769,6 +5877,7 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
             // case2: chưa đăng nhập
             chatUser = null;
+            window.__currentUserId = null;
             if (typeof stopRealtimeSync === 'function') stopRealtimeSync();
 
             if (userDisplay) userDisplay.innerHTML = `<i class="fa-solid fa-user-circle"></i> Khách`;
@@ -6011,6 +6120,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // D3. Tab Quản lý người dùng (admin)
                 if (sectionName === 'admin-users') {
                     if (typeof loadAdminUsers === 'function') loadAdminUsers();
+                }
+
+                // D3b. Tab Nhật ký kiểm toán (admin)
+                if (sectionName === 'audit-log') {
+                    if (typeof loadAuditLog === 'function') loadAuditLog();
                 }
 
                 // D4. Tab AI Assistant (RAG)
