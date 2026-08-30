@@ -7271,7 +7271,8 @@ const PERSONAL_TAB_META = {
     checklist: { label: 'Việc riêng', icon: 'fa-list-check', empty: 'Chưa có việc riêng nào.' },
     shortcut: { label: 'Lối tắt', icon: 'fa-link', empty: 'Chưa có lối tắt nào.' },
     calendar_event: { label: 'Lịch riêng', icon: 'fa-calendar-days', empty: 'Chưa có sự kiện riêng nào.' },
-    sync_folder: { label: 'Thư mục đồng bộ', icon: 'fa-folder-open', empty: '' }
+    sync_folder: { label: 'Thư mục đồng bộ', icon: 'fa-folder-open', empty: '' },
+    calendar_connect: { label: 'Kết nối Calendar', icon: 'fa-calendar-plus', empty: '' }
 };
 const PERSONAL_TAB_DEFAULT_ORDER = Object.keys(PERSONAL_TAB_META);
 
@@ -7319,7 +7320,7 @@ function renderPersonalTabs() {
     </button>`;
     }).join('');
     const addBtn = document.getElementById('personal-add-btn');
-    const hideAdd = personalActiveTagFilter || personalActiveTab === 'pin' || personalActiveTab === 'sync_folder' || personalActiveTab === 'related';
+    const hideAdd = personalActiveTagFilter || personalActiveTab === 'pin' || personalActiveTab === 'sync_folder' || personalActiveTab === 'related' || personalActiveTab === 'calendar_connect';
     if (addBtn) addBtn.style.display = hideAdd ? 'none' : 'inline-flex';
 }
 
@@ -7377,6 +7378,10 @@ function renderPersonalItems() {
 
     if (!personalActiveTagFilter && personalActiveTab === 'sync_folder') {
         renderSyncFolderPanel();
+        return;
+    }
+    if (!personalActiveTagFilter && personalActiveTab === 'calendar_connect') {
+        renderCalendarConnectionPanel();
         return;
     }
     if (!personalActiveTagFilter && personalActiveTab === 'related') {
