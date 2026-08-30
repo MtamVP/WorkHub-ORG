@@ -1599,6 +1599,129 @@ const API = {
             return data;
         }
     },
+    // Cross-group reporting for the admin-only BI dashboard. Deliberately net-new —
+    // NOT built on top of API.project.list/API.task.workload, which intentionally
+    // scope results to the caller's own group + explicitly-shared items (see the
+    // comment at API.task.workload above). These functions never filter by group_key
+    // unless the caller explicitly asks via filters.groupKey; the absence of a filter
+    // is what makes them "full visibility" — RLS (current_user_group() = 'admin') is
+    // the real backstop, same as audit_log. Only ever called from loadReporting(),
+    // which runs the same cosmetic admin gate as loadAuditLog().
+    reporting: {
+        summary: async (filters = {}) => {
+            if (!sbClient) return null;
+            let pq = sbClient.from('projects').select('id, group_key, status, archived_at').is('deleted_at', null);
+            if (filters.groupKey) pq = pq.eq('group_key', filters.groupKey);
+            const { data: projects, error: pErr } = await pq;
+            if (pErr) throw pErr;
+
+            const activeProjects = (projects || []).filter(p => !p.archived_at);
+            const projectIds = (projects || []).map(p => p.id);
+            const projectGroupMap = {};
+            (projects || []).forEach(p => { projectGroupMap[p.id] = p.group_key || 'unknown'; });
+
+            let tasks = [];
+            if (projectIds.length > 0) {
+                const { data, error } = await sbClient.from('tasks')
+                    .select('id, project_id, status, due_date, updated_at')
+                    .is('deleted_at', null).in('project_id', projectIds);
+                if (error) throw error;
+                tasks = data || [];
+            }
+
+            const { data: users, error: uErr } = await sbClient.from('users').select('email, group_key');
+            if (uErr) throw uErr;
+
+            const byGroup = {};
+            const ensure = (g) => byGroup[g] || (byGroup[g] = {
+                activeProjects: 0, totalTasks: 0, done: 0, working: 0, stuck: 0, notStarted: 0,
+                overdue: 0, members: 0
+            });
+
+            activeProjects.forEach(p => { ensure(p.group_key || 'unknown').activeProjects++; });
+
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            tasks.forEach(t => {
+                const g = projectGroupMap[t.project_id] || 'unknown';
+                const b = ensure(g);
+                b.totalTasks++;
+                const st = String(t.status || '').toLowerCase();
+                if (st === 'done') b.done++;
+                else if (st === 'working on it') b.working++;
+                else if (st === 'stuck') b.stuck++;
+                else b.notStarted++;
+                if (st !== 'done' && t.due_date) {
+                    const due = new Date(String(t.due_date).slice(0, 10) + 'T00:00:00');
+                    if (due < today) b.overdue++;
+                }
+            });
+            (users || []).forEach(u => { ensure(u.group_key || 'unknown').members++; });
+
+            const totals = Object.values(byGroup).reduce((acc, b) => {
+                Object.keys(b).forEach(k => { acc[k] = (acc[k] || 0) + b[k]; });
+                return acc;
+            }, {});
+
+            return { byGroup, totals, generatedAt: new Date().toISOString() };
+        },
+        projects: async (filters = {}) => {
+            if (!sbClient) return [];
+            let q = sbClient.from('projects').select('*, users!owner_id(nickname)').is('deleted_at', null)
+                .order('updated_at', { ascending: false }).limit(500);
+            if (filters.groupKey) q = q.eq('group_key', filters.groupKey);
+            const { data: projects, error } = await q;
+            if (error) throw error;
+            if (!projects || projects.length === 0) return [];
+
+            const ids = projects.map(p => p.id);
+            const { data: tasks } = await sbClient.from('tasks').select('project_id, status').is('deleted_at', null).in('project_id', ids);
+
+            return projects.map(p => {
+                const pTasks = (tasks || []).filter(t => t.project_id === p.id);
+                const stats = { done: 0, working: 0, stuck: 0, notStarted: 0 };
+                pTasks.forEach(t => {
+                    const st = String(t.status).toLowerCase();
+                    if (st === 'done') stats.done++;
+                    else if (st === 'working on it') stats.working++;
+                    else if (st === 'stuck') stats.stuck++;
+                    else stats.notStarted++;
+                });
+                return {
+                    id: p.id, name: p.name, groupKey: p.group_key, status: p.status,
+                    owner: p.users ? p.users.nickname : 'Unknown',
+                    percent: pTasks.length ? Math.round(stats.done / pTasks.length * 100) : (p.percent || 0),
+                    taskStats: stats, isShared: p.is_shared, updatedAt: p.updated_at
+                };
+            });
+        },
+        // APPROXIMATION: tasks has no completed_at column. updated_at is the last-write
+        // timestamp, not necessarily the moment status flipped to 'Done' (e.g. a later
+        // description edit on an already-Done task bumps updated_at without changing
+        // completion date). Accepted limitation for v1 — labeled in the UI too.
+        completionTimeSeries: async (filters = {}) => {
+            if (!sbClient) return [];
+            let pq = sbClient.from('projects').select('id, group_key').is('deleted_at', null);
+            if (filters.groupKey) pq = pq.eq('group_key', filters.groupKey);
+            const { data: projects } = await pq;
+            const ids = (projects || []).map(p => p.id);
+            if (ids.length === 0) return [];
+
+            let tq = sbClient.from('tasks').select('updated_at').is('deleted_at', null)
+                .eq('status', 'Done').in('project_id', ids).limit(5000);
+            if (filters.from) tq = tq.gte('updated_at', filters.from);
+            if (filters.to) tq = tq.lte('updated_at', filters.to);
+            const { data: tasks, error } = await tq;
+            if (error) throw error;
+
+            const buckets = {};
+            (tasks || []).forEach(t => {
+                const d = new Date(t.updated_at);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                buckets[key] = (buckets[key] || 0) + 1;
+            });
+            return Object.keys(buckets).sort().map(k => ({ month: k, count: buckets[k] }));
+        }
+    },
     lounge: {
         sync: async (payload) => {
             if (!sbClient) return [];
@@ -2041,6 +2164,10 @@ async function _dispatchAction(action, params = {}) {
             case 'hardDeleteItem': result = await API.system.hardDeleteItem(params.tableName, params.id); break;
 
             case 'getAuditLog': result = await API.audit.list(params); break;
+
+            case 'getReportSummary': result = await API.reporting.summary(params); break;
+            case 'getReportProjects': result = await API.reporting.projects(params); break;
+            case 'getReportCompletionSeries': result = await API.reporting.completionTimeSeries(params); break;
 
             case 'getNotifications': result = await API.notification.get(params.groupKey, params.limit, params.email); break;
             case 'syncLounge': result = await API.lounge.sync(params); break;

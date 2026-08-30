@@ -16,6 +16,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 
   <link rel="stylesheet" href="/style.css?v=3.3.2">
   <link rel="stylesheet" href="/rag_chatbot.css">
@@ -124,6 +126,7 @@
       <ul class="nav-group">
         <li class="nav-item" data-section="admin-users"><i class="fa-solid fa-user-gear"></i><span> Quản lý người dùng</span></li>
         <li class="nav-item" data-section="audit-log"><i class="fa-solid fa-clipboard-list"></i><span> Nhật ký kiểm toán</span></li>
+        <li class="nav-item" data-section="reporting"><i class="fa-solid fa-chart-pie"></i><span> Báo cáo BI</span></li>
       </ul>
     </nav>
 
@@ -844,6 +847,43 @@
         </div>
       </section>
 
+      <!-- Reporting/BI (admin-only, cross-group; the guard below is cosmetic — real
+           enforcement is RLS: current_user_group() = 'admin' on projects/tasks/users) -->
+      <section id="reporting-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary mb-3"><i class="fa-solid fa-chart-pie"></i>Báo cáo BI toàn tổ chức</h2>
+        <div id="reporting-guard"></div>
+        <div id="reporting-body" style="display:none;">
+          <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; align-items:center;">
+            <select id="reporting-filter-group" class="form-select" style="max-width:160px;">
+              <option value="">Tất cả nhóm</option>
+              <option value="finance">Finance</option>
+              <option value="science">Science</option>
+              <option value="admin">Admin</option>
+              <option value="guest">Guest</option>
+            </select>
+            <input type="date" id="reporting-filter-from" class="text-input" style="max-width:150px;">
+            <input type="date" id="reporting-filter-to" class="text-input" style="max-width:150px;">
+            <button type="button" class="btn btn-outline" onclick="loadReporting()"><i class="fa-solid fa-filter"></i> Lọc</button>
+            <span style="flex:1"></span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="exportReportExcel(window.__lastReportSummary, window.__lastReportProjects)"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="exportReportPdf(window.__lastReportSummary)"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+          </div>
+
+          <div id="reporting-kpi-row" style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px;"></div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px;">
+            <div class="card" style="height:280px;"><canvas id="reporting-status-chart"></canvas></div>
+            <div class="card" style="height:280px;"><canvas id="reporting-group-chart"></canvas></div>
+          </div>
+          <div class="card" style="height:260px; margin-bottom:18px;">
+            <canvas id="reporting-trend-chart"></canvas>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">* Ước lượng theo thời điểm cập nhật cuối (updated_at), không phải thời điểm hoàn thành thực tế.</div>
+          </div>
+
+          <div id="reporting-project-table" class="trash-list"></div>
+        </div>
+      </section>
+
       <section id="personal-section" class="content-section personal-hub-section" style="display:none;">
         <div class="section-hero-card card personal-hub-hero">
           <div class="section-hero-info">
@@ -1366,7 +1406,7 @@
     </div>
   </div>
 
-  <script src="/script.js?v=3.3.7"></script>
+  <script src="/script.js?v=3.3.8"></script>
   <script src="/tray-hotkey.js?v=1"></script>
   <script src="/sync-conflict-ui.js?v=1"></script>
   <script src="/notify-deadlines.js?v=2"></script>

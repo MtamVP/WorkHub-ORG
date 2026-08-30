@@ -3568,6 +3568,226 @@ function renderAuditLogRow(row) {
   </div>`;
 }
 
+// -------------------- Reporting / BI (admin-only, cross-group) --------------------
+// Same cosmetic-gate-then-load pattern as loadAuditLog() above — real enforcement is
+// RLS (current_user_group() = 'admin' branch already present on projects/tasks/users
+// policies). API.reporting.* never filters by group_key unless the page's own filter
+// dropdown asks for it — that's what makes these "full visibility" functions.
+const REPORT_GROUP_LABELS = { finance: 'Finance', science: 'Science', admin: 'Admin', guest: 'Guest', unknown: 'Khác' };
+let reportStatusChart = null, reportGroupChart = null, reportTrendChart = null;
+
+function getReportingFilters() {
+    return {
+        groupKey: document.getElementById('reporting-filter-group')?.value || '',
+        from: document.getElementById('reporting-filter-from')?.value || '',
+        to: document.getElementById('reporting-filter-to')?.value || ''
+    };
+}
+
+async function loadReporting() {
+    const guard = document.getElementById('reporting-guard');
+    const body = document.getElementById('reporting-body');
+    if (!guard || !body) return;
+    body.style.display = 'none';
+    guard.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra quyền...</div>';
+
+    const email = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+    if (!email) {
+        guard.innerHTML = '<div class="text-center text-muted py-5">Chưa đăng nhập.</div>';
+        return;
+    }
+
+    try {
+        const groupResp = await callGAS('getUserGroup', { email });
+        const myGroup = groupResp.status === 'success' ? groupResp.data : 'guest';
+        if (myGroup !== 'admin') {
+            guard.innerHTML = '<div class="text-center text-danger py-5"><i class="fa-solid fa-lock fa-2x mb-2"></i><br>Bạn không có quyền truy cập trang này.</div>';
+            return;
+        }
+        guard.innerHTML = '';
+        body.style.display = 'block';
+        await fetchReportingData();
+    } catch (err) {
+        guard.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
+    }
+}
+
+async function fetchReportingData() {
+    const filters = getReportingFilters();
+    try {
+        const [summaryResp, projectsResp, trendResp] = await Promise.all([
+            callGAS('getReportSummary', filters),
+            callGAS('getReportProjects', filters),
+            callGAS('getReportCompletionSeries', filters)
+        ]);
+        if (summaryResp.status !== 'success') throw new Error(summaryResp.message);
+        if (projectsResp.status !== 'success') throw new Error(projectsResp.message);
+        if (trendResp.status !== 'success') throw new Error(trendResp.message);
+
+        window.__lastReportSummary = summaryResp.data;
+        window.__lastReportProjects = projectsResp.data || [];
+        renderReportKpis(summaryResp.data);
+        renderReportCharts(summaryResp.data, trendResp.data || []);
+        renderReportProjectTable(projectsResp.data || []);
+    } catch (err) {
+        showToast('Lỗi tải báo cáo: ' + err.message, 'error');
+    }
+}
+
+function renderReportKpis(summary) {
+    const row = document.getElementById('reporting-kpi-row');
+    if (!row || !summary) return;
+    const t = summary.totals || {};
+    const tiles = [
+        { label: 'Dự án hoạt động', value: t.activeProjects || 0, icon: 'fa-diagram-project' },
+        { label: 'Tổng công việc', value: t.totalTasks || 0, icon: 'fa-list-check' },
+        { label: 'Đã hoàn thành', value: t.done || 0, icon: 'fa-circle-check' },
+        { label: 'Quá hạn', value: t.overdue || 0, icon: 'fa-triangle-exclamation', danger: true },
+        { label: 'Thành viên', value: t.members || 0, icon: 'fa-users' }
+    ];
+    row.innerHTML = tiles.map(tile => `
+        <div class="card" style="flex:1; min-width:140px; padding:14px; text-align:center;">
+            <i class="fa-solid ${tile.icon}" style="color:${tile.danger ? 'var(--danger-color)' : 'var(--gold)'}; font-size:20px;"></i>
+            <div style="font-size:22px; font-weight:700; margin-top:6px;">${tile.value}</div>
+            <div style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(tile.label)}</div>
+        </div>`).join('');
+}
+
+function renderReportCharts(summary, trend) {
+    if (typeof Chart === 'undefined' || !summary) return;
+    const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const groups = Object.keys(summary.byGroup || {});
+    const groupLabels = groups.map(g => REPORT_GROUP_LABELS[g] || g);
+
+    const statusCanvas = document.getElementById('reporting-status-chart');
+    if (statusCanvas) {
+        if (reportStatusChart) reportStatusChart.destroy();
+        reportStatusChart = new Chart(statusCanvas, {
+            type: 'bar',
+            data: {
+                labels: groupLabels,
+                datasets: [
+                    { label: 'Done', data: groups.map(g => summary.byGroup[g].done), backgroundColor: css('--success-color') },
+                    { label: 'Đang làm', data: groups.map(g => summary.byGroup[g].working), backgroundColor: css('--info-color') },
+                    { label: 'Bị chặn', data: groups.map(g => summary.byGroup[g].stuck), backgroundColor: css('--danger-color') },
+                    { label: 'Chưa bắt đầu', data: groups.map(g => summary.byGroup[g].notStarted), backgroundColor: css('--warning-color') }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+    }
+
+    const groupCanvas = document.getElementById('reporting-group-chart');
+    if (groupCanvas) {
+        if (reportGroupChart) reportGroupChart.destroy();
+        reportGroupChart = new Chart(groupCanvas, {
+            type: 'doughnut',
+            data: {
+                labels: groupLabels,
+                datasets: [{
+                    data: groups.map(g => summary.byGroup[g].activeProjects),
+                    backgroundColor: [css('--primary-color'), css('--info-color'), css('--warning-color'), css('--text-muted')]
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    const trendCanvas = document.getElementById('reporting-trend-chart');
+    if (trendCanvas) {
+        if (reportTrendChart) reportTrendChart.destroy();
+        reportTrendChart = new Chart(trendCanvas, {
+            type: 'line',
+            data: {
+                labels: trend.map(x => x.month),
+                datasets: [{ label: 'Công việc hoàn thành', data: trend.map(x => x.count), borderColor: css('--success-color'), backgroundColor: 'transparent' }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+    }
+}
+
+function renderReportProjectTable(projects) {
+    const el = document.getElementById('reporting-project-table');
+    if (!el) return;
+    if (!projects || projects.length === 0) {
+        el.innerHTML = '<div style="padding:8px; color:var(--text-muted); font-size:12.5px;">Không có dự án nào.</div>';
+        return;
+    }
+    el.innerHTML = projects.map(p => `
+        <div class="trash-item">
+          <div class="trash-item-info">
+            <div class="trash-item-name">${escapeHtml(p.name)} <span class="trash-age">${escapeHtml(REPORT_GROUP_LABELS[p.groupKey] || p.groupKey || '')}</span></div>
+            <div class="trash-item-sub">${escapeHtml(p.status || '')} · ${p.percent}% · Done ${p.taskStats.done}/Đang làm ${p.taskStats.working}/Bị chặn ${p.taskStats.stuck}/Chưa bắt đầu ${p.taskStats.notStarted} · Chủ dự án: ${escapeHtml(p.owner || '')}</div>
+          </div>
+        </div>`).join('');
+}
+
+function exportReportExcel(summary, projects) {
+    if (typeof XLSX === 'undefined') { showToast('Thư viện xuất Excel chưa tải được.', 'error'); return; }
+    if (!summary) { showToast('Chưa có dữ liệu báo cáo để xuất.', 'error'); return; }
+    const groups = Object.keys(summary.byGroup || {});
+    const groupLabels = groups.map(g => REPORT_GROUP_LABELS[g] || g);
+
+    const wb = XLSX.utils.book_new();
+
+    const summaryRows = [['Chỉ số', ...groupLabels, 'Tổng']];
+    const metrics = [
+        ['Dự án hoạt động', 'activeProjects'], ['Tổng công việc', 'totalTasks'], ['Đã hoàn thành', 'done'],
+        ['Đang làm', 'working'], ['Bị chặn', 'stuck'], ['Chưa bắt đầu', 'notStarted'],
+        ['Quá hạn', 'overdue'], ['Thành viên', 'members']
+    ];
+    metrics.forEach(([label, key]) => {
+        summaryRows.push([label, ...groups.map(g => summary.byGroup[g][key] || 0), summary.totals[key] || 0]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+
+    const projectRows = [['Tên dự án', 'Nhóm', 'Trạng thái', '% Hoàn thành', 'Done', 'Đang làm', 'Bị chặn', 'Chưa bắt đầu', 'Chủ dự án', 'Cập nhật']];
+    (projects || []).forEach(p => projectRows.push([
+        p.name, REPORT_GROUP_LABELS[p.groupKey] || p.groupKey, p.status, p.percent,
+        p.taskStats.done, p.taskStats.working, p.taskStats.stuck, p.taskStats.notStarted,
+        p.owner, p.updatedAt ? new Date(p.updatedAt).toLocaleString('vi-VN') : ''
+    ]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(projectRows), 'Projects');
+
+    const taskStatusRows = [['Nhóm', 'Done', 'Đang làm', 'Bị chặn', 'Chưa bắt đầu', 'Quá hạn']];
+    groups.forEach(g => {
+        const b = summary.byGroup[g];
+        taskStatusRows.push([REPORT_GROUP_LABELS[g] || g, b.done, b.working, b.stuck, b.notStarted, b.overdue]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(taskStatusRows), 'Tasks-by-status');
+
+    XLSX.writeFile(wb, `bao-cao-${stamp()}.xlsx`);
+}
+
+function exportReportPdf(summary) {
+    if (typeof window.jspdf === 'undefined') { showToast('Thư viện xuất PDF chưa tải được.', 'error'); return; }
+    if (!summary) { showToast('Chưa có dữ liệu báo cáo để xuất.', 'error'); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16); doc.text('Báo cáo BI toàn tổ chức', 14, 18);
+    doc.setFontSize(10); doc.text(`Xuất lúc: ${new Date().toLocaleString('vi-VN')}`, 14, 25);
+
+    let y = 35;
+    doc.setFontSize(12); doc.text('Tổng quan:', 14, y); y += 7;
+    doc.setFontSize(10);
+    const t = summary.totals || {};
+    [
+        `Tổng dự án hoạt động: ${t.activeProjects || 0}`,
+        `Tổng công việc: ${t.totalTasks || 0} (Done ${t.done || 0}, Đang làm ${t.working || 0}, Bị chặn ${t.stuck || 0}, Chưa bắt đầu ${t.notStarted || 0})`,
+        `Quá hạn: ${t.overdue || 0}`,
+        `Thành viên: ${t.members || 0}`
+    ].forEach(line => { doc.text(line, 14, y); y += 6; });
+
+    if (reportStatusChart) {
+        try {
+            const img = reportStatusChart.toBase64Image();
+            doc.addImage(img, 'PNG', 14, y + 4, 180, 90);
+        } catch (e) { /* chart image is a nice-to-have, don't fail the whole export over it */ }
+    }
+    doc.save(`bao-cao-${stamp()}.pdf`);
+}
+
 let blockersExpanded = false;
 function showBlockerCheckboxes() {
     const box = document.getElementById('blocker-checkboxes');
@@ -6125,6 +6345,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // D3b. Tab Nhật ký kiểm toán (admin)
                 if (sectionName === 'audit-log') {
                     if (typeof loadAuditLog === 'function') loadAuditLog();
+                }
+
+                // D3c. Tab Báo cáo BI (admin)
+                if (sectionName === 'reporting') {
+                    if (typeof loadReporting === 'function') loadReporting();
                 }
 
                 // D4. Tab AI Assistant (RAG)
