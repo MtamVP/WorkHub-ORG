@@ -815,7 +815,9 @@
         <div id="audit-log-guard"></div>
         <div id="audit-log-body" style="display:none;">
           <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-            <input type="text" id="audit-log-filter-email" class="text-input" placeholder="Email người thực hiện" style="max-width:220px;">
+            <select id="audit-log-filter-email" class="form-select" style="max-width:220px;">
+              <option value="">Tất cả email</option>
+            </select>
             <select id="audit-log-filter-entity" class="form-select" style="max-width:180px;">
               <option value="">Tất cả đối tượng</option>
               <option value="tasks">Công việc</option>

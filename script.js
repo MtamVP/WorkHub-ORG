@@ -3553,6 +3553,20 @@ async function loadAuditLog() {
         auditLogOffset = 0;
         const list = document.getElementById('audit-log-list');
         if (list) list.innerHTML = '<div style="padding:8px; color:var(--text-muted); font-size:12.5px;">Đang tải...</div>';
+
+        const emailSelect = document.getElementById('audit-log-filter-email');
+        if (emailSelect && emailSelect.options.length <= 1) {
+            try {
+                const usersResp = await callGAS('listAllUsers', {});
+                if (usersResp.status === 'success') {
+                    const admins = usersResp.data.filter(u => u.group_key === 'admin');
+                    emailSelect.innerHTML = '<option value="">Tất cả email</option>' + admins.map(u => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.email)}</option>`).join('');
+                }
+            } catch (err) {
+                console.error('Lỗi tải danh sách email cho filter:', err);
+            }
+        }
+
         await fetchAuditLogPage({ reset: true });
     } catch (err) {
         guard.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
