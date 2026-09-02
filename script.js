@@ -3417,7 +3417,7 @@ function renderAdminUsersTable(users, roles, units) {
     if (!tbody) return;
 
     if (!users || users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có hồ sơ người dùng nào.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Chưa có hồ sơ người dùng nào.</td></tr>';
         return;
     }
 
@@ -3463,10 +3463,15 @@ function renderAdminUsersTable(users, roles, units) {
                     </select>
                 </td>
                 <td class="small text-muted">${createdStr}</td>
+                <td>
+                    ${u.active === false
+                        ? '<span class="badge bg-secondary">Đã vô hiệu hóa</span>'
+                        : '<span class="badge bg-success">Đang hoạt động</span>'}
+                </td>
                 <td class="text-center">
-                    <button class="btn btn-sm text-danger border-0" title="Thu hồi quyền" onclick="removeUserAction('${safeEmail}', ${isSelf})">
-                        <i class="fa-solid fa-user-slash"></i>
-                    </button>
+                    ${u.active === false
+                        ? `<button class="btn btn-sm text-success border-0" title="Kích hoạt lại" onclick="setUserActiveAction('${safeEmail}', true, ${isSelf})"><i class="fa-solid fa-user-check"></i></button>`
+                        : `<button class="btn btn-sm text-danger border-0" title="Vô hiệu hóa" onclick="setUserActiveAction('${safeEmail}', false, ${isSelf})"><i class="fa-solid fa-user-slash"></i></button>`}
                 </td>
             </tr>`;
     }).join('');
@@ -3505,6 +3510,10 @@ async function assignUserOrgUnitAction(userId, orgUnitId) {
     }
 }
 
+// Xoá cứng. Không còn nút nào trong bảng quản trị gọi hàm này nữa kể từ khi có
+// setUserActiveAction (enterprise-readiness round-2, vô hiệu hoá thay xoá cứng) --
+// giữ nguyên định nghĩa làm lối thoát khẩn cấp, gọi tay qua console nếu thật sự cần
+// xoá cứng kiểu GDPR.
 function removeUserAction(email, isSelf) {
     Swal.fire({
         title: isSelf ? 'Bạn đang tự thu hồi quyền của chính mình?' : `Thu hồi quyền của ${email}?`,
@@ -3527,6 +3536,44 @@ function removeUserAction(email, isSelf) {
             showToast('Lỗi: ' + err.message, 'error');
         }
     });
+}
+
+// Vô hiệu hoá thay cho xoá cứng -- luồng chuẩn từ nút trong bảng quản trị.
+function setUserActiveAction(email, newActive, isSelf) {
+    if (!newActive) {
+        // Vô hiệu hoá: hỏi lại, cùng mức độ với hộp thoại xoá cứng cũ -- đây là hành động
+        // của admin khiến người khác mất quyền truy cập ngay lập tức, nên vẫn giữ ma sát
+        // dù có thể hoàn tác (khác với tự lưu trữ mục cá nhân của chính mình, vốn không hỏi).
+        Swal.fire({
+            title: isSelf ? 'Bạn đang tự vô hiệu hóa chính mình?' : `Vô hiệu hóa tài khoản ${email}?`,
+            text: isSelf
+                ? 'Bạn sẽ bị đăng xuất ngay lập tức. Có thể hoàn tác bởi admin khác — nhưng nếu bạn là admin duy nhất, sẽ không còn ai vào lại được.'
+                : 'Người này sẽ bị đăng xuất và không đăng nhập lại được cho tới khi có admin kích hoạt lại.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: 'var(--danger-color)',
+            confirmButtonText: 'Vô hiệu hóa',
+            cancelButtonText: 'Hủy'
+        }).then(async (result) => {
+            if (!result.isConfirmed) return;
+            await doSetUserActive(email, false);
+        });
+    } else {
+        // Kích hoạt lại: không hỏi lại, giống restorePersonalItem -- chỉ trả lại quyền,
+        // không có rủi ro, hỏi lại chỉ tạo ma sát thừa.
+        doSetUserActive(email, true);
+    }
+}
+
+async function doSetUserActive(email, active) {
+    try {
+        const response = await callGAS('setUserActive', { email, active });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+        loadAdminUsersTable();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    }
 }
 
 // Populates #progress-org-unit-select on the project form. activeGroup is 'all' for
@@ -6591,6 +6638,28 @@ document.addEventListener('DOMContentLoaded', function () {
                 chatUser = user;
                 chatUser.role = 'editor'; // safe default until fetched (Phase B RBAC)
                 window.__currentUserId = user.id; // real auth.uid(), used by client-driven audit-log writes
+
+                // Vô hiệu hoá thay xoá cứng (enterprise-readiness round-2). Chặn cả trường
+                // hợp tab dashboard mở sẵn, hoặc vào thẳng /dashboard/ không qua lại
+                // index.html -- đó là 2 đường mà một tài khoản vừa bị admin vô hiệu hoá
+                // vẫn có thể lọt qua nếu chỉ chặn ở index.html.
+                try {
+                    const acctInfo = await API.auth.getUserInfo(user.email);
+                    if (acctInfo && acctInfo.active === false) {
+                        await auth.signOut();
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'error', title: 'Tài khoản đã bị vô hiệu hóa',
+                                text: 'Vui lòng liên hệ quản trị viên nếu đây là nhầm lẫn.',
+                                confirmButtonText: 'OK'
+                            }).then(() => { window.location.href = '/'; });
+                        } else {
+                            window.location.href = '/';
+                        }
+                        return;
+                    }
+                } catch (e) { console.warn('Không kiểm tra được trạng thái tài khoản:', e); }
+
                 try {
                     chatUser.role = await API.auth.getMyRole(activeGroup);
                 } catch (e) {

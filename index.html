@@ -22,7 +22,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="api.js?v=1786944616194"></script>
+    <script src="api.js?v=1788377844800"></script>
     <script src="oauth-loopback.js?v=1"></script>
 </head>
 <body class="auth-page">
@@ -293,8 +293,21 @@
             try {
                 // Gọi API Supabase để lấy thông tin user
                 const userInfoRes = await API.auth.getUserInfo(user.email);
+
+                // Vô hiệu hoá thay xoá cứng (enterprise-readiness round-2). So sánh chặt
+                // === false: userInfoRes chỉ thiếu field active khi lỗi/không tìm thấy hàng,
+                // trường hợp đó không được chặn (fail-open như hành vi cũ).
+                if (userInfoRes && userInfoRes.active === false) {
+                    await auth.signOut();
+                    if (loadingStatus) loadingStatus.style.display = 'none';
+                    loginView.style.display = 'block';
+                    successView.style.display = 'none';
+                    errorDiv.innerHTML = '<i class="fa-solid fa-ban"></i> Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.';
+                    return;
+                }
+
                 const group = await API.auth.getUserGroup(user.email);
-                
+
                 let displayName = user.user_metadata?.display_name || user.email.split('@')[0];
 
                 if (userInfoRes) {
