@@ -435,6 +435,18 @@ a { color: inherit; }
 }
 .nav-item i { font-size: 18px; width: 20px; text-align: center; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
 
+/* Mục cần đăng nhập (mọi section trừ Dashboard -- xem script.js's
+   auth.onAuthStateChange, class gắn/gỡ đúng nhịp đăng nhập/đăng xuất). Trước đây bấm
+   vào chỉ hiện toast, không có tín hiệu nhìn thấy trước -- lệch với kiểu khoá (icon +
+   "Vui lòng đăng nhập") đã có sẵn ở các card dashboard. Icon khoá chỉ hiện khi sidebar
+   mở rộng có nhãn chữ -- lúc thu gọn chỉ còn icon chính, thêm icon khoá sẽ chật, độ mờ
+   55% đã đủ báo hiệu. */
+.nav-item.nav-locked { opacity: .55; cursor: not-allowed; }
+#app-sidebar.expanded .nav-item.nav-locked::after {
+  font-family: "Font Awesome 6 Free"; font-weight: 900; content: "\f023";
+  font-size: 10px; margin-left: auto; opacity: .7;
+}
+
 #app-sidebar.expanded .nav-item { justify-content: flex-start; }
 #app-sidebar.expanded .nav-item span { display: inline-block; }
 #app-sidebar:not(.expanded) .nav-item span { display: none; }

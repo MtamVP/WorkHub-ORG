@@ -6661,6 +6661,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (sendBtn) sendBtn.disabled = false;
 
+            // 2b. Mở khoá sidebar (bỏ chỉ báo khoá gắn lúc chưa đăng nhập)
+            navItems.forEach(n => n.classList.remove('nav-locked'));
+
             // 3. Xử lý Active Tab & Reload Data
             if (navItems.length > 0) {
                 const hasActive = document.querySelector('.nav-item.active');
@@ -6709,6 +6712,12 @@ document.addEventListener('DOMContentLoaded', function () {
             if (sendBtn) sendBtn.disabled = true;
 
             if (typeof clearDashboardData === 'function') clearDashboardData();
+
+            // Chỉ báo khoá cho mọi mục sidebar trừ Dashboard (mục duy nhất dùng được
+            // không cần đăng nhập -- xem điều kiện chặn ở logic chuyển tab bên dưới).
+            navItems.forEach(n => {
+                if (n.getAttribute('data-section') !== 'dashboard') n.classList.add('nav-locked');
+            });
 
             if (typeof unsubscribeChat === 'function') unsubscribeChat();
             if (typeof unsubscribeMembers === 'function') unsubscribeMembers();
