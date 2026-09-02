@@ -349,13 +349,18 @@ a { color: inherit; }
   position: sticky; top: 0; z-index: 100;
 }
 
-.logo {
-  /* --font-body, not --font-display: science/index.html's logo text is Vietnamese
-     ("Nhóm Khoa Học"), which DM Serif Display mis-shapes. */
+.brand-section { display: flex; align-items: center; gap: 14px; }
+.brand-logo {
+  width: 38px; height: 38px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-gold); overflow: hidden; flex-shrink: 0;
+}
+.brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+.brand-title-group h1 {
+  /* --font-body, not --font-display: DM Serif Display mis-shapes Vietnamese tone marks. */
   font-family: var(--font-body);
-  font-size: 24px; font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: 0.01em;
+  font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--text-primary); margin: 0;
 }
 
 /* Bootstrap's .text-primary defaults to its own blue; the app shell uses neutral ink instead. */
@@ -1407,7 +1412,8 @@ div:where(.swal2-container) { z-index: 99999 !important; }
 @media (max-width: 768px) {
   #main-content { padding: 20px; }
   #app-header { padding: 0 16px; gap: 10px; }
-  .logo { font-size: 18px; white-space: nowrap; }
+  .brand-title-group h1 { font-size: 18px; white-space: nowrap; }
+  .brand-logo { width: 32px; height: 32px; }
   .user-info { gap: 6px; min-width: 0; }
   /* Username is injected as a bare text node next to the icon — font-size:0 is the only CSS-only way to hide it */
   #user-display span { display: none; }
@@ -1438,7 +1444,8 @@ div:where(.swal2-container) { z-index: 99999 !important; }
   /* Header must fit 8 controls at 375px: compact everything, never scroll sideways */
   body { overflow-x: clip; }
   #app-header { padding: 0 10px; gap: 6px; }
-  .logo { font-size: 16px; letter-spacing: 0; }
+  .brand-title-group h1 { font-size: 16px; letter-spacing: 0; }
+  .brand-logo { width: 28px; height: 28px; }
   .user-info { gap: 2px; }
   .user-info > .btn-link, .user-info .dropdown > .btn-link { padding: 4px 5px; }
   .user-info .fs-5 { font-size: 1.05rem !important; }
