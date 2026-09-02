@@ -127,6 +127,7 @@
         <li class="nav-item" data-section="admin-users"><i class="fa-solid fa-user-gear"></i><span> Quản lý người dùng</span></li>
         <li class="nav-item" data-section="org-units"><i class="fa-solid fa-sitemap"></i><span> Cơ cấu tổ chức</span></li>
         <li class="nav-item" data-section="audit-log"><i class="fa-solid fa-clipboard-list"></i><span> Nhật ký kiểm toán</span></li>
+        <li class="nav-item" data-section="backup-restore"><i class="fa-solid fa-database"></i><span> Sao lưu & Phục hồi</span></li>
         <li class="nav-item" data-section="reporting"><i class="fa-solid fa-chart-pie"></i><span> Báo cáo BI</span></li>
       </ul>
     </nav>
@@ -907,6 +908,46 @@
         </div>
       </section>
 
+      <!-- Backup & Restore (admin-only; the guard below is cosmetic — backups are
+           scoped by whatever the logged-in user's own RLS can already see) -->
+      <section id="backup-restore-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary mb-3"><i class="fa-solid fa-database"></i>Sao lưu & Phục hồi</h2>
+        <div id="backup-restore-guard"></div>
+        <div id="backup-restore-body" style="display:none;">
+          <div class="small text-muted" style="margin-bottom:12px;">
+            Bản sao lưu là ảnh chụp JSON các bảng dữ liệu, lưu trên máy này (và bản sao thứ hai trên thư mục mạng nếu đã cấu hình).
+            Bản sao lưu phụ thuộc quyền của tài khoản đang đăng nhập — tài khoản không phải admin sẽ không sao lưu được các bảng quản trị.
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+            <button type="button" class="btn btn-primary" id="run-backup-now-btn" onclick="runManualBackupAction()">
+              <i class="fa-solid fa-download"></i> Sao lưu ngay
+            </button>
+            <button type="button" class="btn btn-outline" onclick="pickBackupNetworkPathAction()">
+              <i class="fa-solid fa-folder-tree"></i> Chọn thư mục mạng
+            </button>
+            <span id="backup-network-path-label" class="small text-muted" style="align-self:center;"></span>
+          </div>
+          <hr>
+          <h5 class="mb-2">Khôi phục từ bản sao lưu</h5>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <select id="backup-restore-file-select" class="form-select" style="max-width:320px;">
+              <option value="">-- Chọn bản sao lưu --</option>
+            </select>
+            <button type="button" class="btn btn-outline" onclick="previewRestoreDiffAction()">
+              <i class="fa-solid fa-magnifying-glass"></i> Xem trước thay đổi
+            </button>
+          </div>
+          <div id="backup-restore-diff" style="margin-bottom:12px;"></div>
+          <div id="backup-restore-confirm-row" style="display:none; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+            <input type="text" id="backup-restore-confirm-input" class="text-input" style="max-width:320px;" placeholder="Nhập chính xác tên file để xác nhận">
+            <button type="button" class="btn btn-danger" id="backup-restore-confirm-btn" onclick="restoreFromBackupAction()" disabled>
+              <i class="fa-solid fa-triangle-exclamation"></i> Khôi phục
+            </button>
+          </div>
+          <div id="backup-restore-result"></div>
+        </div>
+      </section>
+
       <!-- Reporting/BI (admin-only, cross-group; the guard below is cosmetic — real
            enforcement is RLS: current_user_group() = 'admin' on projects/tasks/users) -->
       <section id="reporting-section" class="content-section" style="display:none;">
@@ -1438,7 +1479,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/api.js?v=1787654400001"></script>
+  <script src="/api.js?v=1787654400002"></script>
   <script src="/oauth-loopback.js?v=1"></script>
   <script src="/sync-config.js?v=2"></script>
   <script src="/sync-engine.js?v=1"></script>
@@ -1471,12 +1512,12 @@
     </div>
   </div>
 
-  <script src="/script.js?v=3.4.0"></script>
+  <script src="/script.js?v=3.4.1"></script>
   <script src="/tray-hotkey.js?v=1"></script>
   <script src="/sync-conflict-ui.js?v=1"></script>
   <script src="/notify-deadlines.js?v=2"></script>
-  <script src="/backup-config.js?v=2"></script>
-  <script src="/local-backup.js?v=1"></script>
+  <script src="/backup-config.js?v=3"></script>
+  <script src="/local-backup.js?v=2"></script>
   <script src="/rag_chatbot.js?v=1786178129444"></script>
   <script src="/updater.js"></script>
 

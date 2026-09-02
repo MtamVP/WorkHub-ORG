@@ -3909,6 +3909,174 @@ function renderAuditLogRow(row) {
   </div>`;
 }
 
+// -------------------- Phase F: Backup & Restore (admin-only) --------------------
+// Same cosmetic-gate-then-load pattern as loadAuditLog()/loadOrgUnits() above — real
+// enforcement is each table's own RLS (a non-admin's backup legitimately captures
+// partial/zero rows for admin-gated tables, since local-backup.js runs under the
+// logged-in user's own session, not a service-role key).
+
+async function loadBackupRestore() {
+    const guard = document.getElementById('backup-restore-guard');
+    const body = document.getElementById('backup-restore-body');
+    if (!guard || !body) return;
+    body.style.display = 'none';
+    guard.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra quyền...</div>';
+
+    const email = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+    if (!email) {
+        guard.innerHTML = '<div class="text-center text-muted py-5">Chưa đăng nhập.</div>';
+        return;
+    }
+
+    try {
+        const groupResp = await callGAS('getUserGroup', { email });
+        const myGroup = groupResp.status === 'success' ? groupResp.data : 'guest';
+        if (myGroup !== 'admin') {
+            guard.innerHTML = '<div class="text-center text-danger py-5"><i class="fa-solid fa-lock fa-2x mb-2"></i><br>Bạn không có quyền truy cập trang này.</div>';
+            return;
+        }
+        guard.innerHTML = '';
+        body.style.display = 'block';
+
+        const pathLabel = document.getElementById('backup-network-path-label');
+        const networkPath = localStorage.getItem('wh_backup_network_path');
+        if (pathLabel) pathLabel.textContent = networkPath ? ('Thư mục mạng: ' + networkPath) : 'Chưa cấu hình thư mục mạng (chỉ lưu cục bộ).';
+
+        document.getElementById('backup-restore-diff').innerHTML = '';
+        document.getElementById('backup-restore-result').innerHTML = '';
+        const confirmRow = document.getElementById('backup-restore-confirm-row');
+        if (confirmRow) confirmRow.style.display = 'none';
+
+        loadLocalBackupsList();
+    } catch (err) {
+        guard.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
+    }
+}
+
+async function runManualBackupAction() {
+    const btn = document.getElementById('run-backup-now-btn');
+    if (btn) btn.disabled = true;
+    try {
+        if (!window.WorkHubBackup) throw new Error('Tính năng sao lưu chỉ dùng được trên bản desktop.');
+        await window.WorkHubBackup.runNow();
+        showToast('Đã sao lưu thành công.', 'success');
+        await loadLocalBackupsList();
+    } catch (e) {
+        showToast('Sao lưu thất bại: ' + (e.message || e), 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function pickBackupNetworkPathAction() {
+    try {
+        if (!window.__TAURI__ || !window.__TAURI__.dialog) throw new Error('Chỉ dùng được trên bản desktop.');
+        const selected = await window.__TAURI__.dialog.open({ directory: true });
+        if (!selected) return;
+        localStorage.setItem('wh_backup_network_path', selected);
+        const pathLabel = document.getElementById('backup-network-path-label');
+        if (pathLabel) pathLabel.textContent = 'Thư mục mạng: ' + selected;
+        showToast('Đã lưu đường dẫn thư mục mạng.', 'success');
+    } catch (e) {
+        showToast('Lỗi: ' + (e.message || e), 'error');
+    }
+}
+
+async function loadLocalBackupsList() {
+    const select = document.getElementById('backup-restore-file-select');
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Đang tải... --</option>';
+    try {
+        const response = await callGAS('getLocalBackups', {});
+        if (response.status !== 'success') throw new Error(response.message);
+        const files = response.data || [];
+        if (!files.length) {
+            select.innerHTML = '<option value="">-- Chưa có bản sao lưu nào --</option>';
+            return;
+        }
+        select.innerHTML = '<option value="">-- Chọn bản sao lưu --</option>' +
+            files.map(f => `<option value="${escapeHtml(f.name)}">${escapeHtml(f.name)}</option>`).join('');
+    } catch (err) {
+        select.innerHTML = '<option value="">-- Lỗi tải danh sách --</option>';
+        console.error('Lỗi tải danh sách bản sao lưu:', err);
+    }
+}
+
+async function previewRestoreDiffAction() {
+    const select = document.getElementById('backup-restore-file-select');
+    const diffEl = document.getElementById('backup-restore-diff');
+    const confirmRow = document.getElementById('backup-restore-confirm-row');
+    const confirmInput = document.getElementById('backup-restore-confirm-input');
+    const confirmBtn = document.getElementById('backup-restore-confirm-btn');
+    const fileName = select ? select.value : '';
+    if (!fileName) { showToast('Vui lòng chọn 1 bản sao lưu.', 'warning'); return; }
+    if (!diffEl) return;
+
+    diffEl.innerHTML = '<div style="padding:8px; color:var(--text-muted); font-size:12.5px;">Đang so sánh...</div>';
+    try {
+        const response = await callGAS('previewRestoreDiff', { fileName });
+        if (response.status !== 'success') throw new Error(response.message);
+        const rows = response.data || [];
+        diffEl.innerHTML = `<div style="overflow-x:auto;"><table class="monday-table"><thead><tr>
+        <th>Bảng</th><th>Số dòng trong bản sao lưu</th><th>Số dòng hiện tại</th><th>Ghi chú</th>
+      </tr></thead><tbody>${rows.map(r => {
+            const mismatch = r.backupError || r.liveError;
+            return `<tr ${mismatch ? 'style="color:var(--danger-color);"' : ''}>
+          <td>${escapeHtml(r.table)}</td>
+          <td>${r.backupCount}</td>
+          <td>${r.liveCount === null ? '--' : r.liveCount}</td>
+          <td>${escapeHtml(r.backupError || r.liveError || '')}</td>
+        </tr>`;
+        }).join('')}</tbody></table></div>`;
+
+        if (confirmRow) confirmRow.style.display = 'flex';
+        if (confirmInput) { confirmInput.value = ''; confirmInput.oninput = () => { if (confirmBtn) confirmBtn.disabled = confirmInput.value !== fileName; }; }
+        if (confirmBtn) confirmBtn.disabled = true;
+    } catch (err) {
+        diffEl.innerHTML = `<div style="color:var(--danger-color); font-size:12.5px; padding:8px;">Lỗi: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+async function restoreFromBackupAction() {
+    const select = document.getElementById('backup-restore-file-select');
+    const confirmInput = document.getElementById('backup-restore-confirm-input');
+    const resultEl = document.getElementById('backup-restore-result');
+    const fileName = select ? select.value : '';
+    const confirmFileName = confirmInput ? confirmInput.value : '';
+    if (!fileName || fileName !== confirmFileName) { showToast('Tên file xác nhận không khớp.', 'warning'); return; }
+
+    const finalConfirm = await Swal.fire({
+        title: 'Khôi phục dữ liệu?',
+        html: `Thao tác này sẽ GHI ĐÈ dữ liệu hiện tại bằng bản sao lưu <b>"${escapeHtml(fileName)}"</b> (theo kiểu upsert -- dòng đã tồn tại sẽ bị cập nhật). Không thể hoàn tác tự động.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: 'var(--danger-color)',
+        confirmButtonText: 'Khôi phục',
+        cancelButtonText: 'Hủy'
+    });
+    if (!finalConfirm.isConfirmed) return;
+
+    if (resultEl) resultEl.innerHTML = '<div style="padding:8px; color:var(--text-muted); font-size:12.5px;">Đang khôi phục...</div>';
+    try {
+        const response = await callGAS('restoreFromBackup', { fileName, confirmFileName });
+        if (response.status !== 'success') throw new Error(response.message);
+        const results = response.data || [];
+        const failed = results.filter(r => r.error);
+        if (resultEl) {
+            resultEl.innerHTML = `<div style="overflow-x:auto;"><table class="monday-table"><thead><tr>
+          <th>Bảng</th><th>Kết quả</th>
+        </tr></thead><tbody>${results.map(r => `<tr ${r.error ? 'style="color:var(--danger-color);"' : ''}>
+            <td>${escapeHtml(r.table)}</td>
+            <td>${r.error ? 'Lỗi: ' + escapeHtml(r.error) : (r.skipped ? escapeHtml(r.reason) : 'Đã khôi phục ' + r.upserted + ' dòng')}</td>
+          </tr>`).join('')}</tbody></table></div>`;
+        }
+        showToast(failed.length ? `Khôi phục xong, ${failed.length} bảng lỗi.` : 'Khôi phục thành công.', failed.length ? 'warning' : 'success');
+    } catch (err) {
+        if (resultEl) resultEl.innerHTML = `<div style="color:var(--danger-color); font-size:12.5px; padding:8px;">Lỗi: ${escapeHtml(err.message)}</div>`;
+        showToast('Khôi phục thất bại: ' + err.message, 'error');
+    }
+}
+
 // -------------------- Reporting / BI (admin-only, cross-group) --------------------
 // Same cosmetic-gate-then-load pattern as loadAuditLog() above — real enforcement is
 // RLS (current_user_group() = 'admin' branch already present on projects/tasks/users
@@ -6737,6 +6905,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // D3b. Tab Nhật ký kiểm toán (admin)
                 if (sectionName === 'audit-log') {
                     if (typeof loadAuditLog === 'function') loadAuditLog();
+                }
+
+                // D3b2. Tab Sao lưu & Phục hồi (admin)
+                if (sectionName === 'backup-restore') {
+                    if (typeof loadBackupRestore === 'function') loadBackupRestore();
                 }
 
                 // D3c. Tab Báo cáo BI (admin)
