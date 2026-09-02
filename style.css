@@ -23,18 +23,20 @@
   --border-strong: rgba(28, 23, 16, 0.18);
   --hover-bg: #ECE7DB;
 
-  /* ORG's own accent — deep plum/aubergine, not wh-fin's gold or wh-sci's teal. The
+  /* ORG's own accent — navy/steel-blue, not wh-fin's gold or wh-sci's teal. The
      --gold/--on-gold names are kept as-is (hundreds of existing rules reference them)
-     but the hue is now ORG's: a jewel-tone plum, chosen for the "coordination hub /
-     leadership" feel and picked to sit far in hue from every other token already in
-     use here — ~40° from --danger-color's pure red (so primary buttons never read as
-     "delete"), ~100°+ from --info-color/--sage's blue, ~150°+ from wh-sci's teal, and
-     nowhere near wh-fin's amber-gold. Kept desaturated (well under 80%) so it reads as
-     considered rather than the loud "AI-purple" cliché. --on-gold flips from the old
-     fixed near-black to near-white here since plum is mid-dark, unlike bright gold. */
-  --gold: #7A3B66;
-  --gold-light: #5F2D50;
-  --gold-deep: #46203C;
+     but the hue is now ORG's: a muted navy, chosen for the "cross-department authority /
+     IT-admin" feel (ORG is the org-wide admin surface: user management, org hierarchy,
+     audit log, backup/restore, BI — not a single department like fin/sci). Unlike the
+     plum this replaces, navy CANNOT sit far in hue from --info-color/--sage (also blue,
+     ~H220°) — the separation here is by saturation/lightness instead: --gold stays low-
+     saturation (~S30%) and deep (~L35-49%), while --info-color/--sage stays vivid
+     (S74-93%) and lighter, so the two read as clearly different colors (muted steel vs
+     bright action-blue) despite the shared hue family. --on-gold stays near-white since
+     navy, like the plum before it, is mid-dark rather than bright. */
+  --gold: #3B577A;
+  --gold-light: #2D445F;
+  --gold-deep: #203146;
   --on-gold: #FBF3F8;
   --primary-color: var(--gold);
   --primary-hover: var(--gold-light);
@@ -57,7 +59,7 @@
   --shadow-soft: 0 1px 2px rgba(28, 23, 16, 0.07), 0 1px 1px rgba(28, 23, 16, 0.04);
   --shadow-hover: 0 24px 60px rgba(28, 23, 16, 0.16);
   --shadow-modal: 0 24px 60px rgba(28, 23, 16, 0.20);
-  --shadow-gold: 0 8px 22px rgba(122, 59, 102, 0.20);
+  --shadow-gold: 0 8px 22px rgba(59, 87, 122, 0.20);
 
   /* Radius scale — accounting app's rounder scale */
   --radius-xs: 4px;
@@ -149,9 +151,9 @@
   --border-strong: rgba(243, 239, 230, 0.18);
   --hover-bg: #241D13;
 
-  --gold: #9E5C86;
-  --gold-light: #C486AD;
-  --gold-deep: #6E3F5D;
+  --gold: #5C7A9E;
+  --gold-light: #86A2C4;
+  --gold-deep: #3F546E;
   --primary-color: var(--gold);
   --primary-hover: var(--gold-light);
 
@@ -169,7 +171,7 @@
   --shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(20, 14, 4, 0.45);
   --shadow-hover: 0 24px 60px rgba(15, 10, 3, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   --shadow-modal: 0 24px 60px rgba(15, 10, 3, 0.65);
-  --shadow-gold: 0 8px 22px rgba(158, 92, 134, 0.24);
+  --shadow-gold: 0 8px 22px rgba(92, 122, 158, 0.24);
 }
 
 /* Bootstrap paints text-dark / text-secondary / bg-success / badges from its
@@ -1455,7 +1457,7 @@ body.auth-page {
 
 /* Gold vignette against the dark hero backdrop — same language as the accounting app's .gate glow */
 .auth-stars, .auth-twinkling { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.auth-stars { background: radial-gradient(ellipse at 50% 20%, rgba(201,168,76,0.16) 0%, #120F0A 70%); z-index: 0; }
+.auth-stars { background: radial-gradient(ellipse at 50% 20%, rgba(92, 122, 158, 0.16) 0%, #120F0A 70%); z-index: 0; }
 .auth-twinkling { background: transparent; z-index: 1; opacity: 0; }
 body.has-custom-bg .auth-stars, body.has-custom-bg .auth-twinkling { display: none !important; }
 body.has-custom-bg .auth-card { background: rgba(253, 250, 246, 0.96); }
@@ -1586,7 +1588,7 @@ body.auth-page .custom-toast { min-width: 300px; }
 .personal-item-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .personal-item-tag {
   font-size: 11px; font-weight: 600; color: var(--gold);
-  background: rgba(201,168,76,0.14); padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--gold) 14%, transparent); padding: 2px 8px; border-radius: 999px;
   cursor: pointer; transition: opacity 0.15s ease;
 }
 .personal-item-tag:hover { opacity: 0.75; }
