@@ -203,6 +203,28 @@
   --bs-body-color: #F3EFE6;
 }
 
+/* .btn-primary / .btn-outline-primary ship with Bootstrap 5.3's compiled CSS hard-coding
+   their OWN local --bs-btn-* custom props (--bs-btn-bg:#0d6efd etc.) directly on the class
+   rule -- they never read the root --bs-primary/--bs-primary-rgb remapped above (that only
+   drives .text-primary/.bg-primary/.border-primary utilities). Any raw Bootstrap button left
+   un-migrated to primary-btn/secondary-btn would otherwise show Bootstrap's default blue
+   instead of the app's own accent (found live: the "Thành viên" header button + 7 others).
+   Overriding the actual --bs-btn-* variables Bootstrap's button CSS consumes fixes all of
+   them at once, including any not yet found. style.css loads after bootstrap.min.css in
+   every HTML entry point, so this wins on source order without needing !important. */
+.btn-primary {
+  --bs-btn-bg: var(--gold); --bs-btn-border-color: var(--gold);
+  --bs-btn-hover-bg: var(--gold-light); --bs-btn-hover-border-color: var(--gold-light);
+  --bs-btn-active-bg: var(--gold-deep); --bs-btn-active-border-color: var(--gold-deep);
+  --bs-btn-disabled-bg: var(--gold); --bs-btn-disabled-border-color: var(--gold);
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--gold); --bs-btn-border-color: var(--gold);
+  --bs-btn-hover-bg: var(--gold); --bs-btn-hover-border-color: var(--gold);
+  --bs-btn-active-bg: var(--gold); --bs-btn-active-border-color: var(--gold);
+  --bs-btn-disabled-color: var(--gold); --bs-btn-disabled-border-color: var(--gold);
+}
+
 /* ---------------------------------------------------------------------- */
 /* 2. RESET & GLOBAL                                                       */
 /* ---------------------------------------------------------------------- */
