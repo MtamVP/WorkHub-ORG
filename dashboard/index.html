@@ -125,6 +125,7 @@
       <div class="nav-group-label"><span>Quản Trị</span></div>
       <ul class="nav-group">
         <li class="nav-item" data-section="admin-users"><i class="fa-solid fa-user-gear"></i><span> Quản lý người dùng</span></li>
+        <li class="nav-item" data-section="org-units"><i class="fa-solid fa-sitemap"></i><span> Cơ cấu tổ chức</span></li>
         <li class="nav-item" data-section="audit-log"><i class="fa-solid fa-clipboard-list"></i><span> Nhật ký kiểm toán</span></li>
         <li class="nav-item" data-section="reporting"><i class="fa-solid fa-chart-pie"></i><span> Báo cáo BI</span></li>
       </ul>
@@ -355,6 +356,10 @@
             <option value="In Progress">In Progress</option>
             <option value="Completed">Completed</option>
             <option value="On Hold">On Hold</option>
+          </select>
+
+          <select id="progress-org-unit-select" style="width: 100%; margin-bottom: 10px; padding: 8px;">
+            <option value="">-- Không thuộc tổ nào (tùy chọn) --</option>
           </select>
 
           <textarea id="progress-note-input" placeholder="Mô tả / ghi chú (tùy chọn)"
@@ -778,9 +783,9 @@
                 <label class="form-label small">Quyền</label>
                 <select id="provision-group" class="form-select">
                   <option value="guest">Guest</option>
-                  <option value="workhub-fin">Finance (WorkHub Fin)</option>
-                  <option value="workhub-sci">Science (WorkHub Sci)</option>
-                  <option value="all">All</option>
+                  <option value="finance">Finance</option>
+                  <option value="science">Science</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
               <div class="col-4 col-md-2">
@@ -798,11 +803,63 @@
                   <th>Biệt danh</th>
                   <th>Quyền</th>
                   <th>Vai trò</th>
+                  <th>Tổ</th>
                   <th>Ngày tạo hồ sơ</th>
                   <th class="text-center">Hành động</th>
                 </tr>
               </thead>
               <tbody id="admin-users-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Org hierarchy (sub-teams) — admin-only; the guard below is cosmetic, real
+           enforcement is org_units' own RLS (current_user_role_at_least(group_key,'admin')). -->
+      <section id="org-units-section" class="content-section" style="display:none;">
+        <h2 class="m-0 text-primary mb-3"><i class="fa-solid fa-sitemap"></i>Cơ cấu tổ chức (Tổ / Sub-team)</h2>
+        <div id="org-units-guard"></div>
+        <div id="org-units-body" style="display:none;">
+          <div class="card p-3 mb-3">
+            <h5 class="mb-3">Tạo tổ mới</h5>
+            <form id="org-unit-create-form" class="row g-2 align-items-end">
+              <div class="col-12 col-md-3">
+                <label class="form-label small">Tên tổ</label>
+                <input type="text" id="org-unit-name" class="text-input w-100" required placeholder="Tổ Kế toán">
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label small">Nhóm (group_key)</label>
+                <select id="org-unit-group" class="form-select">
+                  <option value="finance">Finance</option>
+                  <option value="science">Science</option>
+                  <option value="admin">Admin</option>
+                  <option value="guest">Guest</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label small">Đơn vị cấp trên (tùy chọn)</label>
+                <select id="org-unit-parent" class="form-select">
+                  <option value="">-- Không có (cấp cao nhất) --</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label small">Trưởng tổ (tùy chọn)</label>
+                <select id="org-unit-lead" class="form-select">
+                  <option value="">-- Chưa chọn --</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-2">
+                <button type="submit" class="primary-btn w-100">Tạo tổ</button>
+              </div>
+            </form>
+            <div class="small text-muted mt-2"><i class="fa-solid fa-circle-info me-1"></i>Đơn vị cấp trên phải cùng nhóm với tổ con. Trưởng tổ chỉ mang tính mô tả (chưa cấp thêm quyền ghi trong bản này).</div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="monday-table">
+              <thead class="table-light">
+                <tr><th>Tên tổ</th><th>Nhóm</th><th>Đơn vị cấp trên</th><th>Trưởng tổ</th><th class="text-center">Hành động</th></tr>
+              </thead>
+              <tbody id="org-units-table-body"></tbody>
             </table>
           </div>
         </div>
@@ -863,6 +920,9 @@
               <option value="science">Science</option>
               <option value="admin">Admin</option>
               <option value="guest">Guest</option>
+            </select>
+            <select id="reporting-filter-org-unit" class="form-select" style="max-width:200px;">
+              <option value="">Tất cả tổ</option>
             </select>
             <input type="date" id="reporting-filter-from" class="text-input" style="max-width:150px;">
             <input type="date" id="reporting-filter-to" class="text-input" style="max-width:150px;">

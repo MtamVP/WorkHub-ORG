@@ -347,6 +347,7 @@ const API = {
                 isShared: p.is_shared,
                 originGroup: p.group_key,
                 archivedAt: p.archived_at,
+                orgUnitId: p.org_unit_id,
                 overdueCount: 0,
                 dueSoonCount: 0
             }));
@@ -389,7 +390,8 @@ const API = {
                 owner_id: ownerId,
                 status: projectData.status || "Planning",
                 description: projectData.description || '',
-                group_key: groupKey
+                group_key: groupKey,
+                org_unit_id: projectData.orgUnitId || null
             });
             if (error) throw error;
             return `Đã tạo dự án ${projectData.name}!`;
@@ -398,6 +400,7 @@ const API = {
             const updates = { updated_at: new Date().toISOString() };
             if (payload && payload.status) updates.status = payload.status;
             if (payload && payload.description !== undefined) updates.description = payload.description;
+            if (payload && payload.orgUnitId !== undefined) updates.org_unit_id = payload.orgUnitId || null;
 
             const expectedVersion = payload && payload.expectedVersion;
             let query = sbClient.from('projects').update(updates).eq('id', projectId);
@@ -1623,6 +1626,11 @@ const API = {
             if (!sbClient) return null;
             let pq = sbClient.from('projects').select('id, group_key, status, archived_at').is('deleted_at', null);
             if (filters.groupKey) pq = pq.eq('group_key', filters.groupKey);
+            if (filters.orgUnitId) {
+                const { data: descendantRows } = await sbClient.rpc('org_unit_descendant_ids', { p_root: filters.orgUnitId });
+                const ids = (descendantRows || []).map(r => r.id);
+                pq = ids.length ? pq.in('org_unit_id', ids) : pq.eq('id', '__none__');
+            }
             const { data: projects, error: pErr } = await pq;
             if (pErr) throw pErr;
 
@@ -1680,6 +1688,11 @@ const API = {
             let q = sbClient.from('projects').select('*, users!owner_id(nickname)').is('deleted_at', null)
                 .order('updated_at', { ascending: false }).limit(500);
             if (filters.groupKey) q = q.eq('group_key', filters.groupKey);
+            if (filters.orgUnitId) {
+                const { data: descendantRows } = await sbClient.rpc('org_unit_descendant_ids', { p_root: filters.orgUnitId });
+                const ids = (descendantRows || []).map(r => r.id);
+                q = ids.length ? q.in('org_unit_id', ids) : q.eq('id', '__none__');
+            }
             const { data: projects, error } = await q;
             if (error) throw error;
             if (!projects || projects.length === 0) return [];
@@ -1713,6 +1726,11 @@ const API = {
             if (!sbClient) return [];
             let pq = sbClient.from('projects').select('id, group_key').is('deleted_at', null);
             if (filters.groupKey) pq = pq.eq('group_key', filters.groupKey);
+            if (filters.orgUnitId) {
+                const { data: descendantRows } = await sbClient.rpc('org_unit_descendant_ids', { p_root: filters.orgUnitId });
+                const ids = (descendantRows || []).map(r => r.id);
+                pq = ids.length ? pq.in('org_unit_id', ids) : pq.eq('id', '__none__');
+            }
             const { data: projects } = await pq;
             const ids = (projects || []).map(p => p.id);
             if (ids.length === 0) return [];
@@ -1748,6 +1766,49 @@ const API = {
                 .upsert({ user_id: userId, group_key: groupKey, role }, { onConflict: 'user_id,group_key' });
             if (error) throw error;
             return `Đã cập nhật vai trò thành "${role}"`;
+        }
+    },
+    orgUnits: {
+        listAll: async () => {
+            if (!sbClient) return [];
+            const { data, error } = await sbClient.from('org_units')
+                .select('id, name, group_key, parent_id, lead_user_id, created_at')
+                .order('group_key', { ascending: true }).order('name', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+        create: async (name, groupKey, parentId, leadUserId) => {
+            if (!sbClient) throw new Error("Chưa setup Supabase");
+            const { error } = await sbClient.from('org_units').insert({
+                name: String(name || '').trim(),
+                group_key: groupKey,
+                parent_id: parentId || null,
+                lead_user_id: leadUserId || null
+            });
+            if (error) throw error;
+            return `Đã tạo tổ "${name}"`;
+        },
+        update: async (id, fields) => {
+            if (!sbClient) throw new Error("Chưa setup Supabase");
+            const updates = {};
+            if (fields.name !== undefined) updates.name = String(fields.name).trim();
+            if (fields.parentId !== undefined) updates.parent_id = fields.parentId || null;
+            if (fields.leadUserId !== undefined) updates.lead_user_id = fields.leadUserId || null;
+            const { error } = await sbClient.from('org_units').update(updates).eq('id', id);
+            if (error) throw error;
+            return 'Đã cập nhật tổ';
+        },
+        remove: async (id) => {
+            if (!sbClient) throw new Error("Chưa setup Supabase");
+            const { error } = await sbClient.from('org_units').delete().eq('id', id);
+            if (error) throw error;
+            return 'Đã xóa tổ';
+        },
+        assignUser: async (userId, orgUnitId) => {
+            if (!sbClient) throw new Error("Chưa setup Supabase");
+            const { error } = await sbClient.from('users').update({ org_unit_id: orgUnitId || null }).eq('id', userId);
+            if (error) throw error;
+            return 'Đã gán người dùng vào tổ';
         }
     },
     calendarConnection: {
@@ -2121,7 +2182,8 @@ const MUTATING_ACTIONS = new Set([
     'restoreItem', 'hardDeleteItem',
     'provisionUser', 'updateUserGroup', 'removeUser', 'updateNickname', 'updateMemberRole',
     'savePersonalItem', 'deletePersonalItem',
-    'saveCalendarConnection', 'disconnectCalendarConnection'
+    'saveCalendarConnection', 'disconnectCalendarConnection',
+    'createOrgUnit', 'updateOrgUnit', 'deleteOrgUnit', 'assignUserOrgUnit'
 ]);
 window.MUTATING_ACTIONS = MUTATING_ACTIONS;
 
@@ -2173,7 +2235,7 @@ async function _dispatchAction(action, params = {}) {
             case 'getProjectListWithTaskStats': result = await API.project.listWithStats(params.groupKey, params.searchName, params.archiveScope); break;
             case 'setProjectArchived': result = await API.project.setArchived(params.projectId, params.archived); break;
             case 'createProject': result = await API.project.create(params, params.groupKey); break;
-            case 'updateProject': result = await API.project.updateNote(params.projectId, { status: params.status, description: params.description, expectedVersion: params.expectedVersion }, params.groupKey); break;
+            case 'updateProject': result = await API.project.updateNote(params.projectId, { status: params.status, description: params.description, expectedVersion: params.expectedVersion, orgUnitId: params.orgUnitId }, params.groupKey); break;
             case 'shareProject': result = await API.project.share(params.projectId, params.groupKey); break;
             case 'deleteProject': result = await API.project.delete(params.projectId, params.groupKey); break;
             case 'getMilestones': result = await API.project.getMilestones(params.projectId); break;
@@ -2233,6 +2295,12 @@ async function _dispatchAction(action, params = {}) {
             case 'getMyRole': result = await API.auth.getMyRole(params.groupKey); break;
             case 'listMemberRoles': result = await API.roles.listAll(); break;
             case 'updateMemberRole': result = await API.roles.update(params.userId, params.groupKey, params.role); break;
+
+            case 'listOrgUnits': result = await API.orgUnits.listAll(); break;
+            case 'createOrgUnit': result = await API.orgUnits.create(params.name, params.groupKey, params.parentId, params.leadUserId); break;
+            case 'updateOrgUnit': result = await API.orgUnits.update(params.id, params); break;
+            case 'deleteOrgUnit': result = await API.orgUnits.remove(params.id); break;
+            case 'assignUserOrgUnit': result = await API.orgUnits.assignUser(params.userId, params.orgUnitId); break;
 
             case 'getCalendarConnection': result = await API.calendarConnection.get(); break;
             case 'saveCalendarConnection': result = await API.calendarConnection.save(params); break;

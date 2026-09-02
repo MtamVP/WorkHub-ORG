@@ -1438,6 +1438,8 @@ async function loadProjectOverview(options) {
         if (filterOwnerDropdown) filterOwnerDropdown.innerHTML = loadingOpt;
     }
 
+    if (typeof populateProgressOrgUnitSelect === 'function') populateProgressOrgUnitSelect();
+
     try {
         const response = await callGAS("getProjectList", {
             filters: {},
@@ -1930,11 +1932,13 @@ async function handleProjectCreationOrUpdate() {
     const nameInput = document.getElementById('progress-project-name');
     const noteInput = document.getElementById('progress-note-input');
     const statusInput = document.getElementById('progress-status-select');
+    const orgUnitInput = document.getElementById('progress-org-unit-select');
     const selectInput = document.getElementById('project-select'); // Dropdown chọn dự án có sẵn (value = id)
 
     const newName = nameInput.value.trim();
     const note = noteInput.value.trim();
     const status = statusInput ? statusInput.value : '';
+    const orgUnitId = orgUnitInput ? orgUnitInput.value : '';
     const selectedProjectId = selectInput.value;
 
     const originalText = btn.innerHTML;
@@ -1948,7 +1952,8 @@ async function handleProjectCreationOrUpdate() {
                 owner: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : "Unknown",
                 status: status || "Planning",
                 description: note,
-                groupKey: activeGroup
+                groupKey: activeGroup,
+                orgUnitId: orgUnitId
             });
 
             if (response.status === 'success') {
@@ -1969,6 +1974,7 @@ async function handleProjectCreationOrUpdate() {
                 status: status,
                 description: note,
                 groupKey: activeGroup,
+                orgUnitId: orgUnitId,
                 expectedVersion: currentProject ? currentProject.version : undefined
             });
 
@@ -3385,33 +3391,39 @@ async function loadAdminUsers() {
 async function loadAdminUsersTable() {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
-    tbody.innerHTML = skeletonTableRows(6, 5);
+    tbody.innerHTML = skeletonTableRows(6, 6);
 
     try {
-        const [usersResp, rolesResp] = await Promise.all([
+        const [usersResp, rolesResp, unitsResp] = await Promise.all([
             callGAS('listAllUsers', {}),
-            callGAS('listMemberRoles', {})
+            callGAS('listMemberRoles', {}),
+            callGAS('listOrgUnits', {})
         ]);
         if (usersResp.status !== 'success') throw new Error(usersResp.message);
-        renderAdminUsersTable(usersResp.data || [], rolesResp.status === 'success' ? (rolesResp.data || []) : []);
+        renderAdminUsersTable(
+            usersResp.data || [],
+            rolesResp.status === 'success' ? (rolesResp.data || []) : [],
+            unitsResp.status === 'success' ? (unitsResp.data || []) : []
+        );
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">Lỗi: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-4">Lỗi: ${err.message}</td></tr>`;
     }
 }
 
 const ROLE_LABELS = { viewer: 'Viewer', editor: 'Editor', admin: 'Admin' };
 
-function renderAdminUsersTable(users, roles) {
+function renderAdminUsersTable(users, roles, units) {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
 
     if (!users || users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Chưa có hồ sơ người dùng nào.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có hồ sơ người dùng nào.</td></tr>';
         return;
     }
 
     const myEmail = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
     const roleMap = new Map((roles || []).map(r => [`${r.user_id}:${r.group_key}`, r.role]));
+    const unitsList = units || [];
 
     tbody.innerHTML = users.map(u => {
         const safeEmail = escapeHtml(escapeJs(u.email));
@@ -3442,6 +3454,12 @@ function renderAdminUsersTable(users, roles) {
                 <td>
                     <select class="form-select form-select-sm" style="min-width:110px;" onchange="updateMemberRoleAction('${escapeHtml(escapeJs(u.id))}', '${escapeHtml(escapeJs(u.group_key))}', this.value)" ${isOrgAdmin ? 'disabled title="Org-wide admin luôn là Admin"' : ''}>
                         ${roleOptions}
+                    </select>
+                </td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:160px;" onchange="assignUserOrgUnitAction('${escapeHtml(escapeJs(u.id))}', this.value)">
+                        <option value="">-- Không tổ --</option>
+                        ${buildOrgUnitOptionsHtml(unitsList, u.group_key, u.org_unit_id || '', null)}
                     </select>
                 </td>
                 <td class="small text-muted">${createdStr}</td>
@@ -3476,6 +3494,17 @@ async function updateUserGroupAction(email, newGroup) {
     }
 }
 
+async function assignUserOrgUnitAction(userId, orgUnitId) {
+    try {
+        const response = await callGAS('assignUserOrgUnit', { userId, orgUnitId: orgUnitId || null });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        loadAdminUsersTable();
+    }
+}
+
 function removeUserAction(email, isSelf) {
     Swal.fire({
         title: isSelf ? 'Bạn đang tự thu hồi quyền của chính mình?' : `Thu hồi quyền của ${email}?`,
@@ -3494,6 +3523,256 @@ function removeUserAction(email, isSelf) {
             if (response.status !== 'success') throw new Error(response.message);
             showToast(response.data || response.message, 'success');
             loadAdminUsersTable();
+        } catch (err) {
+            showToast('Lỗi: ' + err.message, 'error');
+        }
+    });
+}
+
+// Populates #progress-org-unit-select on the project form. activeGroup is 'all' for
+// every wh-org user in practice (org-wide superuser scope, a pre-existing fact of this
+// app -- see notify-deadlines.js comment) so all units are offered, grouped by nhóm;
+// a real per-group activeGroup would still work since sameGroup units simply filter down.
+async function populateProgressOrgUnitSelect() {
+    const sel = document.getElementById('progress-org-unit-select');
+    if (!sel) return;
+    try {
+        const resp = await callGAS('listOrgUnits', {});
+        const units = resp.status === 'success' ? (resp.data || []) : [];
+        const unitsById = new Map(units.map(u => [u.id, u]));
+        const byGroup = {};
+        units.forEach(u => { (byGroup[u.group_key] = byGroup[u.group_key] || []).push(u); });
+        const groupsHtml = Object.keys(byGroup).map(g => {
+            const opts = byGroup[g].map(u =>
+                `<option value="${u.id}">${escapeHtml(orgUnitLabel(u, unitsById))}</option>`
+            ).join('');
+            return `<optgroup label="${escapeHtml(USER_GROUP_LABELS[g] || g)}">${opts}</optgroup>`;
+        }).join('');
+        sel.innerHTML = '<option value="">-- Không thuộc tổ nào (tùy chọn) --</option>' + groupsHtml;
+    } catch (err) {
+        console.error('Lỗi tải danh sách tổ cho form dự án:', err);
+    }
+}
+
+// -------------------- Phase C: Org hierarchy (sub-teams / "Tổ") --------------------
+// Read-visibility + reporting-rollup only this round -- write permissions stay at the
+// group_key level via member_roles (Phase B), unchanged. See org-hierarchy-migration.sql.
+
+function orgUnitDepth(unitId, unitsById) {
+    let depth = 0;
+    let cursor = unitsById.get(unitId);
+    const seen = new Set();
+    while (cursor && cursor.parent_id && !seen.has(cursor.id)) {
+        seen.add(cursor.id);
+        depth++;
+        cursor = unitsById.get(cursor.parent_id);
+    }
+    return depth;
+}
+
+function orgUnitLabel(unit, unitsById) {
+    return '— '.repeat(orgUnitDepth(unit.id, unitsById)) + unit.name;
+}
+
+// ids of a unit + all of its descendants -- used to keep a unit (and its own subtree)
+// out of its own "parent" picker, mirroring org_units_validate_hierarchy()'s cycle
+// guard client-side for instant feedback (the DB trigger is still the real enforcement).
+function orgUnitSubtreeIds(rootId, units) {
+    const ids = new Set([rootId]);
+    let added = true;
+    while (added) {
+        added = false;
+        units.forEach(u => {
+            if (u.parent_id && ids.has(u.parent_id) && !ids.has(u.id)) {
+                ids.add(u.id);
+                added = true;
+            }
+        });
+    }
+    return ids;
+}
+
+function buildOrgUnitOptionsHtml(units, groupKey, selectedId, excludeIds) {
+    const unitsById = new Map((units || []).map(u => [u.id, u]));
+    const sameGroup = (units || []).filter(u => u.group_key === groupKey && !(excludeIds && excludeIds.has(u.id)));
+    return sameGroup.map(u =>
+        `<option value="${u.id}" ${u.id === selectedId ? 'selected' : ''}>${escapeHtml(orgUnitLabel(u, unitsById))}</option>`
+    ).join('');
+}
+
+async function loadOrgUnits() {
+    const guard = document.getElementById('org-units-guard');
+    const body = document.getElementById('org-units-body');
+    if (!guard || !body) return;
+
+    body.style.display = 'none';
+    guard.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin"></i> Đang kiểm tra quyền...</div>';
+
+    const email = (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null;
+    if (!email) {
+        guard.innerHTML = '<div class="text-center text-muted py-5">Chưa đăng nhập.</div>';
+        return;
+    }
+
+    try {
+        const groupResp = await callGAS('getUserGroup', { email });
+        const myGroup = groupResp.status === 'success' ? groupResp.data : 'guest';
+        if (myGroup !== 'admin') {
+            guard.innerHTML = '<div class="text-center text-danger py-5"><i class="fa-solid fa-lock fa-2x mb-2"></i><br>Bạn không có quyền truy cập trang này.</div>';
+            return;
+        }
+        guard.innerHTML = '';
+        body.style.display = 'block';
+        loadOrgUnitsTable();
+    } catch (err) {
+        guard.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
+    }
+}
+
+async function loadOrgUnitsTable() {
+    const tbody = document.getElementById('org-units-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = skeletonTableRows(3, 5);
+
+    try {
+        const [unitsResp, usersResp] = await Promise.all([
+            callGAS('listOrgUnits', {}),
+            callGAS('listAllUsers', {})
+        ]);
+        if (unitsResp.status !== 'success') throw new Error(unitsResp.message);
+        const units = unitsResp.data || [];
+        const users = usersResp.status === 'success' ? (usersResp.data || []) : [];
+        renderOrgUnitsTable(units, users);
+        populateOrgUnitFormSelects(units, users);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-4">Lỗi: ${err.message}</td></tr>`;
+    }
+}
+
+// Keeps the "Tạo tổ mới" form's parent/lead selects in sync with the current tree +
+// the currently-chosen group (parent options must live in the SAME group, DB-enforced,
+// this is just matching UX so nothing gets submitted only to bounce off the trigger).
+function populateOrgUnitFormSelects(units, users) {
+    const groupSelect = document.getElementById('org-unit-group');
+    const parentSelect = document.getElementById('org-unit-parent');
+    const leadSelect = document.getElementById('org-unit-lead');
+    if (!groupSelect || !parentSelect) return;
+
+    const refreshParent = () => {
+        parentSelect.innerHTML = '<option value="">-- Không có (cấp cao nhất) --</option>' +
+            buildOrgUnitOptionsHtml(units, groupSelect.value, '', null);
+    };
+    groupSelect.onchange = refreshParent;
+    refreshParent();
+
+    if (leadSelect) {
+        leadSelect.innerHTML = '<option value="">-- Chưa chọn --</option>' + (users || []).map(u =>
+            `<option value="${u.id}">${escapeHtml(u.nickname || u.email)}</option>`
+        ).join('');
+    }
+}
+
+function renderOrgUnitsTable(units, users) {
+    const tbody = document.getElementById('org-units-table-body');
+    if (!tbody) return;
+
+    if (!units || units.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Chưa có tổ nào.</td></tr>';
+        return;
+    }
+
+    const unitsById = new Map(units.map(u => [u.id, u]));
+
+    tbody.innerHTML = units.map(u => {
+        const excludeIds = orgUnitSubtreeIds(u.id, units);
+        const parentOptions = '<option value="">-- Không có (cấp cao nhất) --</option>' +
+            buildOrgUnitOptionsHtml(units, u.group_key, u.parent_id || '', excludeIds);
+        const leadOptions = '<option value="">-- Chưa chọn --</option>' + (users || []).map(usr =>
+            `<option value="${usr.id}" ${usr.id === u.lead_user_id ? 'selected' : ''}>${escapeHtml(usr.nickname || usr.email)}</option>`
+        ).join('');
+
+        return `
+            <tr>
+                <td>${escapeHtml(orgUnitLabel(u, unitsById))}</td>
+                <td>${escapeHtml(USER_GROUP_LABELS[u.group_key] || u.group_key)}</td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:160px;" onchange="updateOrgUnitParentAction('${escapeHtml(escapeJs(u.id))}', this.value)">
+                        ${parentOptions}
+                    </select>
+                </td>
+                <td>
+                    <select class="form-select form-select-sm" style="min-width:160px;" onchange="updateOrgUnitLeadAction('${escapeHtml(escapeJs(u.id))}', this.value)">
+                        ${leadOptions}
+                    </select>
+                </td>
+                <td class="text-center">
+                    <button class="btn btn-sm text-danger border-0" title="Xóa tổ" onclick="deleteOrgUnitAction('${escapeHtml(escapeJs(u.id))}', '${escapeHtml(escapeJs(u.name))}')">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+}
+
+async function createOrgUnitAction(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const name = document.getElementById('org-unit-name')?.value?.trim();
+    const groupKey = document.getElementById('org-unit-group')?.value;
+    const parentId = document.getElementById('org-unit-parent')?.value || null;
+    const leadUserId = document.getElementById('org-unit-lead')?.value || null;
+    if (!name) { showToast('Vui lòng nhập tên tổ.', 'warning'); return; }
+
+    try {
+        const response = await callGAS('createOrgUnit', { name, groupKey, parentId, leadUserId });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+        const nameInput = document.getElementById('org-unit-name');
+        if (nameInput) nameInput.value = '';
+        loadOrgUnitsTable();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    }
+}
+
+async function updateOrgUnitParentAction(id, newParentId) {
+    try {
+        const response = await callGAS('updateOrgUnit', { id, parentId: newParentId || null });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+        loadOrgUnitsTable();
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        loadOrgUnitsTable();
+    }
+}
+
+async function updateOrgUnitLeadAction(id, newLeadUserId) {
+    try {
+        const response = await callGAS('updateOrgUnit', { id, leadUserId: newLeadUserId || null });
+        if (response.status !== 'success') throw new Error(response.message);
+        showToast(response.data || response.message, 'success');
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+        loadOrgUnitsTable();
+    }
+}
+
+function deleteOrgUnitAction(id, name) {
+    Swal.fire({
+        title: `Xóa tổ "${name}"?`,
+        text: 'Nếu tổ này còn tổ con, thao tác sẽ bị từ chối -- hãy chuyển hoặc xóa tổ con trước.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: 'var(--danger-color)',
+        confirmButtonText: 'Xóa',
+        cancelButtonText: 'Hủy'
+    }).then(async (result) => {
+        if (!result.isConfirmed) return;
+        try {
+            const response = await callGAS('deleteOrgUnit', { id });
+            if (response.status !== 'success') throw new Error(response.message);
+            showToast(response.data || response.message, 'success');
+            loadOrgUnitsTable();
         } catch (err) {
             showToast('Lỗi: ' + err.message, 'error');
         }
@@ -3641,9 +3920,35 @@ let reportStatusChart = null, reportGroupChart = null, reportTrendChart = null;
 function getReportingFilters() {
     return {
         groupKey: document.getElementById('reporting-filter-group')?.value || '',
+        orgUnitId: document.getElementById('reporting-filter-org-unit')?.value || '',
         from: document.getElementById('reporting-filter-from')?.value || '',
         to: document.getElementById('reporting-filter-to')?.value || ''
     };
+}
+
+// Selecting a unit rolls up that unit + all its descendants (server-side, via
+// org_unit_descendant_ids inside API.reporting.*) -- this just populates the list.
+async function populateReportingOrgUnitFilter() {
+    const sel = document.getElementById('reporting-filter-org-unit');
+    if (!sel) return;
+    const prevValue = sel.value;
+    try {
+        const resp = await callGAS('listOrgUnits', {});
+        const units = resp.status === 'success' ? (resp.data || []) : [];
+        const unitsById = new Map(units.map(u => [u.id, u]));
+        const byGroup = {};
+        units.forEach(u => { (byGroup[u.group_key] = byGroup[u.group_key] || []).push(u); });
+        const groupsHtml = Object.keys(byGroup).map(g => {
+            const opts = byGroup[g].map(u =>
+                `<option value="${u.id}">${escapeHtml(orgUnitLabel(u, unitsById))}</option>`
+            ).join('');
+            return `<optgroup label="${escapeHtml(USER_GROUP_LABELS[g] || g)}">${opts}</optgroup>`;
+        }).join('');
+        sel.innerHTML = '<option value="">Tất cả tổ</option>' + groupsHtml;
+        sel.value = prevValue;
+    } catch (err) {
+        console.error('Lỗi tải danh sách tổ cho bộ lọc báo cáo:', err);
+    }
 }
 
 async function loadReporting() {
@@ -3668,6 +3973,7 @@ async function loadReporting() {
         }
         guard.innerHTML = '';
         body.style.display = 'block';
+        if (typeof populateReportingOrgUnitFilter === 'function') populateReportingOrgUnitFilter();
         await fetchReportingData();
     } catch (err) {
         guard.innerHTML = `<div class="text-danger text-center py-5">Lỗi: ${err.message}</div>`;
@@ -6255,12 +6561,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const nameInput = document.getElementById('progress-project-name');
             const noteInput = document.getElementById('progress-note-input');
             const statusInput = document.getElementById('progress-status-select');
+            const orgUnitInput = document.getElementById('progress-org-unit-select');
             const selectedId = projectSelect.value;
 
             if (!selectedId) {
                 if (nameInput) nameInput.value = '';
                 if (noteInput) noteInput.value = '';
                 if (statusInput) statusInput.value = 'Planning';
+                if (orgUnitInput) orgUnitInput.value = '';
                 return;
             }
 
@@ -6268,6 +6576,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (nameInput) nameInput.value = '';
             if (noteInput) noteInput.value = (project && project.description) || '';
             if (statusInput) statusInput.value = (project && project.status) || 'Planning';
+            if (orgUnitInput) orgUnitInput.value = (project && project.orgUnitId) || '';
         });
     }
 
@@ -6418,6 +6727,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 // D3. Tab Quản lý người dùng (admin)
                 if (sectionName === 'admin-users') {
                     if (typeof loadAdminUsers === 'function') loadAdminUsers();
+                }
+
+                // D3a2. Tab Cơ cấu tổ chức (admin)
+                if (sectionName === 'org-units') {
+                    if (typeof loadOrgUnits === 'function') loadOrgUnits();
                 }
 
                 // D3b. Tab Nhật ký kiểm toán (admin)
@@ -6800,6 +7114,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 showToast('Lỗi: ' + err.message, 'error');
             }
         });
+    }
+
+    //  8.9b2 FORM TẠO TỔ MỚI (Phase C: org hierarchy, admin)
+    const orgUnitCreateForm = document.getElementById('org-unit-create-form');
+    if (orgUnitCreateForm) {
+        orgUnitCreateForm.addEventListener('submit', function (e) { createOrgUnitAction(e); });
     }
 
     //  8.9c FORM THÊM MỤC VÀO DANH SÁCH KIỂM
