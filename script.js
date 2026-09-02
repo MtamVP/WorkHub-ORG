@@ -3605,21 +3605,7 @@ async function populateProgressOrgUnitSelect() {
 // Read-visibility + reporting-rollup only this round -- write permissions stay at the
 // group_key level via member_roles (Phase B), unchanged. See org-hierarchy-migration.sql.
 
-function orgUnitDepth(unitId, unitsById) {
-    let depth = 0;
-    let cursor = unitsById.get(unitId);
-    const seen = new Set();
-    while (cursor && cursor.parent_id && !seen.has(cursor.id)) {
-        seen.add(cursor.id);
-        depth++;
-        cursor = unitsById.get(cursor.parent_id);
-    }
-    return depth;
-}
-
-function orgUnitLabel(unit, unitsById) {
-    return '— '.repeat(orgUnitDepth(unit.id, unitsById)) + unit.name;
-}
+// orgUnitDepth/orgUnitLabel chuyển sang lib/pure-helpers.js -- vẫn là global.
 
 // ids of a unit + all of its descendants -- used to keep a unit (and its own subtree)
 // out of its own "parent" picker, mirroring org_units_validate_hierarchy()'s cycle
@@ -4957,12 +4943,7 @@ function getBlockedBadge(task) {
     return `<span class="blocked-badge" title="Bị chặn bởi: ${names}"><i class="fa-solid fa-lock"></i> Bị chặn</span>`;
 }
 
-function getProgressBarColor(percent) {
-    if (percent == 100) return 'bg-success';
-    if (percent >= 50) return 'bg-primary';
-    if (percent > 0) return 'bg-warning';
-    return 'bg-secondary';
-}
+// getProgressBarColor chuyển sang lib/pure-helpers.js -- vẫn là global.
 
 function getProjectStatusBadgeClass(status) {
     switch (status) {
@@ -7857,34 +7838,8 @@ let personalArchivedCache = [];
 let personalOverviewTasksCache = null;     // null = chưa nạp; [] = đã nạp và rỗng
 let personalRenderToken = 0;               // huỷ hiệu lực fetch async khi người dùng đổi tab
 
-// KHÔNG tái dùng timeAgoVietnamese: hàm đó nhét sẵn tiền tố 'Hoạt động ' vào kết quả và
-// dừng ở đơn vị ngày; các chỗ gọi nó đang phụ thuộc đúng tiền tố ấy. Hàm này trả cụm trần
-// ("2 giờ trước") để chỗ gọi tự ghép ("sửa …", "lưu trữ …").
-function formatPersonalTimeAgo(isoString) {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  if (isNaN(d.getTime())) return '';
-  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (sec < 60) return 'vừa xong';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return min + ' phút trước';
-  const hour = Math.floor(min / 60);
-  if (hour < 24) return hour + ' giờ trước';
-  const day = Math.floor(hour / 24);
-  if (day < 30) return day + ' ngày trước';
-  const month = Math.floor(day / 30);
-  if (month < 12) return month + ' tháng trước';
-  return Math.floor(month / 12) + ' năm trước';
-}
-
-// Giữ personalItemsCache đúng thứ tự mà API.personal.list trả về (pinned desc, updated_at
-// desc) sau khi ghim/bỏ ghim tại chỗ, khỏi phải fetch lại cả danh sách.
-function sortPersonalItemsCache(items) {
-  return items.slice().sort((a, b) => {
-    if (!!b.pinned !== !!a.pinned) return b.pinned ? 1 : -1;
-    return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
-  });
-}
+// formatPersonalTimeAgo/sortPersonalItemsCache chuyển sang lib/pure-helpers.js -- vẫn là
+// global (nạp trước script.js trong dashboard/index.html).
 
 // Hộp xác nhận dùng chung, thay cho confirm() gốc. Đọc data-theme để không bị chữ trắng
 // trên nền trắng ở dark mode.
