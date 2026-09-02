@@ -9,3 +9,8 @@ __pycache__/
 node_modules/
 tauri-dist/
 workhub.key
+
+# Test/CI (enterprise-readiness mục 4) -- WORKHUB_TEST_DB_URL cho tests/rls/ do người phát
+# triển tự set cục bộ, không commit (rag_server/.env đã ignore riêng ở trên).
+.env.local
+.env.test
