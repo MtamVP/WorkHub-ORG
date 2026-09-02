@@ -546,12 +546,15 @@ button:active:not(:disabled) { transform: scale(0.97); }
 }
 .secondary-btn:hover:not(:disabled) { background: var(--border-color); color: var(--text-primary); }
 
+/* Đăng xuất không phải hành động phá huỷ -- không nên cùng mức cảnh báo với
+   .btn-danger thật (xoá task/event/mục cá nhân) hay nút Reset Ảnh nền/Thùng rác.
+   Nhại đúng .secondary-btn ở trên, chỉ giữ padding/font-size gọn sẵn có. */
 #logout-btn {
-  background: color-mix(in srgb, var(--danger-color) 12%, var(--card-bg)); color: var(--danger-color);
+  background: var(--hover-bg); color: var(--text-secondary);
   padding: 8px 18px; font-size: 14px;
-  border: 1px solid transparent;
+  border: 1px solid var(--border-color);
 }
-#logout-btn:hover { background: var(--danger-color); color: #120F0A; }
+#logout-btn:hover { background: var(--border-color); color: var(--text-primary); }
 
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
