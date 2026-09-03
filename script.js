@@ -3871,8 +3871,7 @@ async function loadAuditLog() {
             try {
                 const usersResp = await callGAS('listAllUsers', {});
                 if (usersResp.status === 'success') {
-                    const admins = usersResp.data.filter(u => u.group_key === 'admin');
-                    emailSelect.innerHTML = '<option value="">Tất cả email</option>' + admins.map(u => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.email)}</option>`).join('');
+                    emailSelect.innerHTML = '<option value="">Tất cả email</option>' + usersResp.data.map(u => `<option value="${escapeHtml(u.email)}">${escapeHtml(u.email)}</option>`).join('');
                 }
             } catch (err) {
                 console.error('Lỗi tải danh sách email cho filter:', err);

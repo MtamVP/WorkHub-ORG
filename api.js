@@ -1638,7 +1638,9 @@ const API = {
         _PK: { // upsert onConflict column(s) per table -- most default to 'id'
             app_settings: 'key', finance_stocks: 'symbol', user_status: 'uid',
             lounge_players: 'email', task_assignees: 'task_id,user_email',
-            finance_holdings_price: 'user_id,symbol'
+            finance_holdings_price: 'user_id,symbol', member_roles: 'user_id,group_key',
+            fin_roles: 'user_id', sci_roles: 'user_id', finance_assets: 'user_id',
+            calendar_connections: 'user_id,provider', personal_sync_files: 'user_id,relative_path'
         },
         listLocal: async () => {
             if (!window.__TAURI__ || !window.__TAURI__.fs) return [];
