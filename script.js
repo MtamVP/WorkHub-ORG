@@ -3009,9 +3009,27 @@ function renderSearchHint(text) {
     if (box) box.innerHTML = `<div class="search-palette-hint">${escapeHtml(text)}</div>`;
 }
 
+const APP_FEATURES = [
+    { title: "Quản lý người dùng", subtitle: "Chức năng hệ thống", type: "feature", section: "admin-users" },
+    { title: "Cơ cấu tổ chức", subtitle: "Chức năng hệ thống", type: "feature", section: "org-units" },
+    { title: "Nhật ký kiểm toán", subtitle: "Chức năng hệ thống", type: "feature", section: "audit-log" },
+    { title: "Sao lưu & Phục hồi", subtitle: "Chức năng hệ thống", type: "feature", section: "backup-restore" },
+    { title: "Báo cáo BI", subtitle: "Chức năng hệ thống", type: "feature", section: "reporting" },
+    { title: "Không Gian Riêng", subtitle: "Cá nhân", type: "feature", section: "personal" },
+    { title: "Tiến độ dự án", subtitle: "Dự án", type: "feature", section: "progress" },
+    { title: "Việc của tôi", subtitle: "Công việc", type: "feature", section: "mytasks" },
+    { title: "Quản lý Task", subtitle: "Công việc", type: "feature", section: "task" },
+    { title: "Upload File đính kèm", subtitle: "Công cụ", type: "feature", section: "drive" },
+    { title: "Lịch & Sự kiện", subtitle: "Công cụ", type: "feature", section: "calendar" },
+    { title: "AI Trợ lý", subtitle: "Công cụ", type: "feature", section: "ai" }
+];
+
+let lastSearchQuery = '';
+
 function onSearchPaletteInput(value) {
     clearTimeout(searchDebounceTimer);
     const q = String(value || '').trim();
+    lastSearchQuery = q;
 
     if (q.length < 2) {
         searchPaletteResults = [];
@@ -3020,19 +3038,40 @@ function onSearchPaletteInput(value) {
         return;
     }
 
-    renderSearchHint('Đang tìm...');
+    const lowerQ = q.toLowerCase();
+    const localMatches = APP_FEATURES.filter(f => f.title.toLowerCase().includes(lowerQ) || f.subtitle.toLowerCase().includes(lowerQ));
+    
+    if (localMatches.length > 0) {
+        renderSearchResults({ features: localMatches });
+    } else {
+        renderSearchHint('Đang tìm...');
+    }
+
     searchDebounceTimer = setTimeout(async () => {
         const mySeq = ++searchRequestSeq;
         try {
             const response = await callGAS('globalSearch', { query: q, groupKey: activeGroup });
-            if (mySeq !== searchRequestSeq) return; // đã có lượt gõ mới hơn
+            if (mySeq !== searchRequestSeq) return;
             if (response.status !== 'success') throw new Error(response.message);
-            renderSearchResults(response.data || { projects: [], tasks: [], files: [] });
+            const merged = { ...response.data, features: localMatches };
+            renderSearchResults(merged);
         } catch (err) {
             if (mySeq !== searchRequestSeq) return;
-            renderSearchHint('Lỗi tìm kiếm: ' + err.message);
+            if (localMatches.length === 0) renderSearchHint('Lỗi tìm kiếm: ' + err.message);
         }
     }, 250);
+}
+
+function highlightMatch(text, query) {
+    if (!query || !text) return escapeHtml(text || '');
+    const str = String(text);
+    const idx = str.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return escapeHtml(str);
+    return escapeHtml(str.substring(0, idx)) + 
+           '<mark style="background:var(--gold); color:#000; padding:0 2px; border-radius:2px;">' + 
+           escapeHtml(str.substring(idx, idx + query.length)) + 
+           '</mark>' + 
+           escapeHtml(str.substring(idx + query.length));
 }
 
 function renderSearchResults(data) {
@@ -3040,6 +3079,7 @@ function renderSearchResults(data) {
     if (!box) return;
 
     searchPaletteResults = [
+        ...(data.features || []).map(x => ({ ...x, type: 'feature' })),
         ...(data.projects || []).map(x => ({ ...x, type: 'project' })),
         ...(data.tasks || []).map(x => ({ ...x, type: 'task' })),
         ...(data.milestones || []).map(x => ({ ...x, type: 'milestone' })),
@@ -3056,34 +3096,34 @@ function renderSearchResults(data) {
     }
 
     const GROUP_META = {
-        project: { label: 'Dự án', icon: 'fa-diagram-project' },
-        task: { label: 'Công việc', icon: 'fa-list-check' },
-        milestone: { label: 'Cột mốc', icon: 'fa-flag-checkered' },
-        event: { label: 'Sự kiện', icon: 'fa-calendar-check' },
-        comment: { label: 'Bình luận', icon: 'fa-comment-dots' },
-        file: { label: 'Tệp', icon: 'fa-file' },
-        personal: { label: 'Cá nhân', icon: 'fa-user-lock' }
+        feature: { badge: 'Chức năng', bg: '', style: 'background: #4285f4; color: #fff;', icon: 'fa-bolt' },
+        project: { badge: 'Dự án', bg: '', style: 'background: #198754; color: #fff;', icon: 'fa-diagram-project' },
+        task: { badge: 'Công việc', bg: '', style: 'background: #ffc107; color: #000;', icon: 'fa-list-check' },
+        milestone: { badge: 'Cột mốc', bg: '', style: 'background: #dc3545; color: #fff;', icon: 'fa-flag-checkered' },
+        event: { badge: 'Sự kiện', bg: '', style: 'background: #0dcaf0; color: #000;', icon: 'fa-calendar-check' },
+        comment: { badge: 'Bình luận', bg: '', style: 'background: #6c757d; color: #fff;', icon: 'fa-comment-dots' },
+        file: { badge: 'Tệp', bg: '', style: 'background: #212529; border: 1px solid #555; color: #fff;', icon: 'fa-file' },
+        personal: { badge: 'Cá nhân', bg: '', style: 'background: #0dcaf0; color: #000;', icon: 'fa-user-lock' }
     };
 
     let html = '';
-    let flatIndex = 0;
-    ['project', 'task', 'milestone', 'event', 'comment', 'file', 'personal'].forEach(type => {
-        const items = searchPaletteResults.filter(r => r.type === type);
-        if (items.length === 0) return;
-        html += `<div class="search-palette-group">${GROUP_META[type].label}</div>`;
-        items.forEach(item => {
-            const idx = flatIndex++;
-            const dueBadge = item.type === 'task' ? getDueDateBadge(item.dueDate, item.status) : '';
-            html += `
-                <div class="search-palette-item${idx === 0 ? ' is-active' : ''}" data-index="${idx}"
-                     onclick="activateSearchResult(${idx})" onmouseenter="setSearchActiveIndex(${idx})">
-                    <i class="fa-solid ${GROUP_META[type].icon}"></i>
-                    <div class="search-palette-item-text">
-                        <div class="search-palette-item-title">${escapeHtml(item.title || '')}${dueBadge}</div>
-                        ${item.subtitle ? `<div class="search-palette-item-sub">${escapeHtml(item.subtitle)}</div>` : ''}
+    searchPaletteResults.forEach((item, idx) => {
+        const meta = GROUP_META[item.type] || { badge: 'Khác', bg: '', style: 'background: #6c757d; color: #fff;', icon: 'fa-circle' };
+        const dueBadge = item.type === 'task' ? getDueDateBadge(item.dueDate, item.status) : '';
+        const titleHtml = highlightMatch(item.title, lastSearchQuery);
+        html += `
+            <div class="search-palette-item${idx === 0 ? ' is-active' : ''}" data-index="${idx}"
+                 onclick="activateSearchResult(${idx})" onmouseenter="setSearchActiveIndex(${idx})">
+                <i class="fa-solid ${meta.icon}"></i>
+                <div class="search-palette-item-text">
+                    <div class="search-palette-item-title d-flex align-items-center gap-2">
+                        <span>${titleHtml}</span>
+                        <span class="badge ${meta.bg} ms-auto" style="font-size:10px; ${meta.style}">${meta.badge}</span>
+                        ${dueBadge}
                     </div>
-                </div>`;
-        });
+                    ${item.subtitle ? `<div class="search-palette-item-sub">${escapeHtml(item.subtitle)}</div>` : ''}
+                </div>
+            </div>`;
     });
 
     box.innerHTML = html;
@@ -3110,6 +3150,12 @@ function activateSearchResult(idx) {
     const item = searchPaletteResults[idx];
     if (!item) return;
     closeSearchPalette();
+
+    if (item.type === 'feature') {
+        const nav = document.querySelector(`.nav-item[data-section="${item.section}"]`);
+        if (nav) nav.click();
+        return;
+    }
 
     if (item.type === 'file') {
         if (item.url) openExternalUrl(item.url);
