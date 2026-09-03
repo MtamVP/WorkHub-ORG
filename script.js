@@ -64,13 +64,10 @@ async function loadDashboardDataSecurely() {
     if (typeof loadDashboardTopProgress === 'function') loadDashboardTopProgress();
 }
 
-//  2.2 Hàm Online Status 
-function setupPresenceSystem(user) {
-    if (!user) return;
-    if (window.onlineInterval) clearInterval(window.onlineInterval);
-    window.onlineInterval = setInterval(() => {
-    }, 120000);
-}
+//  2.2 Hàm Online Status  -- cài đặt thật nằm ở dưới (mục 7, gần Chat), upsert vào
+// sbClient.user_status + subscribe kênh realtime. Bản no-op từng có ở đây đã bị đè hoàn
+// toàn (2 khai báo `function setupPresenceSystem` trùng tên, bản dưới luôn thắng) nên đã
+// xoá để khỏi gây nhầm lẫn khi tìm kiếm/sửa.
 
 //  2.3 Hàm dọn dẹp dữ liệu Dashboard khi logout
 function clearDashboardData() {
@@ -151,12 +148,9 @@ function skeletonCards(count) {
     return html;
 }
 
-function showToast(message, type = 'success') {
-    alert(message);
-    if (type === 'error') {
-        console.error("TOAST ERROR:", message);
-    }
-}
+// showToast() thật nằm ở dưới (window.showToast, dùng #toast-container) -- bản khai báo
+// alert() từng có ở đây đã bị đè hoàn toàn ngay khi window.showToast được gán, nên đã xoá
+// để khỏi gây nhầm lẫn khi tìm kiếm.
 
 // Trả về các phần tử có thể focus, đang thực sự hiển thị, bên trong container —
 // dùng để bẫy Tab trong modal và để tự focus vào phần tử đầu tiên khi mở.
@@ -728,8 +722,8 @@ function renderRecentFiles(fileData) {
         html += `
             <li style="display: flex; align-items: center; margin-bottom: 8px;">
                 <i class="fa-solid ${icon} me-2" style="color: var(--info-color);"></i>
-                <a href="${file.url}" target="_blank" title="${file.name}">
-                    ${file.name}
+                <a href="${escapeHtml(file.url || '#')}" target="_blank" title="${escapeHtml(file.name || '')}">
+                    ${escapeHtml(file.name || '')}
                 </a>
             </li>`;
     });
@@ -2061,7 +2055,7 @@ async function loadDashboardTopProgress(options) {
                 <div class="project-item-dashboard border-bottom pb-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <div>
-                            <strong class="text-dark" style="font-size: 0.95rem;">${p.name}</strong>
+                            <strong class="text-dark" style="font-size: 0.95rem;">${escapeHtml(p.name || '')}</strong>
                             ${groupBadgeHTML} </div>
                         <span class="badge bg-light text-success border border-success">${percent}%</span>
                     </div>
@@ -2409,6 +2403,10 @@ async function handleProjectFileUpload() {
 }
 
 function deleteProjectFileAction(fileId, fileName) {
+    if (isViewerRole()) {
+        showToast('Bạn không có quyền xóa file.', 'error');
+        return;
+    }
     Swal.fire({
         title: 'Xóa File?',
         text: `Bạn có chắc muốn xóa file "${fileName}"?`,
@@ -2946,6 +2944,10 @@ async function applyBulkStatusChange() {
 }
 
 async function applyBulkDelete() {
+    if (isViewerRole()) {
+        showToast('Bạn không có quyền xóa công việc.', 'error');
+        return;
+    }
     const ids = Array.from(bulkSelectedIds);
     if (ids.length === 0) return;
 
@@ -3563,6 +3565,11 @@ async function updateUserGroupAction(email, newGroup) {
         const response = await callGAS('updateUserGroup', { email, groupKey: newGroup });
         if (response.status !== 'success') throw new Error(response.message);
         showToast(response.data || response.message, 'success');
+        // Đổi group_key làm lệch onchange của các <select> Role/Org-unit khác trong cùng
+        // hàng (chúng được render "đóng cứng" group_key cũ) -- phải tải lại bảng để các
+        // select đó gắn lại đúng group_key mới, nếu không lần đổi Role/Org-unit kế tiếp
+        // trên cùng hàng sẽ ghi nhầm vào group cũ.
+        loadAdminUsersTable();
     } catch (err) {
         showToast('Lỗi: ' + err.message, 'error');
         loadAdminUsersTable();
@@ -4836,6 +4843,10 @@ async function handleTaskFormSubmit(e) {
 
 //  HÀM XÓA TASK 
 function deleteTaskAction(taskId, taskName) {
+    if (isViewerRole()) {
+        showToast('Bạn không có quyền xóa công việc.', 'error');
+        return;
+    }
     Swal.fire({
         title: 'Xóa Công Việc?',
         text: `Bạn có chắc chắn muốn xóa công việc: "${taskName}"?`,
@@ -5450,57 +5461,8 @@ function renderFileList(files) {
     if (tbody) tbody.innerHTML = html;
 }
 
-function deleteTaskFile(fileId, fileName) {
-    const taskId = document.getElementById('current-upload-task-id').value;
-
-    if (!taskId) {
-        showToast("Lỗi: Không xác định được Task ID", "error");
-        return;
-    }
-
-    Swal.fire({
-        title: 'Xóa file?',
-        text: `Bạn muốn xóa file "${fileName}" khỏi công việc này?`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: 'var(--danger-color)',
-        cancelButtonColor: 'var(--text-muted)',
-        confirmButtonText: 'Xóa',
-        cancelButtonText: 'Hủy'
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            Swal.fire({ title: 'Đang xóa...', didOpen: () => Swal.showLoading() });
-
-            try {
-                const response = await callGAS("deleteFileFromTask", {
-                    taskId: taskId,
-                    fileId: fileId,
-                    groupKey: activeGroup
-                });
-
-                if (response.status === 'success') {
-                    Swal.fire('Đã xóa!', 'File đã được gỡ bỏ.', 'success');
-
-                    currentTaskFiles = response.data;
-                    renderFileList(currentTaskFiles);
-
-                    if (typeof globalAllTasks !== 'undefined') {
-                        const t = globalAllTasks.find(x => String(x.id) === String(taskId));
-                        if (t) t.attachments = JSON.stringify(currentTaskFiles);
-                    }
-
-                    applyTaskFilters();
-
-                } else {
-                    Swal.fire('Lỗi!', response.message, 'error');
-                }
-            } catch (err) {
-                console.error("Lỗi xóa file task:", err);
-                Swal.fire('Lỗi!', "Lỗi kết nối: " + err.message, 'error');
-            }
-        }
-    });
-}
+// deleteTaskFile() thật nằm ở dưới -- 2 khai báo trùng tên từng tồn tại (bản dưới luôn
+// thắng và là bản thực sự chạy), bản ở đây bị xoá vì là code chết, dễ gây nhầm khi sửa.
 
 //hàm upload file lên task
 async function handleTaskFileUpload() {
@@ -5867,7 +5829,7 @@ window.togglePinMessage = async function (docId, currentStatus) {
 
 function renderMessage(docId, data) {
     if (!data.text) return;
-    var isMe = (chatUser && data.uid === chatUser.uid);
+    var isMe = (chatUser && data.uid === chatUser.id);
     var isPinned = data.isPinned === true;
 
     var timeString = formatSmartTime(data.createdAt);
@@ -5877,8 +5839,9 @@ function renderMessage(docId, data) {
     formattedText = formattedText.replace(/@All/g, '<span class="mention-tag is-all">@All</span>');
 
     if (chatUser && chatUser.displayName) {
-        var myNameRegex = new RegExp("@" + chatUser.displayName, "gi");
-        formattedText = formattedText.replace(myNameRegex, '<span class="mention-tag is-me">@' + chatUser.displayName + '</span>');
+        var escapedNameForRegex = chatUser.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var myNameRegex = new RegExp("@" + escapedNameForRegex, "gi");
+        formattedText = formattedText.replace(myNameRegex, '<span class="mention-tag is-me">@' + escapeHtml(chatUser.displayName) + '</span>');
     }
 
     formattedText = formattedText.replace(/@([a-zA-Z0-9_À-ỹ]+)/g, function (match) {
@@ -6713,11 +6676,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 try {
                     chatUser.role = await API.auth.getMyRole(activeGroup);
                 } catch (e) {
-                    console.warn('Không lấy được vai trò người dùng, mặc định Editor:', e);
+                    // Fail closed: nếu không lấy được vai trò thật, hạ quyền về viewer
+                    // thay vì giữ nguyên default 'editor' lạc quan ở trên — tránh việc
+                    // một lỗi mạng/RPC thoáng qua vô tình để lộ UI tạo/sửa/xóa cho
+                    // người lẽ ra chỉ có quyền xem.
+                    chatUser.role = 'viewer';
+                    console.warn('Không lấy được vai trò người dùng, hạ về viewer (fail-closed):', e);
                 }
                 if (typeof updateRoleGatedUI === 'function') updateRoleGatedUI();
                 const displayName = user.user_metadata?.display_name || user.email;
                 const shortName = displayName.split('@')[0];
+                // chatUser = user (gán thẳng object Supabase Auth ở trên) không có sẵn field
+                // displayName -- renderMessage()'s tự-@mention-highlight (dòng ~5837) đọc
+                // chatUser.displayName nên trước đây luôn bỏ qua vì field này chưa từng được
+                // gán, tính năng im lặng không chạy. Gán ở đây để khớp đúng tên hiển thị đang
+                // dùng cho phần còn lại của UI (userDisplay/userEmailDisplay ngay dưới).
+                chatUser.displayName = displayName;
 
             // 1. Cập nhật Tên
             if (userDisplay) userDisplay.innerHTML = `<i class="fa-solid fa-user-circle"></i> ${shortName}`;
@@ -7533,7 +7507,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     expectedVersion: isEditing ? expectedVersion : undefined
                 });
 
-                showToast(msg, "success");
+                if (msg.status !== 'success') throw new Error(msg.message);
+
+                showToast(msg.data || msg.message, "success");
                 loadNotifications();
                 if (typeof hideModal === 'function') hideModal('add-event-modal');
                 eventForm.reset();
@@ -7575,7 +7551,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     email: (typeof chatUser !== 'undefined' && chatUser) ? chatUser.email : null
                 });
 
-                showToast(msg, "success");
+                if (msg.status !== 'success') throw new Error(msg.message);
+
+                showToast(msg.data || msg.message, "success");
                 loadNotifications();
                 if (typeof loadCalendarData === 'function') loadCalendarData({ quiet: true });
 
@@ -8737,7 +8715,7 @@ async function personalSyncPushToTeam(relativePath) {
         const dataUrl = await personalSyncBlobToBase64(blob);
         const fileName = relativePath.split('/').pop();
         const res = await callGAS('uploadFile', {
-            fileData: dataUrl,
+            fileData: dataUrl.split(',')[1],
             fileName: fileName,
             mimeType: blob.type || 'application/octet-stream',
             groupKey: activeGroup,
