@@ -1,4 +1,11 @@
-let RAG_API_BASE = 'https://workhub-org-git-825025516269.us-central1.run.app';
+// updateRAGServerUrl() (bên dưới) đã lưu localStorage['rag_server_url'] mỗi khi người dùng
+// đổi URL server RAG tuỳ chỉnh, nhưng trước đây KHÔNG đọc lại giá trị này lúc khởi tạo --
+// mỗi lần tải lại trang, RAG_API_BASE luôn quay về mặc định cứng, âm thầm "quên" cấu hình
+// người dùng vừa đặt. Đọc lại ở đây để khớp đúng hành vi updateRAGServerUrl() đã hứa.
+// (api.js:1009/1063 đọc cùng key này nhưng fallback về 1 URL mặc định khác --
+// 'https://workhub-org.onrender.com' -- lệch với mặc định ở đây; chưa rõ URL nào đang
+// thật sự chạy nên không tự đổi, chỉ ghi chú lại để xem xét riêng.)
+let RAG_API_BASE = localStorage.getItem('rag_server_url') || 'https://workhub-org-git-825025516269.us-central1.run.app';
 let isRAGConnected = false;
 let isGenerating = false;
 let ragChatHistory = [];
@@ -232,8 +239,13 @@ async function loadRAGDocumentsList() {
         doc.file_size ? `${doc.file_size}` : ''
       ].filter(Boolean).join(' • ');
 
+      // encodeURIComponent() KHÔNG mã hoá dấu nháy đơn (') -- đúng theo spec, nó nằm trong
+      // nhóm ký tự "unreserved" -- nên tên tài liệu có dấu ' vẫn phá vỡ được chuỗi JS literal
+      // trong thuộc tính onclick=' ' bên dưới dù đã encodeURIComponent. .replace(/'/g,'%27')
+      // thêm vào để chặn đúng lỗ hổng này, decodeURIComponent() ở viewRAGDocumentDetail() vẫn
+      // giải mã đúng vì %27 là 1 chuỗi hex hợp lệ như mọi ký tự khác.
       html += `
-        <div class="rag-doc-item" onclick="viewRAGDocumentDetail('${encodeURIComponent(displayName)}', '${encodeURIComponent(doc.preview || '')}')">
+        <div class="rag-doc-item" onclick="viewRAGDocumentDetail('${encodeURIComponent(displayName).replace(/'/g, '%27')}', '${encodeURIComponent(doc.preview || '').replace(/'/g, '%27')}')">
           <div class="rag-doc-item-title d-flex justify-content-between align-items-center">
             <span class="text-truncate"><i class="fa-solid fa-file-lines text-primary me-1"></i> ${escapeHTML(displayName)}</span>
             ${metaInfo ? `<span class="badge bg-light text-secondary border font-monospace" style="font-size: 10px;">${escapeHTML(metaInfo)}</span>` : ''}
@@ -451,7 +463,12 @@ function appendAssistantMessage(markdownText, sources = [], retrievedDocs = [], 
     `;
   }
 
-  const msgUniqueId = `msg-${Date.now()}`;
+  // Date.now() (độ chính xác mili-giây) không đủ để đảm bảo duy nhất -- loadSavedRAGChat()
+  // gọi appendAssistantMessage() liên tiếp trong 1 vòng forEach đồng bộ, trên máy nhanh 2
+  // tin nhắn có thể sinh trong cùng 1 mili-giây, trùng id="msg-..." khiến
+  // document.getElementById (copyMessageText) luôn trả về tin nhắn đầu tiên. Thêm hậu tố
+  // ngẫu nhiên để chắc chắn duy nhất dù trùng mili-giây.
+  const msgUniqueId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   msgDiv.innerHTML = buildAssistantHTML(msgUniqueId, formatMarkdown(markdownText), sourcesHtml, suggestionsHtml);
   area.appendChild(msgDiv);
   area.scrollTop = area.scrollHeight;
@@ -508,7 +525,12 @@ async function streamAssistantMessage(markdownText, sources = [], retrievedDocs 
     `;
   }
 
-  const msgUniqueId = `msg-${Date.now()}`;
+  // Date.now() (độ chính xác mili-giây) không đủ để đảm bảo duy nhất -- loadSavedRAGChat()
+  // gọi appendAssistantMessage() liên tiếp trong 1 vòng forEach đồng bộ, trên máy nhanh 2
+  // tin nhắn có thể sinh trong cùng 1 mili-giây, trùng id="msg-..." khiến
+  // document.getElementById (copyMessageText) luôn trả về tin nhắn đầu tiên. Thêm hậu tố
+  // ngẫu nhiên để chắc chắn duy nhất dù trùng mili-giây.
+  const msgUniqueId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   msgDiv.innerHTML = buildAssistantHTML(msgUniqueId, `<span class="rag-typing-cursor"></span>`, '', '');
   area.appendChild(msgDiv);
 
@@ -523,9 +545,10 @@ async function streamAssistantMessage(markdownText, sources = [], retrievedDocs 
       if (currentIndex >= totalLength) {
         currentIndex = totalLength;
         clearInterval(interval);
-        if (textEl) {
-          textEl.innerHTML = formatMarkdown(markdownText);
-        }
+        // msgDiv.innerHTML ngay dưới thay THẲNG toàn bộ cây con chứa textEl -- gán
+        // textEl.innerHTML riêng ở đây trước đó là công tính vô ích, bị ghi đè ngay lập
+        // tức, không có tác dụng quan sát được nào. formatMarkdown(markdownText) chỉ cần
+        // gọi 1 lần cho buildAssistantHTML() bên dưới.
         msgDiv.innerHTML = buildAssistantHTML(msgUniqueId, formatMarkdown(markdownText), sourcesHtml, suggestionsHtml);
         area.scrollTop = area.scrollHeight;
         resolve();
@@ -646,7 +669,7 @@ function renderQueryInspector(query, result) {
       <div class="rag-inspector-item">
         <div class="d-flex justify-content-between align-items-center mb-1">
           <span class="rag-inspector-doc-name text-truncate">#${idx + 1} ${escapeHTML(doc.display_name || doc.doc_id)}</span>
-          <span class="badge bg-primary-subtle text-primary border" style="font-size: 10px;">${(doc.score * 100).toFixed(2)} pts</span>
+          <span class="badge bg-primary-subtle text-primary border" style="font-size: 10px;">${typeof doc.score === 'number' ? (doc.score * 100).toFixed(2) + ' pts' : 'N/A'}</span>
         </div>
         <div class="text-muted small" style="font-size: 11px; line-height: 1.4;">${escapeHTML(doc.text)}</div>
       </div>
@@ -734,6 +757,17 @@ function formatMarkdown(text) {
   if (!text) return '';
   let escaped = escapeHTML(text);
 
+  // Trích xuất khối code (```...```) ra TRƯỚC khi áp header/bold/italic/list bên dưới --
+  // nếu không, ký tự markdown bên trong khối code (vd. 1 câu trả lời ghi ví dụ chứa
+  // "**bold**" hay "# heading" ngay trong ```...```) bị các regex này "sửa" nhầm trước khi
+  // khối code kịp được bọc <pre><code> nguyên vẹn. Thay tạm bằng placeholder, chèn lại
+  // nguyên bản đã escapeHTML (từ dòng escaped = escapeHTML(text) ở trên) sau cùng.
+  const codeBlocks = [];
+  escaped = escaped.replace(/```([\s\S]*?)```/g, (match, code) => {
+    codeBlocks.push(code);
+    return ` CODEBLOCK${codeBlocks.length - 1} `;
+  });
+
   escaped = escaped.replace(/^#### (.*$)/gim, '<h6 class="fw-bold mt-2 mb-1 text-primary">$1</h6>');
   escaped = escaped.replace(/^### (.*$)/gim, '<h5 class="fw-bold mt-3 mb-2 text-dark">$1</h5>');
   escaped = escaped.replace(/^## (.*$)/gim, '<h4 class="fw-bold mt-3 mb-2 text-dark">$1</h4>');
@@ -741,7 +775,6 @@ function formatMarkdown(text) {
   escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-  escaped = escaped.replace(/```([\s\S]*?)```/g, '<pre class="p-2 bg-dark text-light rounded font-monospace my-2" style="font-size: 12px; overflow-x: auto;"><code>$1</code></pre>');
   escaped = escaped.replace(/`([^`]+)`/g, '<code class="p-1 rounded bg-secondary bg-opacity-10 text-danger font-monospace" style="font-size: 0.9em;">$1</code>');
 
   escaped = escaped.replace(/^---$/gim, '<hr class="my-2 border-secondary opacity-25">');
@@ -750,6 +783,10 @@ function formatMarkdown(text) {
   escaped = escaped.replace(/^\s*(\d+)\.\s+(.*)$/gm, '<li style="margin-left: 18px; margin-bottom: 4px;" value="$1">$2</li>');
 
   escaped = escaped.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+
+  escaped = escaped.replace(/ CODEBLOCK(\d+) /g, (match, idx) =>
+    `<pre class="p-2 bg-dark text-light rounded font-monospace my-2" style="font-size: 12px; overflow-x: auto;"><code>${codeBlocks[Number(idx)]}</code></pre>`
+  );
 
   return escaped;
 }
