@@ -1588,8 +1588,16 @@ body.auth-page .custom-toast { min-width: 300px; }
    on-brand regardless of theme). Colors here are literal dark-mode navy, not var(--gold) --
    using the token would make this panel's glow shift to the LIGHT navy the moment a visitor
    toggles to light mode, mismatching its own hardcoded-dark background/text. */
-.login-brand-wash {
+/* Bọc 2 lớp: .login-brand-parallax (JS set transform theo cursor, không animation)
+   bên ngoài .login-brand-wash (CSS keyframe drift/scale) bên trong -- tách riêng vì
+   animation CSS luôn thắng transform inline trên CÙNG 1 phần tử, gộp chung 1 lớp sẽ
+   làm parallax bị animation ghi đè mất tác dụng mỗi frame. */
+.login-brand-parallax {
   position: absolute; inset: -10%; z-index: 0;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.login-brand-wash {
+  position: absolute; inset: 0;
   background:
     radial-gradient(ellipse 60% 55% at 22% 20%, rgba(92, 122, 158, 0.55) 0%, transparent 60%),
     radial-gradient(ellipse 50% 45% at 78% 82%, rgba(63, 84, 110, 0.4) 0%, transparent 62%);
@@ -1617,7 +1625,24 @@ body.auth-page .custom-toast { min-width: 300px; }
   box-shadow: 0 10px 26px rgba(92, 122, 158, 0.45);
 }
 .login-brand-mark img { width: 100%; height: 100%; object-fit: cover; }
-.login-brand-top span { font-size: 14.5px; font-weight: 600; letter-spacing: 0.01em; color: #F3EFE6; }
+.login-brand-top span {
+  font-family: var(--font-display); font-size: 21px; font-weight: 400;
+  letter-spacing: 0.01em; color: #F3EFE6;
+}
+/* Chữ watermark lớn, mờ, thuần trang trí -- không phải nội dung cần đọc (đã có
+   "WorkHub Org" đọc được ở .login-brand-top ngay trên), nên aria-hidden. Dùng
+   --font-display (DM Serif Display) vì đây là 1 trong số ít chỗ chữ không dấu
+   tiếng Việt -- font này bị né mọi nơi khác trong app vì làm méo dấu (xem
+   comment ở khai báo --font-display). */
+.login-brand-watermark {
+  position: absolute; z-index: 1; right: -0.05em; bottom: -0.08em;
+  font-family: var(--font-display); font-size: min(38vh, 320px); line-height: 1;
+  color: #F3EFE6; opacity: 0.07; pointer-events: none; user-select: none;
+  /* KHÔNG dùng mix-blend-mode: overlay -- trên nền gần đen (#060504), overlay xử lý
+     như multiply nên chữ sáng gần như biến mất bất kể opacity. screen thì luôn cộng
+     sáng vào nền tối, đúng hiệu ứng "chữ mờ hiện ra" mong muốn. */
+  mix-blend-mode: screen;
+}
 .login-brand-bottom {
   font-size: 10.5px; font-family: var(--font-mono); letter-spacing: 0.08em;
   color: rgba(243, 239, 230, 0.34); text-transform: uppercase;
@@ -1675,9 +1700,67 @@ body.auth-page .custom-toast { min-width: 300px; }
 .login-form-inner .auth-btn-submit .fa-arrow-right { transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
 .login-form-inner .auth-btn-submit:hover:not(:disabled) .fa-arrow-right { transform: translateX(3px); }
 
+/* Icon trong ô nhập đổi màu theo focus (thuần CSS, không cần JS) */
+.login-form-inner .auth-input-group:focus-within .auth-input-icon { color: var(--gold); }
+
+/* Nhãn nổi thay placeholder-only -- input giữ placeholder=" " (1 khoảng trắng) chỉ để
+   :placeholder-shown hoạt động, không hiển thị chữ nào qua placeholder thật. Ô nhập cao
+   hơn base 48px (chỉ scoped trong .login-form-inner, không ảnh hưởng /forgot//nickname/)
+   để nhãn khi nổi lên top:7px có đủ khoảng cách với dòng chữ đang gõ, tránh đè lên nhau. */
+.login-form-inner .auth-input-group .form-control { height: 56px; padding-top: 22px; line-height: 20px; }
+.login-form-inner .auth-float-label {
+  position: absolute; left: 44px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 15px; pointer-events: none;
+  transition: transform 0.15s ease, font-size 0.15s ease, top 0.15s ease, color 0.15s ease;
+}
+.login-form-inner .form-control:focus + .auth-float-label,
+.login-form-inner .form-control:not(:placeholder-shown) + .auth-float-label {
+  top: 7px; transform: translateY(0); font-size: 10.5px;
+}
+.login-form-inner .form-control:focus + .auth-float-label { color: var(--gold); }
+
+/* 2 icon sáng/tối xếp chồng, chuyển bằng CSS theo [data-theme] thay vì đổi className
+   tức thời trong JS -- mượt hơn, không cần canh thời điểm swap bằng setTimeout.
+   KHÔNG cần "position: relative" riêng ở đây -- .login-theme-pill đã "position: absolute"
+   sẵn (đặt góc trên-phải), tự nó đã là positioning context cho 2 icon con. Thêm
+   "position: relative" đè lên sẽ THẮNG absolute (cùng độ đặc hiệu, đứng sau trong file)
+   và làm nút rơi vào luồng flex bình thường, mất luôn vị trí góc -- bug thật đã bắt được
+   khi soi ở breakpoint mobile, sửa bằng cách bỏ hẳn dòng này. */
+.login-theme-icon {
+  position: absolute; top: 50%; left: 50%; margin: -0.5em;
+  transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.login-theme-icon.icon-sun { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+.login-theme-icon.icon-moon { opacity: 1; transform: rotate(0) scale(1); }
+[data-theme="dark"] .login-theme-icon.icon-sun { opacity: 1; transform: rotate(0) scale(1); }
+[data-theme="dark"] .login-theme-icon.icon-moon { opacity: 0; transform: rotate(90deg) scale(0.5); }
+
+/* Success-view (trong .login-form-inner) may animation riêng thay vì dùng lại
+   auth-fade-in cũ (viết cho layout .auth-card trước đây) -- không sửa .auth-success-view
+   dùng chung với /forgot//nickname/, chỉ mở rộng qua scope .login-form-inner #success-view. */
+.login-form-inner #success-view { animation: login-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.login-form-inner #success-view h4,
+.login-form-inner #success-view p,
+.login-form-inner #success-view .auth-btn-submit {
+  opacity: 0; animation: login-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.login-form-inner #success-view h4 { animation-delay: 0.1s; }
+.login-form-inner #success-view p { animation-delay: 0.16s; }
+.login-form-inner #success-view .auth-btn-submit { animation-delay: 0.22s; }
+.success-check circle, .success-check path { stroke-dasharray: 160; stroke-dashoffset: 160; }
+.success-check circle { animation: success-draw 0.5s ease-out forwards; }
+.success-check path { animation: success-draw 0.4s ease-out 0.45s forwards; }
+@keyframes success-draw { to { stroke-dashoffset: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   .login-brand-wash { animation: none; }
   .login-form-inner, .login-form-inner .auth-input-group, .login-form-inner .auth-btn-submit { animation: none; opacity: 1; }
+  .login-form-inner #success-view,
+  .login-form-inner #success-view h4,
+  .login-form-inner #success-view p,
+  .login-form-inner #success-view .auth-btn-submit { animation: none; opacity: 1; }
+  .success-check circle, .success-check path { animation: none; stroke-dashoffset: 0; }
+  .login-theme-icon { transition: none; }
 }
 @media (max-width: 860px) {
   .login-split { grid-template-columns: 1fr; height: auto; min-height: 100vh; }

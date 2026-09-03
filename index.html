@@ -11,7 +11,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
-    <link rel="stylesheet" href="style.css?v=3.3.7">
+    <link rel="stylesheet" href="style.css?v=3.3.11">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#120F0A">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,8 +31,11 @@
 
     <div class="login-split">
         <div class="login-brand-pane" id="login-brand-pane">
-            <div class="login-brand-wash"></div>
+            <div class="login-brand-parallax" id="login-brand-parallax">
+                <div class="login-brand-wash"></div>
+            </div>
             <canvas class="login-brand-canvas" id="login-net-canvas"></canvas>
+            <div class="login-brand-watermark" aria-hidden="true">Org</div>
             <div class="login-brand-grain"></div>
             <div class="login-brand-vignette"></div>
             <div class="login-brand-top">
@@ -45,7 +48,8 @@
         <div class="login-form-pane" id="login-form-pane">
             <div class="login-form-glow" id="login-form-glow"></div>
             <button type="button" class="login-theme-pill" id="login-theme-pill" onclick="toggleLoginTheme()" aria-label="Chuyển chế độ Sáng/Tối">
-                <i class="fa-solid fa-moon" id="login-theme-icon"></i>
+                <i class="fa-solid fa-sun login-theme-icon icon-sun" aria-hidden="true"></i>
+                <i class="fa-solid fa-moon login-theme-icon icon-moon" aria-hidden="true"></i>
             </button>
             <div class="login-form-top-mark">Cổng quản trị nội bộ</div>
 
@@ -58,12 +62,14 @@
                         <form id="login-form-main">
                             <div class="auth-input-group">
                                 <span class="auth-input-icon"><i class="fa-solid fa-user-astronaut"></i></span>
-                                <input type="text" id="username" class="form-control" placeholder="Tên đăng nhập / Email" required>
+                                <input type="text" id="username" class="form-control" placeholder=" " required>
+                                <label for="username" class="auth-float-label">Tên đăng nhập / Email</label>
                             </div>
 
                             <div class="auth-input-group">
                                 <span class="auth-input-icon"><i class="fa-solid fa-lock"></i></span>
-                                <input type="password" id="password" class="form-control" placeholder="Mật mã" required>
+                                <input type="password" id="password" class="form-control" placeholder=" " required>
+                                <label for="password" class="auth-float-label">Mật mã</label>
                             </div>
 
                             <button type="submit" class="auth-btn-submit">
@@ -87,7 +93,12 @@
                     </div>
 
                     <div id="success-view" class="auth-success-view">
-                        <div class="auth-success-icon"><i class="fa-solid fa-check-circle"></i></div>
+                        <div class="auth-success-icon">
+                            <svg class="success-check" viewBox="0 0 52 52" width="54" height="54" aria-hidden="true">
+                                <circle cx="26" cy="26" r="24" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M14 27l8 8 16-17"/>
+                            </svg>
+                        </div>
                         <h4>Đăng nhập thành công!</h4>
                         <p class="text-muted mb-4" id="welcome-text">Đang tải trang...</p>
 
@@ -397,8 +408,8 @@
             var saved = localStorage.getItem('user-theme');
             var theme = (saved === 'dark' || saved === 'light') ? saved : (isNightTime() ? 'dark' : 'light');
             document.documentElement.setAttribute('data-theme', theme);
-            var icon = document.getElementById('login-theme-icon');
-            if (icon) icon.className = theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+            // Icon sáng/tối tự chuyển bằng CSS theo [data-theme] (xem .login-theme-icon
+            // trong style.css) -- không cần đổi className ở đây nữa.
         }
         window.toggleLoginTheme = function () {
             var cur = document.documentElement.getAttribute('data-theme');
@@ -418,6 +429,24 @@
             glow.style.left = (e.clientX - rect.left - 320) + 'px';
             glow.style.top = (e.clientY - rect.top - 320) + 'px';
         });
+    })();
+
+    // Parallax rất nhẹ cho lớp wash bên brand pane theo vị trí con trỏ -- thuần trang trí.
+    // Set transform trên .login-brand-parallax (KHÔNG phải .login-brand-wash), vì wash có
+    // sẵn animation CSS (login-wash) trên chính thuộc tính transform -- animation luôn thắng
+    // transform inline trên cùng 1 phần tử, gộp chung sẽ làm parallax mất tác dụng.
+    (function () {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        var pane = document.getElementById('login-brand-pane');
+        var parallax = document.getElementById('login-brand-parallax');
+        if (!pane || !parallax) return;
+        pane.addEventListener('pointermove', function (e) {
+            var rect = pane.getBoundingClientRect();
+            var px = (e.clientX - rect.left) / rect.width - 0.5;
+            var py = (e.clientY - rect.top) / rect.height - 0.5;
+            parallax.style.transform = 'translate(' + (px * -14).toFixed(1) + 'px, ' + (py * -10).toFixed(1) + 'px)';
+        });
+        pane.addEventListener('pointerleave', function () { parallax.style.transform = ''; });
     })();
 
     // Mạng lưới điểm-nối-điểm trên brand pane -- thuần trang trí, không phụ thuộc/ảnh hưởng
@@ -517,7 +546,8 @@
             }
             ctx.save();
             ctx.shadowColor = 'rgba(150, 178, 212, 1)';
-            ctx.shadowBlur = 22;
+            // Nhịp thở nhẹ ~5s/chu kỳ ở 60fps; giữ mức tĩnh 22 khi reduce-motion.
+            ctx.shadowBlur = reduceMotion ? 22 : (20 + Math.sin(t * 0.012) * 6);
             ctx.beginPath();
             ctx.arc(hub.x, hub.y, 4.5, 0, Math.PI * 2);
             ctx.fillStyle = '#F3EFE6';
