@@ -3021,7 +3021,14 @@ const APP_FEATURES = [
     { title: "Quản lý Task", subtitle: "Công việc", type: "feature", section: "task" },
     { title: "Upload File đính kèm", subtitle: "Công cụ", type: "feature", section: "drive" },
     { title: "Lịch & Sự kiện", subtitle: "Công cụ", type: "feature", section: "calendar" },
-    { title: "AI Trợ lý", subtitle: "Công cụ", type: "feature", section: "ai" }
+    { title: "AI Trợ lý", subtitle: "Công cụ", type: "feature", section: "ai" },
+    { title: "Đổi Biệt danh", subtitle: "Tài khoản", type: "action", actionId: "change_nickname" },
+    { title: "Đổi Mật khẩu", subtitle: "Tài khoản", type: "action", actionId: "reset_password" },
+    { title: "Đổi Ảnh nền", subtitle: "Giao diện", type: "action", actionId: "change_bg" },
+    { title: "Reset Ảnh nền", subtitle: "Giao diện", type: "action", actionId: "reset_bg" },
+    { title: "Vào phòng nghỉ (Lounge)", subtitle: "Giải trí", type: "action", actionId: "lounge" },
+    { title: "Thùng rác", subtitle: "Hệ thống", type: "action", actionId: "trash" },
+    { title: "Đăng xuất", subtitle: "Tài khoản", type: "action", actionId: "logout" }
 ];
 
 let lastSearchQuery = '';
@@ -3079,7 +3086,7 @@ function renderSearchResults(data) {
     if (!box) return;
 
     searchPaletteResults = [
-        ...(data.features || []).map(x => ({ ...x, type: 'feature' })),
+        ...(data.features || []).map(x => ({ ...x, type: x.type || 'feature' })),
         ...(data.projects || []).map(x => ({ ...x, type: 'project' })),
         ...(data.tasks || []).map(x => ({ ...x, type: 'task' })),
         ...(data.milestones || []).map(x => ({ ...x, type: 'milestone' })),
@@ -3097,6 +3104,7 @@ function renderSearchResults(data) {
 
     const GROUP_META = {
         feature: { badge: 'Chức năng', bg: '', style: 'background: #4285f4; color: #fff;', icon: 'fa-bolt' },
+        action: { badge: 'Lệnh', bg: '', style: 'background: #e83e8c; color: #fff;', icon: 'fa-terminal' },
         project: { badge: 'Dự án', bg: '', style: 'background: #198754; color: #fff;', icon: 'fa-diagram-project' },
         task: { badge: 'Công việc', bg: '', style: 'background: #ffc107; color: #000;', icon: 'fa-list-check' },
         milestone: { badge: 'Cột mốc', bg: '', style: 'background: #dc3545; color: #fff;', icon: 'fa-flag-checkered' },
@@ -3154,6 +3162,17 @@ function activateSearchResult(idx) {
     if (item.type === 'feature') {
         const nav = document.querySelector(`.nav-item[data-section="${item.section}"]`);
         if (nav) nav.click();
+        return;
+    }
+
+    if (item.type === 'action') {
+        if (item.actionId === 'change_nickname') window.location.href = '/change_nickname/';
+        else if (item.actionId === 'reset_password') window.location.href = '/reset/';
+        else if (item.actionId === 'change_bg') document.getElementById('global-bg-input')?.click();
+        else if (item.actionId === 'reset_bg') { if (typeof resetBackground === 'function') resetBackground(); }
+        else if (item.actionId === 'lounge') { if (typeof goToLounge === 'function') goToLounge('in-lounge'); }
+        else if (item.actionId === 'trash') { if (typeof showTrashModal === 'function') showTrashModal(); }
+        else if (item.actionId === 'logout') document.getElementById('logout-btn')?.click();
         return;
     }
 
