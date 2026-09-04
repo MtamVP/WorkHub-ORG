@@ -30,7 +30,7 @@ Nếu Terminal báo lỗi: `Error: A public key has been found, but no private k
 ```powershell
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content C:\Users\Admin\Music\WorkHub-main\workhub.key -Raw
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "workhub28826"
-npx tauri signer sign C:\Users\Admin\Music\workhub-fin\src-tauri\target\release\bundle\nsis\WorkHub-Fin_0.1.2_x64-setup.exe
+npx tauri signer sign C:\Users\Admin\Music\WorkHub-main\src-tauri\target\release\bundle\nsis\WorkHub-ORG_0.1.3_x64-setup.exe
 ```
 
 _(Lưu ý: Thay số `0.1.2` bằng đúng số version bạn đang build)._
