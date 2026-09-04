@@ -27,12 +27,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("WorkHub-RAG")
 
 env_path = os.path.join(os.path.dirname(__file__), ".env")
+parent_env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+if os.path.exists(parent_env_path):
+    load_dotenv(parent_env_path)
 if os.path.exists(env_path):
     load_dotenv(env_path)
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gqsbsqaxzpzcloaopzvv.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_sl9uOpcIzfzN9NZ5D_ZdsQ_FQZchyUR")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 BRONZE_BUCKET = os.getenv("BRONZE_BUCKET", "general_bucket")
 LOCAL_CORPUS_DIR = os.getenv("LOCAL_CORPUS_DIR", "./data_bronze")
 PORT = int(os.getenv("PORT", "7860"))

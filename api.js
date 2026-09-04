@@ -25,10 +25,13 @@ window.escapeJs = function (value) {
         .replace(/\r\n/g, '\\n').replace(/[\r\n\u2028\u2029]/g, '\\n');
 };
 
-const SUPABASE_URL = "https://gqsbsqaxzpzcloaopzvv.supabase.co";
-const SUPABASE_KEY = "sb_publishable_sl9uOpcIzfzN9NZ5D_ZdsQ_FQZchyUR";
+// Tạm thời để trống chờ setup load từ .env (VD: window.ENV.SUPABASE_URL)
+const SUPABASE_URL = window.SUPABASE_URL || "";
+const SUPABASE_KEY = window.SUPABASE_KEY || "";
 
-const sbClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const sbClient = window.supabase && SUPABASE_URL && SUPABASE_KEY 
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) 
+    : null;
 
 // --- MinIO (TrueNAS) file storage, proxied through the Supabase Edge Function
 // "storage-proxy" so the MinIO root credential never reaches the client. ---
