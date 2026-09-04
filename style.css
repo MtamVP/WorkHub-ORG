@@ -211,7 +211,10 @@
    instead of the app's own accent (found live: the "Thành viên" header button + 7 others).
    Overriding the actual --bs-btn-* variables Bootstrap's button CSS consumes fixes all of
    them at once, including any not yet found. style.css loads after bootstrap.min.css in
-   every HTML entry point, so this wins on source order without needing !important. */
+   every HTML entry point, so this wins on source order without needing !important.
+   LƯU Ý: có 1 block .btn-primary KHÁC ở dòng ~1254 (hệ nút riêng của app, dùng cùng tên
+   selector) set literal `background` -- block đó thắng cho nền mặc định vì nằm sau trong
+   file; --bs-btn-bg ở đây chỉ còn kiểm soát :hover/:active/:disabled. Xem ghi chú ở đó. */
 .btn-primary {
   --bs-btn-bg: var(--gold); --bs-btn-border-color: var(--gold);
   --bs-btn-hover-bg: var(--gold-light); --bs-btn-hover-border-color: var(--gold-light);
@@ -1251,6 +1254,13 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
 .pill-neutral { background: var(--hover-bg); color: var(--text-muted); border: 1px solid var(--border-color); }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; padding: 9px 18px; border-radius: var(--radius-sm); transition: var(--transition-fast); border: none; }
+/* Trùng tên selector .btn-primary với block Bootstrap override ở dòng ~215 (cùng specificity
+   0,1,0) -- block đó set --bs-btn-bg cho .btn-primary GỐC của Bootstrap, còn block này là hệ
+   component nút RIÊNG của app (dùng cùng .btn + .btn-primary nhưng background dạng gradient
+   thật, không qua biến --bs-btn-bg). Do nằm SAU trong file nên `background` ở đây thắng cho
+   trạng thái mặc định -- --bs-btn-bg chỉ còn tác dụng ở :hover/:active/:disabled (rule riêng
+   của Bootstrap, block này không đụng tới). Không đổi để giữ đúng giao diện đang hiển thị --
+   chỉ ghi chú rõ để tránh sửa 1 trong 2 block mà tưởng nó còn kiểm soát nền mặc định. */
 .btn-primary { background: linear-gradient(135deg, var(--gold-light), var(--gold)); color: var(--on-gold); box-shadow: var(--shadow-gold); }
 .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .btn:active { transform: translateY(1px) scale(0.98); }
