@@ -139,7 +139,16 @@
 
         const toast = document.createElement('div');
         toast.className = `custom-toast ${type}`;
-        toast.innerHTML = `<i class="fa-solid ${iconClass}"></i><span>${message}</span>`;
+        // message trước đây chèn thẳng vào innerHTML -- luồng SSO (handleSsoLoginClick) đưa
+        // thẳng err.message (bắt nguồn từ query param error_description trên redirect OAuth,
+        // 1 IdP giả mạo/bị xâm nhập có thể nhét bất cứ gì vào đó) vào showToast(), mở đường
+        // XSS ngay trên trang login trước khi kịp đăng nhập. Dùng textContent cho phần message
+        // (không phải người dùng tự nhập markup) trong khi icon <i> tĩnh vẫn giữ nguyên qua
+        // innerHTML riêng.
+        toast.innerHTML = `<i class="fa-solid ${iconClass}"></i>`;
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = message;
+        toast.appendChild(msgSpan);
         container.appendChild(toast);
         setTimeout(() => {
             toast.style.animation = 'fadeOutRight 0.4s forwards';
@@ -215,9 +224,13 @@
             var file = input.files[0];
             if (file.size > 700 * 1024) { alert("Ảnh nặng quá (>700KB). Cần dưới mức này sau khi mã hóa base64."); return; }
 
+            // .auth-btn-control không còn tồn tại trong layout hiện tại (nút đổi ảnh nền đã
+            // bị ẩn cùng initLoginThemeListener() ở trên) -- input#login-bg-input vẫn còn
+            // onchange trỏ vào hàm này nên trước đây querySelector trả về null làm crash
+            // ngay dòng kế (Cannot read properties of null) nếu handler này lỡ chạy.
             const btnIcon = document.querySelector('.auth-btn-control i');
-            const oldClass = btnIcon.className;
-            btnIcon.className = "fa-solid fa-spinner fa-spin";
+            const oldClass = btnIcon ? btnIcon.className : '';
+            if (btnIcon) btnIcon.className = "fa-solid fa-spinner fa-spin";
 
             var reader = new FileReader();
             reader.onload = async function(e) {
@@ -226,10 +239,10 @@
                     const userEmail = user ? user.email : "admin@workhub.com";
                     await API.settings.updateSetting('login_theme', e.target.result, userEmail);
                     applyCustomBackground(e.target.result);
-                    btnIcon.className = oldClass;
+                    if (btnIcon) btnIcon.className = oldClass;
                 } catch(err) {
-                    alert(err.message); 
-                    btnIcon.className = oldClass;
+                    alert(err.message);
+                    if (btnIcon) btnIcon.className = oldClass;
                 }
             }
             reader.readAsDataURL(file);
