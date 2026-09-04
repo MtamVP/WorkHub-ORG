@@ -1,68 +1,72 @@
-# Hướng Dẫn Phát Hành Bản Cập Nhật Mới (Auto-Updater)
+# Hướng Dẫn Cập Nhật & Build App WorkHub-Fin
 
-Tài liệu này hướng dẫn cách build và phát hành một bản cập nhật mới cho hệ thống WorkHub để các máy client tự động nhận thông báo và tải về.
+File này lưu lại các bước chuẩn để tạo ra bản cập nhật mới (Auto-Update) cho dự án `WorkHub-Fin`. Khi nào bạn sửa code xong và muốn tung ra bản cập nhật mới, chỉ cần làm đúng theo thứ tự sau:
 
-> [!IMPORTANT]
-> Bạn bắt buộc phải có file `workhub.key` (Private Key) và mật khẩu của nó để thực hiện việc này. Không chia sẻ file key này ra ngoài.
+---
 
-## Các Bước Thực Hiện
+## 1. Tăng Phiên Bản
 
-### Bước 1: Tăng số phiên bản
-Mở file `src-tauri/tauri.conf.json`, tìm thuộc tính `"version"` và sửa thành số phiên bản mới.
-Ví dụ: nếu bản cũ đang là `"0.1.0"`, hãy đổi thành `"0.1.1"`.
-*(Lưu ý: Số phiên bản mới bắt buộc phải lớn hơn số phiên bản đang chạy trên máy khách).*
+1. Mở file `src-tauri/tauri.conf.json`.
+2. Tìm dòng `"version": "0.x.x"` và tăng số phiên bản lên (ví dụ từ `0.1.1` lên `0.1.2`).
 
-### Bước 2: Khai báo biến môi trường (Chứa Private Key)
-Để Tauri có thể dùng Private Key để "ký" (sign) bản cài đặt, bạn cần truyền đường dẫn tới file key và mật khẩu vào biến môi trường của Terminal trước khi build.
+## 2. Build Ứng Dụng
 
-Mở Terminal (khuyên dùng PowerShell) tại thư mục gốc của dự án và chạy 2 lệnh sau:
+Do quá trình Build cần phải có "chìa khóa" bảo mật (đang dùng chung key với WorkHub-main), nên bạn không dùng lệnh `npx tauri build` thông thường được.
+
+Hãy mở **Terminal** (tại thư mục `workhub-fin`) và copy/paste toàn bộ cụm lệnh sau để chạy:
 
 ```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY_PATH="ĐƯỜNG_DẪN_TỚI_FILE_KEY_CỦA_BẠN"
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD="MẬT_KHẨU_BẠN_ĐÃ_ĐẶT"
-```
-*(Thay thế `ĐƯỜNG_DẪN_TỚI_FILE_KEY_CỦA_BẠN` thành đường dẫn thực tế trên máy bạn, ví dụ: `D:\Projects\Keys\workhub.key` hoặc `./workhub.key` nếu file nằm ngay trong thư mục code).*
-
-### Bước 3: Build bản cài đặt
-Sau khi gán biến môi trường thành công, tiến hành chạy lệnh build như bình thường:
-
-```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\Users\Admin\Music\WorkHub-main\workhub.key"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD="workhub28826"
 npx tauri build
 ```
-Quá trình build sẽ mất một lúc. Sau khi xong, hãy vào thư mục `src-tauri/target/release/bundle/nsis/` (hoặc `msi`). Tại đây sẽ có file cài đặt (như `.exe`) và file chữ ký (như `.sig`).
 
-*(Lưu ý: Nếu dùng Tauri v2 mà trình build không tự sinh ra file `latest.json`, bạn có thể tự tạo file này bằng tay).*
+_(Thời gian build thường mất khoảng 3-10 phút)._
 
-### Bước 4: Cập nhật file `latest.json` (Nếu tự tạo bằng tay)
-Tạo (hoặc sửa) một file tên là `latest.json` với nội dung như sau:
+## 3. Nếu Tauri báo lỗi KHÔNG THỂ KÝ FILE ở cuối bước Build
+
+Nếu Terminal báo lỗi: `Error: A public key has been found, but no private key...` thì bạn không cần Build lại! Bạn chỉ cần chạy tiếp cụm lệnh sau để ký file bằng tay:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content C:\Users\Admin\Music\WorkHub-main\workhub.key -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "workhub28826"
+npx tauri signer sign C:\Users\Admin\Music\workhub-fin\src-tauri\target\release\bundle\nsis\WorkHub-Fin_0.1.2_x64-setup.exe
+```
+
+_(Lưu ý: Thay số `0.1.2` bằng đúng số version bạn đang build)._
+
+Lệnh này sẽ tự đẻ ra file chữ ký `.sig` cho bạn.
+
+## 4. Tạo file `latest.json`
+
+Tạo (hoặc sửa) file `latest.json` nằm trong thư mục `src-tauri/target/release/bundle/nsis/` với nội dung như sau:
+
 ```json
 {
   "version": "v0.1.2",
-  "notes": "Ghi chú những tính năng mới ở đây",
-  "pub_date": "2026-09-01T10:00:00Z",
+  "notes": "Mô tả bản cập nhật...",
+  "pub_date": "2026-08-28T11:00:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "MỞ_FILE_.SIG_BẰNG_NOTEPAD_VÀ_COPY_TOÀN_BỘ_NỘI_DUNG_DÁN_VÀO_ĐÂY",
-      "url": "https://github.com/MtamVP/WorkHub-ORG/releases/download/v0.1.2/WorkHub-ORG_0.1.2_x64-setup.exe"
+      "signature": "DÁN_NỘI_DUNG_FILE_.SIG_VÀO_ĐÂY",
+      "url": "https://github.com/MtamVP/WorkHub-Fin/releases/download/v0.1.2/WorkHub-Fin_0.1.2_x64-setup.exe"
     }
   }
 }
 ```
-**Khi ra bản mới, bạn chỉ cần sửa 3 chỗ:**
-1. `"version"`: Thay bằng số phiên bản mới (phải khớp với tag trên GitHub).
-2. `"signature"`: Mở file `.sig` bản mới nhất ra, copy toàn bộ chữ rồi dán đè vào đây.
-3. `"url"`: Thay số phiên bản trong đường link tải (chỗ `v0.1.2` và tên file `.exe`).
 
-### Bước 5: Upload lên GitHub Releases
-1. Truy cập vào trang quản lý Release của Repository: [GitHub Releases](https://github.com/MtamVP/WorkHub-ORG/releases)
-2. Bấm nút **"Draft a new release"**.
-3. Tại ô **Choose a tag**, hãy điền đúng số phiên bản vừa build (Ví dụ: `v0.1.1`).
-4. Ở phần đính kèm file (Attach binaries by dropping them here), **bạn cần upload TẤT CẢ các file sau**:
-   - File bộ cài đặt (ví dụ: `WorkHub-ORG_0.1.1_x64-setup.exe` hoặc `.msi`).
-   - File chữ ký đính kèm (có đuôi là `.sig` hoặc `.zip.sig`).
-   - **Đặc biệt quan trọng:** Upload luôn file **`latest.json`**.
-5. Điền tiêu đề và mô tả những thay đổi mới của bản cập nhật.
-6. Bấm **Publish release**.
+- Đổi các chỗ `0.1.2` thành version hiện tại.
+- Mở file `.sig` vừa sinh ra lên, copy dòng base64 khổng lồ dán vào chỗ `signature`.
 
-**Hoàn tất!**
-Ngay sau khi release được publish, những người dùng đang mở app phiên bản cũ sẽ lập tức nhận được thông báo cập nhật trên màn hình.
+## 5. Tung Bản Cập Nhật Lên GitHub (Publish)
+
+1. Lên kho GitHub [WorkHub-Fin](https://github.com/MtamVP/WorkHub-Fin/releases).
+2. Chọn **Draft a new release**.
+3. Đặt **Tag** là `v0.1.2` (trùng version).
+4. Vào thư mục `src-tauri/target/release/bundle/nsis/` và **KÉO THẢ CẢ 3 FILE NÀY LÊN**:
+   - `WorkHub-Fin_0.1.2_x64-setup.exe`
+   - `WorkHub-Fin_0.1.2_x64-setup.exe.sig`
+   - `latest.json`
+5. Bấm **Publish release**.
+
+Lúc này, toàn bộ nhân viên/thành viên đang dùng app bản cũ (ví dụ 0.1.1) khi mở lên sẽ tự động nhận được thông báo đòi cập nhật lên bản 0.1.2! Hoàn tất.
