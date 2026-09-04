@@ -30,6 +30,12 @@ htmlFiles.forEach(file => {
     } else if (content.includes('src="/script.js"')) {
         content = content.replace(/src="\/script\.js"/g, 'src="/script.js' + version + '"');
         changed = true;
+    } else if (content.includes('src="script.js"')) {
+        // Trước đây thiếu nhánh này -- chỉ khớp dạng tuyệt đối "/script.js", còn thẻ dùng
+        // đường dẫn tương đối "script.js" (không có "/" đầu, chưa có ?v=) không được bump
+        // version, khiến trình duyệt tiếp tục phục vụ bản script.js cache cũ sau khi deploy.
+        content = content.replace(/src="script\.js"/g, 'src="script.js' + version + '"');
+        changed = true;
     }
 
     // Replace api.js?v=xxx
