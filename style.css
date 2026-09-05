@@ -2079,9 +2079,12 @@ body.auth-page .custom-toast { min-width: 300px; }
   .auth-card { max-width: calc(100vw - 32px); padding: 32px 22px; }
   .auth-theme-controls { top: 12px; right: 12px; }
 }
-/* Fix for disabled select elements in dark mode */
+/* Input/select bị disabled trước đây không có style riêng -- rơi vào nền trắng/chữ đen
+   mặc định của trình duyệt bất kể theme, đặc biệt chói ở dark mode. Không cần fallback
+   hex sau var() -- 3 biến này luôn có giá trị (khai báo ở :root, mục 1), không có ca nào
+   file này load mà thiếu chúng. */
 .form-select:disabled, .form-control:disabled {
-    background-color: var(--hover-bg, #2a2a2a) !important;
-    color: var(--text-muted, #888) !important;
-    border-color: var(--border-color, #444) !important;
+  background-color: var(--hover-bg) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border-color) !important;
 }
