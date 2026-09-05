@@ -739,22 +739,15 @@ table.table-hover tbody tr:hover td { background-color: var(--hover-bg); color: 
 /* ---------------------------------------------------------------------- */
 /* 5. DASHBOARD & PROGRESS                                                 */
 /* ---------------------------------------------------------------------- */
-.main-widgets > div, .side-widgets > div { background-color: transparent; box-shadow: none; border: none; }
-
-.dashboard-widgets .card, .dashboard-widgets .widget-item {
-  background-color: var(--card-bg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  margin-bottom: 20px;
-  border: 1px solid var(--border-color);
-  height: auto;
-  transition: box-shadow 0.25s ease;
+/* Lưới 2 cột dùng cho Tổng Quan (và mọi nơi khác cần 2 card cạnh nhau) -- port
+   nguyên văn từ wh-fin/wh-sci để layout Tổng Quan của org giống hệt 2 app kia
+   thay vì hệ .dashboard-widgets/.main-widgets/.side-widgets (flex 65/30) riêng
+   trước đây -- không còn nơi nào dùng 3 class đó (đã kiểm bằng grep), xoá hẳn. */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 24px;
 }
-.dashboard-widgets .card:hover, .dashboard-widgets .widget-item:hover { box-shadow: var(--shadow-hover); }
-
-.dashboard-widgets { display: flex; flex-direction: row; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
-.main-widgets { flex: 1 1 65%; min-width: 400px; max-width: 100%; }
-.side-widgets { flex: 1 1 30%; min-width: 280px; max-width: 100%; }
 
 .progress {
   background-color: var(--hover-bg);
@@ -1433,6 +1426,7 @@ div:where(.swal2-container) { z-index: 99999 !important; }
 
 @media (max-width: 768px) {
   #main-content { padding: 20px; }
+  .grid-2 { grid-template-columns: 1fr; }
   #app-header { padding: 0 16px; gap: 10px; }
   .brand-title-group h1 { font-size: 18px; white-space: nowrap; }
   .brand-logo { width: 32px; height: 32px; }
