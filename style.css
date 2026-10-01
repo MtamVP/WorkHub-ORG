@@ -1212,9 +1212,19 @@ tr[draggable="true"]:active, .task-card[draggable="true"]:active { cursor: grabb
    Ported from Fin/Sci's shared component set so ORG's own sections (starting with Task)
    reach the same finish, using ORG's own tokens (gold, not Fin's blue/Sci's cyan). --- */
 .section-hero-card {
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
-  gap: 16px; padding: 20px 24px; border-left: 4px solid var(--gold);
-  border-radius: var(--radius-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px 24px;
+  border-left: 4px solid var(--gold);
+  background-color: color-mix(in srgb, var(--gold) 4%, var(--card-bg));
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--gold); /* override left border */
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  margin-bottom: 24px;
 }
 .section-hero-info h3 { font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .section-hero-info p { color: var(--text-secondary); font-size: 14px; max-width: 850px; }
