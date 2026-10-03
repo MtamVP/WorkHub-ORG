@@ -2092,3 +2092,8 @@ body.auth-page .custom-toast { min-width: 300px; }
   color: var(--text-muted) !important;
   border-color: var(--border-color) !important;
 }
+
+/* Không Gian Riêng v4 (personal-hub.css dùng chung 3 app): Org dùng --gold (navy) làm màu nhấn, chỉ thiếu bản "mờ" */
+body {
+  --phub-accent-dim: color-mix(in srgb, var(--gold) 16%, transparent);
+}
